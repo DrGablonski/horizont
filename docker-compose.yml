@@ -1,0 +1,16 @@
+services:
+  horizont:
+    build: .
+    container_name: horizont
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - TZ=Europe/Berlin
+      - DATA_DIR=/app/data
+    volumes:
+      - horizont-data:/app/data
+    # Port nach Bedarf ändern, z. B. "8080:3000"
+
+volumes:
+  horizont-data:
