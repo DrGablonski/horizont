@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { XMLParser } from 'fast-xml-parser';
 import Ical from 'ical.js';
 import type { CalDavCalendar, CalDavSettings } from '$lib/types';
-import { DAV_TIMEOUT_MS } from '$server/lib/constants';
+import { DAV_TIMEOUT_MS, WORKFLOWS_CALENDAR } from '$server/lib/constants';
 
 // ── Fehler-Typ ────────────────────────────────────────────────────────────
 
@@ -183,6 +183,43 @@ export async function resolveHome(settings: CalDavSettings): Promise<HomeInfo> {
 	return { home, principal };
 }
 
+// ── Existenzprüfung + Kalender anlegen (interner Workflow-Speicher) ─────
+
+/** Prüft per PROPFIND (Depth 0), ob eine Collection existiert. */
+export async function collectionExists(settings: CalDavSettings, url: string): Promise<boolean> {
+	const body = `<?xml version="1.0" encoding="utf-8"?>
+<propfind xmlns="DAV:">
+  <prop>
+    <resourcetype/>
+  </prop>
+</propfind>`;
+	const r = await davRequest(settings, url, 'PROPFIND', body, { Depth: '0' });
+	if (r.status === 404) return false;
+	if (r.status === 401 || r.status === 403) authError();
+	return r.status < 400;
+}
+
+/** Legt einen CalDAV-Kalender per MKCALENDAR an (VTODO-fähig). Nur aufrufen, wenn absent. */
+export async function mkCalendar(settings: CalDavSettings, url: string, displayName: string): Promise<void> {
+	const body = `<?xml version="1.0" encoding="utf-8"?>
+<C:mkcalendar xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:set>
+    <D:prop>
+      <D:displayname>${displayName}</D:displayname>
+      <C:supported-calendar-component-set>
+        <C:supported>
+          <C:comp-name>VTODO</C:comp-name>
+        </C:supported>
+      </C:supported-calendar-component-set>
+    </D:prop>
+  </D:set>
+</C:mkcalendar>`;
+	const r = await davRequest(settings, url, 'MKCALENDAR', body, { Depth: '0' });
+	if (r.status === 200 || r.status === 201) return;
+	if (r.status === 401 || r.status === 403) authError();
+	throw new CalDavError(r.status, `CalDAV: Kalender "${displayName}" konnte nicht angelegt werden (HTTP ${r.status}).`);
+}
+
 // ── Kalender-Liste ────────────────────────────────────────────────────────
 
 export async function listCalendars(settings: CalDavSettings, home: string): Promise<CalDavCalendar[]> {
@@ -195,6 +232,10 @@ export async function listCalendars(settings: CalDavSettings, home: string): Pro
 </propfind>`;
 
 	const url = home.replace(/\/?$/, '/');
+	// Interner Workflow-Speicher: exakte URL ableiten und aus der Liste nehmen.
+	// Diese Funktion versorgt UI-Kalenderliste, Event-Abfrage und Task-Abfrage –
+	// ein einziger Filter hier hält den Speicher überall unsichtbar.
+	const workflowsUrl = new URL(`${WORKFLOWS_CALENDAR}/`, url).toString();
 	const r = await davRequest(settings, url, 'PROPFIND', body, { Depth: '1' });
 	if (r.status === 401 || r.status === 403) authError();
 	if (r.status >= 400) throw new Error(`CalDAV: Kalender-Liste nicht abrufbar (HTTP ${r.status}).`);
@@ -212,6 +253,7 @@ export async function listCalendars(settings: CalDavSettings, home: string): Pro
 		const href = textOf(hrefs[0]);
 		if (!href) continue;
 		const full = new URL(href, url).toString();
+		if (full === workflowsUrl) continue; // interner Workflow-Speicher, kein Benutzerkalender
 		if (seen.has(full)) continue;
 		seen.add(full);
 

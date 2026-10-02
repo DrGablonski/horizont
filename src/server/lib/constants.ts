@@ -23,5 +23,10 @@ export const MAIN_END_DAYS_AHEAD_EXCL = NOW_EXTRA_DAYS + FUTURE_DAYS + 1;
 export const MAX_OCCURRENCES = 10_000;
 export const DAV_TIMEOUT_MS = 20_000;
 
+// Name des internen CalDAV-Kalenders für die Workflow-Persistenz.
+// Wird aus der Kalender-Liste (UI), den Event- und Task-Abfragen gefiltert,
+// da er nur Workflow-VTODO-Objekte enthält und kein Benutzerkalender ist.
+export const WORKFLOWS_CALENDAR = 'workflows';
+
 // Datenverzeichnis (überwridbar via DATA_DIR)
 export const DATA_DIR = process.env.DATA_DIR ?? resolve(process.cwd(), 'data');
