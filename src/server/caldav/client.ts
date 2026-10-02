@@ -4,8 +4,18 @@
 
 import { createHash } from 'node:crypto';
 import { XMLParser } from 'fast-xml-parser';
+import Ical from 'ical.js';
 import type { CalDavCalendar, CalDavSettings } from '$lib/types';
 import { DAV_TIMEOUT_MS } from '$server/lib/constants';
+
+// ── Fehler-Typ ────────────────────────────────────────────────────────────
+
+export class CalDavError extends Error {
+	constructor(public status: number, message: string) {
+		super(message);
+		this.name = 'CalDavError';
+	}
+}
 
 // ── Deterministische Farbpaletten (8 Farben) ─────────────────────────────
 export const PALETTE: string[] = [
@@ -94,6 +104,7 @@ function decodeXmlEntities(s: string): string {
 interface DavResponse {
 	status: number;
 	text: string;
+	headers: Record<string, string>;
 }
 
 async function davRequest(
@@ -119,7 +130,11 @@ async function davRequest(
 			signal: controller.signal
 		});
 		const text = await res.text();
-		return { status: res.status, text };
+		const headers: Record<string, string> = {};
+		res.headers.forEach((v, k) => {
+			headers[k.toLowerCase()] = v;
+		});
+		return { status: res.status, text, headers };
 	} finally {
 		clearTimeout(timer);
 	}
@@ -322,4 +337,148 @@ async function listCalendarsEvents(settings: CalDavSettings, calendarUrl: string
 		urls.push(new URL(href, base).toString());
 	}
 	return urls;
+}
+
+// ── Objekt-Liste (PROPFIND mit etag) ──────────────────────────────────────
+
+export interface CalendarObject {
+	url: string;
+	etag: string;
+}
+
+export async function listCalendarObjects(
+	settings: CalDavSettings,
+	calendarUrl: string
+): Promise<CalendarObject[]> {
+	const base = calendarUrl.replace(/\/?$/, '/');
+	const body = `<?xml version="1.0" encoding="utf-8"?>
+<propfind xmlns="DAV:">
+  <prop>
+    <getetag/>
+  </prop>
+</propfind>`;
+	const r = await davRequest(settings, base, 'PROPFIND', body, { Depth: '1' });
+	if (r.status === 401 || r.status === 403) authError();
+	if (r.status >= 400) throw new CalDavError(r.status, `CalDAV: Objekt-Liste nicht abrufbar (HTTP ${r.status}).`);
+
+	const doc = parseXml(r.text);
+	const responses = collect(doc, 'response');
+	const out: CalendarObject[] = [];
+
+	for (const block of responses) {
+		const href = textOf(collect(block, 'href')[0]);
+		if (!href) continue;
+		if (!href.toLowerCase().endsWith('.ics')) continue;
+		if (href.toLowerCase().includes('collection')) continue;
+		const full = new URL(href, base).toString();
+		const etag = textOf(collect(block, 'getetag')[0]) ?? '';
+		out.push({ url: full, etag });
+	}
+
+	return out;
+}
+
+// ── GET einzelnes Objekt ──────────────────────────────────────────────────
+
+export async function getObjectIcs(settings: CalDavSettings, url: string): Promise<string | null> {
+	const r = await davRequest(settings, url, 'GET', '');
+	if (r.status === 200 && r.text.includes('BEGIN:VCALENDAR')) return r.text;
+	return null;
+}
+
+// ── UID-Suche (list + parallel GET mit Early-Exit) ───────────────────────
+
+const SEARCH_CONCURRENCY = 8;
+
+function uidMatchesIcs(ics: string, uid: string): boolean {
+	try {
+		const j = Ical.parse(ics.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '')) as any;
+		const comp = new Ical.Component(j);
+		const vevents: any[] = comp.getAllSubcomponents('vevent') ?? [];
+		const vtodos: any[] = comp.getAllSubcomponents('vtodo') ?? [];
+		for (const v of [...vevents, ...vtodos]) {
+			if (v.getFirstPropertyValue?.('uid') === uid) return true;
+		}
+	} catch {
+		/* parse failed */
+	}
+	return false;
+}
+
+export async function findObjectByUid(
+	settings: CalDavSettings,
+	calendar: CalDavCalendar,
+	uid: string
+): Promise<{ url: string; etag: string; ics: string } | null> {
+	const objects = await listCalendarObjects(settings, calendar.url);
+	if (objects.length === 0) return null;
+
+	let found: { url: string; etag: string; ics: string } | null = null;
+	let stop = false;
+
+	for (let i = 0; i < objects.length && !stop; i += SEARCH_CONCURRENCY) {
+		const batch = objects.slice(i, i + SEARCH_CONCURRENCY);
+		const results = await Promise.all(
+			batch.map(async (obj) => {
+				if (stop) return null;
+				const ics = await getObjectIcs(settings, obj.url);
+				if (ics == null) return null;
+				if (uidMatchesIcs(ics, uid)) {
+					if (!stop) {
+						stop = true;
+						return { url: obj.url, etag: obj.etag, ics };
+					}
+				}
+				return null;
+			})
+		);
+		for (const r of results) {
+			if (r != null) {
+				found = r;
+				stop = true;
+				break;
+			}
+		}
+	}
+
+	return found;
+}
+
+// ── PUT (schreiben/aktualisieren) ────────────────────────────────────────
+
+export async function putIcs(
+	settings: CalDavSettings,
+	url: string,
+	ics: string,
+	etag?: string
+): Promise<string | null> {
+	const extraHeaders: Record<string, string> = {
+		'Content-Type': 'text/calendar; charset=utf-8'
+	};
+	if (etag) extraHeaders['If-Match'] = etag;
+	const r = await davRequest(settings, url, 'PUT', ics, extraHeaders);
+	if (r.status === 412) {
+		throw new CalDavError(
+			409,
+			'ETag-Mismatch: Der Eintrag wurde seit der Abfrage verändert. Bitte aktualisieren und erneut versuchen.'
+		);
+	}
+	if (r.status === 401 || r.status === 403) authError();
+	if (r.status >= 400) throw new CalDavError(r.status, `CalDAV: PUT fehlgeschlagen (HTTP ${r.status}).`);
+	return r.headers['etag'] ?? null;
+}
+
+// ── DELETE ────────────────────────────────────────────────────────────────
+
+export async function deleteIcs(settings: CalDavSettings, url: string, etag?: string): Promise<void> {
+	const extraHeaders: Record<string, string> = {};
+	if (etag) extraHeaders['If-Match'] = etag;
+	const r = await davRequest(settings, url, 'DELETE', '', extraHeaders);
+	if (r.status === 412) {
+		throw new CalDavError(409, 'ETag-Mismatch: Der Eintrag wurde seit der Abfrage verändert.');
+	}
+	if (r.status === 401 || r.status === 403) authError();
+	if (r.status >= 400 && r.status !== 404) {
+		throw new CalDavError(r.status, `CalDAV: DELETE fehlgeschlagen (HTTP ${r.status}).`);
+	}
 }

@@ -123,3 +123,71 @@ export function icalToEventItems(
 	items.sort((a, b) => a.startMs - b.startMs || a.summary.localeCompare(b.summary, 'de'));
 	return items;
 }
+
+// ── Tasks (VTODO) ─────────────────────────────────────────────────────────
+
+import type { TaskItem } from '$lib/types';
+
+export function icalToTaskItems(ics: string, calendar: CalDavCalendar): TaskItem[] {
+	const out: TaskItem[] = [];
+
+	let comp: any;
+	try {
+		comp = new Ical.Component(Ical.parse(ics) as any);
+	} catch {
+		return out;
+	}
+
+	const vtodos: any[] = comp.getAllSubcomponents('vtodo') ?? [];
+
+	for (const v of vtodos) {
+		const uid = str(v.getFirstPropertyValue?.('uid')) ?? 'n/a';
+		const summary = str(v.getFirstPropertyValue?.('summary')) ?? '(Kein Titel)';
+		const description = str(v.getFirstPropertyValue?.('description'));
+
+		const completed = v.hasProperty?.('completed') ?? false;
+
+		let dueKey: string | undefined;
+		let dueMs: number | undefined;
+
+		const dueProp = v.getProperty?.('due') as any;
+		if (dueProp) {
+			try {
+				const dt = dueProp.getDateTime?.() as IcalTimeLike | undefined;
+				if (dt) {
+					if (dt.isDate) {
+						const p = (n: number) => String(n).padStart(2, '0');
+						dueKey = `${dt.year}-${p(dt.month)}-${p(dt.day)}`;
+					} else {
+						dueMs = toMs(dt);
+					}
+				}
+			} catch {
+				/* ignore */
+			}
+		}
+
+		let priority: number | undefined;
+		const priVal = v.getFirstPropertyValue?.('priority');
+		if (priVal != null) {
+			const n = Number(priVal);
+			if (Number.isInteger(n) && n >= 1 && n <= 9) priority = n;
+		}
+
+		out.push({
+			id: `${calendar.id}|${uid}`,
+			uid,
+			calendarId: calendar.id,
+			calendarName: calendar.name,
+			calendarColor: calendar.color,
+			summary,
+			description,
+			completed,
+			dueKey,
+			dueMs,
+			priority
+		});
+	}
+
+	return out;
+}

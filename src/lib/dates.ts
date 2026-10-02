@@ -108,6 +108,35 @@ export function durationShort(ms: number): string {
 	return `${h}h ${m}min`;
 }
 
+// ── datetime-local Konvertierung ─────────────────────────────────────────
+
+/** Epoch ms → "YYYY-MM-DDTHH:MM" für <input type="datetime-local">. */
+export function msToLocalInput(ms: number): string {
+	const d = new Date(ms);
+	const p = (n: number) => String(n).padStart(2, '0');
+	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** "YYYY-MM-DDTHH:MM" → epoch ms (lokale Zeitzone). */
+export function localInputToMs(s: string): number {
+	const m = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+	if (!m) throw new Error(`Ungültiges Datumsformat: ${s}`);
+	const [, y, mo, d, h, mi] = m;
+	return new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi)).getTime();
+}
+
+/** Epoch ms → "YYYY-MM-DD" für <input type="date">. */
+export function msToDateInput(ms: number): string {
+	const d = new Date(ms);
+	const p = (n: number) => String(n).padStart(2, '0');
+	return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** "YYYY-MM-DD" → epoch ms (lokale Mitternacht). Alias für msFromKey. */
+export function dateInputToMs(s: string): number {
+	return msFromKey(s);
+}
+
 /** UTC-Format für iCal/CalDAV (YYYYMMDDTHHMMSSZ). */
 export function toIcsUtc(ms: number): string {
 	const d = new Date(ms);

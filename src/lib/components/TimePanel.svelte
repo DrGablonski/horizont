@@ -1,11 +1,21 @@
 <script lang="ts">
-	import type { TimePanel as TimePanelData } from '$lib/types';
+	import type { TimePanel as TimePanelData, EventItem } from '$lib/types';
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '$lib/components/ui/collapsible';
 	import DayBlock from './DayBlock.svelte';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import { cn } from '$lib/utils';
 
-	let { panel }: { panel: TimePanelData } = $props();
+	let {
+		panel,
+		onAddDay,
+		onEdit,
+		onDelete
+	}: {
+		panel: TimePanelData;
+		onAddDay?: (dayKey: string) => void;
+		onEdit?: (ev: EventItem) => void;
+		onDelete?: (ev: EventItem) => void;
+	} = $props();
 	let open = $state(panel.defaultOpen);
 </script>
 
@@ -29,7 +39,7 @@
 	<CollapsibleContent>
 		<div class="space-y-5 border-t border-border px-4 py-4">
 			{#each panel.days as day (day.dayKey)}
-				<DayBlock {day} />
+				<DayBlock {day} {onAddDay} {onEdit} {onDelete} />
 			{:else}
 				<p class="text-sm text-muted-foreground">Keine Einträge in diesem Zeitraum.</p>
 			{/each}

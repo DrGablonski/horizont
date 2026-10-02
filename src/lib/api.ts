@@ -4,8 +4,16 @@ import type {
 	ArchivePage,
 	CalDavSettings,
 	CalDavSettingsView,
+	CalendarsResponse,
 	CreateWorkflowInput,
+	EventCreateInput,
+	EventItem,
+	EventUpdateInput,
 	MainEventsResponse,
+	TasksResponse,
+	TaskCreateInput,
+	TaskItem,
+	TaskUpdateInput,
 	TestResult,
 	UpdateStepInput,
 	UpdateWorkflowInput,
@@ -71,5 +79,35 @@ export const api = {
 			{ method: 'DELETE' }
 		),
 	resetWorkflow: (id: string) =>
-		req<Workflow>(`/api/workflows/${encodeURIComponent(id)}/reset`, { method: 'POST' })
+		req<Workflow>(`/api/workflows/${encodeURIComponent(id)}/reset`, { method: 'POST' }),
+
+	// Kalendare
+	calendars: () => req<CalendarsResponse>('/api/calendars'),
+
+	// Event-CRUD
+	createEvent: (input: EventCreateInput) =>
+		req<EventItem>('/api/events', { method: 'POST', body: JSON.stringify(input) }),
+	updateEvent: (calendarId: string, uid: string, input: EventUpdateInput) =>
+		req<EventItem>(`/api/events/${encodeURIComponent(calendarId)}/${encodeURIComponent(uid)}`, {
+			method: 'PATCH',
+			body: JSON.stringify(input)
+		}),
+	deleteEvent: (calendarId: string, uid: string) =>
+		req<{ ok: true }>(`/api/events/${encodeURIComponent(calendarId)}/${encodeURIComponent(uid)}`, {
+			method: 'DELETE'
+		}),
+
+	// Tasks
+	tasks: () => req<TasksResponse>('/api/tasks'),
+	createTask: (input: TaskCreateInput) =>
+		req<TaskItem>('/api/tasks', { method: 'POST', body: JSON.stringify(input) }),
+	updateTask: (calendarId: string, uid: string, input: TaskUpdateInput) =>
+		req<TaskItem>(`/api/tasks/${encodeURIComponent(calendarId)}/${encodeURIComponent(uid)}`, {
+			method: 'PATCH',
+			body: JSON.stringify(input)
+		}),
+	deleteTask: (calendarId: string, uid: string) =>
+		req<{ ok: true }>(`/api/tasks/${encodeURIComponent(calendarId)}/${encodeURIComponent(uid)}`, {
+			method: 'DELETE'
+		})
 };

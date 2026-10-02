@@ -115,3 +115,68 @@ export interface UpdateStepInput {
 	title?: string;
 	done?: boolean;
 }
+
+// ── Tasks ─────────────────────────────────────────────────────────────────
+
+export interface TaskItem {
+	id: string;
+	uid: string;
+	calendarId: string;
+	calendarName: string;
+	calendarColor: string;
+	summary: string;
+	description?: string;
+	completed: boolean;
+	dueKey?: string; // YYYY-MM-DD (date-only)
+	dueMs?: number; // epoch ms (date-time)
+	priority?: number; // 1=high, 5=normal, 9=low
+}
+
+export interface TasksResponse {
+	configured: boolean;
+	tasks: TaskItem[];
+	error?: string;
+}
+
+export type TaskDueInput =
+	| { kind: 'none' }
+	| { kind: 'date'; key: string }
+	| { kind: 'time'; ms: number };
+
+export interface TaskUpdateInput {
+	summary?: string;
+	description?: string;
+	completed?: boolean;
+	due?: TaskDueInput;
+	priority?: number | null;
+}
+
+export interface TaskCreateInput extends TaskUpdateInput {
+	summary: string;
+	calendarId: string;
+}
+
+// ── Event-Write ───────────────────────────────────────────────────────────
+
+export interface EventUpdateInput {
+	summary: string;
+	location?: string;
+	description?: string;
+	allDay: boolean;
+	dayKey?: string;
+	endDateKey?: string;
+	startMs?: number;
+	endMs?: number;
+}
+
+export interface EventCreateInput extends EventUpdateInput {
+	calendarId: string;
+}
+
+// ── Calendars ─────────────────────────────────────────────────────────────
+
+export interface CalendarsResponse {
+	configured: boolean;
+	calendars: CalDavCalendar[];
+	error?: string;
+}
