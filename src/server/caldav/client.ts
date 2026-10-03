@@ -199,17 +199,27 @@ export async function collectionExists(settings: CalDavSettings, url: string): P
 	return r.status < 400;
 }
 
-/** Legt einen CalDAV-Kalender per MKCALENDAR an (VTODO-fähig). Nur aufrufen, wenn absent. */
-export async function mkCalendar(settings: CalDavSettings, url: string, displayName: string): Promise<void> {
+/**
+ * Legt einen CalDAV-Kalender per MKCALENDAR an. Nur aufrufen, wenn absent.
+ * `components` bestimmt, welche ICS-Komponenten erlaubt sind (Default: VTODO,
+ * für den internen Workflow-Speicher). Für Benutzer-Kalender VEVENT übergeben.
+ */
+export async function mkCalendar(
+	settings: CalDavSettings,
+	url: string,
+	displayName: string,
+	components: string[] = ['VTODO']
+): Promise<void> {
+	const compSet = components
+		.map((c) => `<C:supported><C:comp-name>${c}</C:comp-name></C:supported>`)
+		.join('');
 	const body = `<?xml version="1.0" encoding="utf-8"?>
 <C:mkcalendar xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
   <D:set>
     <D:prop>
       <D:displayname>${displayName}</D:displayname>
       <C:supported-calendar-component-set>
-        <C:supported>
-          <C:comp-name>VTODO</C:comp-name>
-        </C:supported>
+        ${compSet}
       </C:supported-calendar-component-set>
     </D:prop>
   </D:set>

@@ -3,7 +3,7 @@
 // Verbindungen hinweg finden (für Write-Operationen).
 
 import type { CalDavCalendar, CalDavConnection } from '$lib/types';
-import { listCalendars, resolveHome } from '$server/caldav/client';
+import { collectionExists, listCalendars, mkCalendar, resolveHome } from '$server/caldav/client';
 
 export interface ResolvedCalendar {
 	connection: CalDavConnection;
@@ -13,6 +13,31 @@ export interface ResolvedCalendar {
 export interface ResolvedAll {
 	items: ResolvedCalendar[];
 	errors: string[];
+}
+
+// Pfad + Name des Standard-Kalenders, den ein frisch angelegter
+// System-CALDAV-Account erhält, damit sofort Events angelegt werden können.
+const DEFAULT_CAL_SEG = 'main';
+const DEFAULT_CAL_NAME = 'Mein Kalender';
+
+/**
+ * Löst eine Verbindung ab und liefert ihre Kalender. Für „assigned"-
+ * Verbindungen (System-CALDAV) wird ein frischer, leerer Account mit genau
+ * einem Standard-Kalender (VEVENT + VTODO) versorgt – CalDAV-Server wie
+ * Radicale legen bei der User-Anlage keinen Starter-Kalender an. Externe
+ * Verbindungen (vom User selbst hinzugefügt) bleiben unberührt.
+ */
+async function resolveConnectionCalendars(conn: CalDavConnection): Promise<CalDavCalendar[]> {
+	const { home } = await resolveHome(conn);
+	let calendars = await listCalendars(conn, home);
+	if (conn.kind === 'assigned' && calendars.length === 0) {
+		const url = `${home.replace(/\/?$/, '/')}${DEFAULT_CAL_SEG}`;
+		if (!(await collectionExists(conn, url))) {
+			await mkCalendar(conn, url, DEFAULT_CAL_NAME, ['VEVENT', 'VTODO']);
+			calendars = await listCalendars(conn, home);
+		}
+	}
+	return calendars;
 }
 
 /**
@@ -26,8 +51,7 @@ export async function resolveAllCalendars(connections: CalDavConnection[]): Prom
 
 	for (const conn of connections) {
 		try {
-			const { home } = await resolveHome(conn);
-			const calendars = await listCalendars(conn, home);
+			const calendars = await resolveConnectionCalendars(conn);
 			for (const cal of calendars) {
 				items.push({ connection: conn, calendar: { ...cal, connectionName: conn.name } });
 			}
@@ -49,8 +73,7 @@ export async function findCalendarAcross(
 ): Promise<ResolvedCalendar | null> {
 	for (const conn of connections) {
 		try {
-			const { home } = await resolveHome(conn);
-			const calendars = await listCalendars(conn, home);
+			const calendars = await resolveConnectionCalendars(conn);
 			const cal = calendars.find((c) => c.id === calendarId);
 			if (cal) return { connection: conn, calendar: { ...cal, connectionName: conn.name } };
 		} catch {
