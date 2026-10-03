@@ -51,9 +51,12 @@ async function ensureWorkflowsCalendar(settings: CalDavSettings): Promise<string
 
 // ── Abgeleitete Felder (progress, aktiver Schritt, Abschluss) ─────────────
 
-/** Berechnet progress/activeStepId/completedAt/updatedAt und mutiert das Objekt. */
-function recompute(wf: Workflow): Workflow {
-	const now = Date.now();
+/**
+ * Leitet progress/activeStepId/completedAt aus den Steps ab. Rein und
+ * idempotent: kein Zeitstempel, damit Lesezugriffe das Objekt nicht
+ * mutieren (updatedAt wird ausschließlich beim Schreiben gestempelt).
+ */
+function derive(wf: Workflow): Workflow {
 	let active: WorkflowStep | null = null;
 	for (const s of wf.steps) {
 		if (!s.done) {
@@ -67,8 +70,8 @@ function recompute(wf: Workflow): Workflow {
 
 	wf.activeStepId = active ? active.id : null;
 	wf.progress = total === 0 ? 0 : done / total;
-	wf.completedAt = allDone ? (wf.completedAt ?? now) : null;
-	wf.updatedAt = now;
+	if (!allDone) wf.completedAt = null;
+	else if (wf.completedAt == null) wf.completedAt = Date.now();
 	return wf;
 }
 
@@ -81,12 +84,16 @@ async function readWorkflow(settings: CalDavSettings, id: string): Promise<Workf
 	if (ics == null) return null;
 	const wf = parseWorkflowIcs(ics);
 	if (wf == null) return null;
-	return recompute(wf);
+	return derive(wf);
 }
 
-/** Schreibt einen Workflow zurück nach CalDAV (recomputet vorher). */
+/**
+ * Schreibt einen Workflow zurück nach CalDAV. Stempelt updatedAt (die
+ * einzige Stelle, wo der Zeitstempel gesetzt wird) und leitet ab.
+ */
 async function persist(settings: CalDavSettings, wf: Workflow): Promise<void> {
-	recompute(wf);
+	wf.updatedAt = Date.now();
+	derive(wf);
 	const base = await ensureWorkflowsCalendar(settings);
 	const ics = buildWorkflowIcs(wf);
 	await putIcs(settings, `${base}${wf.id}.ics`, ics);
@@ -105,7 +112,7 @@ export async function listWorkflows(settings: CalDavSettings): Promise<Workflow[
 			if (ics == null) return null;
 			const wf = parseWorkflowIcs(ics);
 			if (wf == null) return null;
-			return recompute(wf);
+			return derive(wf);
 		})
 	);
 
