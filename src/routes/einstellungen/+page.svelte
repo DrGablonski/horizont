@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
-	import type { ConnectionsResponse, TestResult } from '$lib/types';
+	import type { AppUser, ConnectionsResponse, TestResult } from '$lib/types';
+	import UserManagement from '$lib/components/admin/UserManagement.svelte';
+	import SystemCaldavSettings from '$lib/components/admin/SystemCaldavSettings.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
@@ -146,14 +148,32 @@
 		await testConnection({ url: newUrl, username: newUser, password: newPass });
 	}
 
-	onMount(load);
+	// ── Admin-Tabs (nur für die Admin-Rolle sichtbar) ──────────────────────
+	let me = $state<AppUser | null>(null);
+	let tab = $state<'verbindungen' | 'users' | 'caldav'>('verbindungen');
+	const isAdmin = $derived(me?.role === 'admin');
+
+	function tabClass(t: 'verbindungen' | 'users' | 'caldav'): string {
+		return tab === t
+			? 'bg-background text-foreground shadow-sm'
+			: 'text-muted-foreground hover:text-foreground';
+	}
+
+	onMount(() => {
+		load();
+		// Rolle ermitteln, um die Admin-Tabs (Users, System-CALDAV) anzuzeigen.
+		api
+			.me()
+			.then((u) => (me = u))
+			.catch(() => {});
+	});
 </script>
 
 <svelte:head>
 	<title>Einstellungen · Horizont</title>
 </svelte:head>
 
-<div class="max-w-2xl space-y-6">
+<div class="max-w-3xl space-y-6">
 	<div>
 		<h1 class="text-xl font-semibold tracking-tight">Einstellungen</h1>
 		<p class="text-sm text-muted-foreground">
@@ -162,6 +182,34 @@
 		</p>
 	</div>
 
+	{#if isAdmin}
+		<div class="flex w-fit items-center gap-1 rounded-lg bg-muted p-1">
+			<button
+				type="button"
+				class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('verbindungen')}"
+				onclick={() => (tab = 'verbindungen')}
+			>
+				Verbindungen
+			</button>
+			<button
+				type="button"
+				class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('users')}"
+				onclick={() => (tab = 'users')}
+			>
+				Users
+			</button>
+			<button
+				type="button"
+				class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('caldav')}"
+				onclick={() => (tab = 'caldav')}
+			>
+				System-CALDAV
+			</button>
+		</div>
+	{/if}
+
+	{#if tab === 'verbindungen'}
+		<div class="max-w-2xl space-y-6">
 	{#if loading && !data}
 		<div class="flex items-center gap-2 rounded-xl border border-dashed border-border p-8 text-sm text-muted-foreground">
 			<Spinner class="size-4" />
@@ -371,9 +419,15 @@
 						</ul>
 					{/if}
 				{:else if testResult.error}
-					<p class="text-sm text-destructive">{testResult.error}</p>
-				{/if}
+				<p class="text-sm text-destructive">{testResult.error}</p>
+			{/if}
 			</div>
 		{/if}
+	{/if}
+		</div>
+	{:else if tab === 'users'}
+		<UserManagement />
+	{:else if tab === 'caldav'}
+		<SystemCaldavSettings />
 	{/if}
 </div>

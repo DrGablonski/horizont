@@ -41,8 +41,7 @@
 	const nav = $derived([
 		{ href: '/', label: 'Heute' },
 		{ href: '/archiv', label: 'Archiv' },
-		{ href: '/einstellungen', label: 'Einstellungen' },
-		...(user?.role === 'admin' ? [{ href: '/admin', label: 'Admin' }] : [])
+		{ href: '/einstellungen', label: 'Einstellungen' }
 	]);
 
 	function navClass(href: string): string {
