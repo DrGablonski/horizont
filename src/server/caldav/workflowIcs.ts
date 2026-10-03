@@ -1,15 +1,29 @@
 // Baut und parst die ICS-Objekte für die Workflow-Persistenz.
 //
-// Ein Workflow wird als VTODO in einem internen "workflows"-Kalender gespeichert:
-//   - UID      = Workflow-Id (gleichzeitig Dateiname → direkter GET, keine Suche)
-//   - SUMMARY  = Titel (menschlich lesbar in Standard-CalDAV-Clients)
-//   - X-HORIZONT = base64(JSON.stringify(workflow))
+// Ein Workflow wird als VTODO in einem internen "workflows"-Kalender gespeichert.
+// Das Objekt ist ein RFC-5545-konformes, in Standard-CalDAV-Clients (z. B.
+// Thunderbird/Lightning) sauber lesbares Task-Objekt:
+//
+//   - UID             = Workflow-Id (gleichzeitig Dateiname → direkter GET, keine Suche)
+//   - DTSTAMP        = Erstellungszeitpunkt (RFC 5545 §3.6.2: REQUIRED)
+//   - LAST-MODIFIED  = letzte Änderung
+//   - SUMMARY        = "Workflow: <Titel>" (menschlich lesbar, erkennbar als Workflow)
+//   - STATUS         = NEEDS-ACTION / IN-PROCESS / COMPLETED (RFC 5545 §3.3.5)
+//   - PERCENT-COMPLETE = Fortschritt 0–100
+//   - COMPLETED      = Abschlusszeitpunkt (nur wenn alle Schritte erledigt)
+//   - CATEGORIES     = "HORIZONT" (Filter/Markierung in Clients)
+//   - DESCRIPTION    = menschenlesbare Schritteliste + Notizen (escaping übernimmt ical.js)
+//   - X-HORIZONT     = base64(JSON.stringify(workflow)) – die Maschinendaten (Single Source of Truth)
 //
 // Der komplette Workflow-Zustand liegt base64-codiert, weil der Radicale/vobject-
 // Serialisierer Werte nicht registrierter X-Eigenschaften beim ersten Komma
 // abschneidet. Das Base64-Alphabet (A–Z a–z 0–9 + / =) enthält keine Kommata,
 // Semikola, Backslashes oder Zeilenumbrüche – der Wert übersteht Folden/Unfolden
 // und die Server-Serialisierung exakt (per Round-Trip-Test verifiziert).
+//
+// DTSTAMP und LAST-MODIFIED sind aus createdAt/updatedAt abgeleitet (nicht
+// "now"), damit ein und derselbe Workflow-Zustand immer byte-identisches ICS
+// erzeugt – unnötige Server-Last und fluktuierende ETags entfallen.
 
 import Ical from 'ical.js';
 import { serialize, unfold } from '$server/caldav/icswriter';
@@ -77,6 +91,50 @@ function validateWorkflow(obj: unknown): Workflow | null {
 
 // ── ICS bauen / parsen ────────────────────────────────────────────────────
 
+/** RFC-5545-Zeitstempel (UTC) aus einer Unix-Millisekunden-Marke. */
+function utcTime(ms: number): Ical.Time {
+	return Ical.Time.fromJSDate(new Date(ms), true);
+}
+
+/** STATUS gemäß RFC 5545 §3.3.5 aus dem Workflow-Zustand abgeleitet. */
+function workflowStatus(wf: Workflow): string {
+	if (wf.completedAt != null || wf.progress >= 1) return 'COMPLETED';
+	if (wf.progress > 0) return 'IN-PROCESS';
+	return 'NEEDS-ACTION';
+}
+
+/** "01.10. 14:32" – deterministisch, ohne Locale-Abhängigkeit. */
+function fmtClock(ms: number): string {
+	const d = new Date(ms);
+	const p = (n: number) => String(n).padStart(2, '0');
+	return `${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * Menschenlesbare Schritt-Übersicht für die DESCRIPTION (raw text mit echten
+ * Zeilenumbrüchen – das RFC-5545-Escaping von \, ; \ und Newlines übernimmt
+ * ical.js beim Serialisieren).
+ */
+function buildHumanDescription(wf: Workflow): string {
+	const lines: string[] = [`Workflow: ${wf.title}`];
+	const total = wf.steps.length;
+	const done = wf.steps.filter((s) => s.done).length;
+	lines.push(total === 0 ? 'Keine Schritte.' : `${done}/${total} Schritte erledigt`);
+	if (total > 0) {
+		lines.push('');
+		for (const s of wf.steps) {
+			let line = `[${s.done ? 'x' : ' '}] ${s.title}`;
+			if (s.done && s.completedAt != null) line += ` (${fmtClock(s.completedAt)})`;
+			if (!s.done && s.id === wf.activeStepId) line += '  <== aktuell';
+			lines.push(line);
+		}
+	}
+	if (wf.notes.trim()) {
+		lines.push('', 'Notizen:', wf.notes.trim());
+	}
+	return lines.join('\n');
+}
+
 /** Workflow → RFC-5545-konformer ICS-Text (VCALENDAR mit einem VTODO). */
 export function buildWorkflowIcs(wf: Workflow): string {
 	const vcal = new Ical.Component(
@@ -84,7 +142,14 @@ export function buildWorkflowIcs(wf: Workflow): string {
 	);
 	const vtodo = new Ical.Component(Ical.parse('BEGIN:VTODO\r\nEND:VTODO') as any);
 	vtodo.updatePropertyWithValue('uid', wf.id);
-	vtodo.updatePropertyWithValue('summary', wf.title);
+	vtodo.updatePropertyWithValue('dtstamp', utcTime(wf.createdAt));
+	vtodo.updatePropertyWithValue('last-modified', utcTime(wf.updatedAt));
+	vtodo.updatePropertyWithValue('summary', `Workflow: ${wf.title}`);
+	vtodo.updatePropertyWithValue('status', workflowStatus(wf));
+	vtodo.updatePropertyWithValue('percent-complete', Math.round(wf.progress * 100));
+	vtodo.updatePropertyWithValue('categories', 'HORIZONT');
+	if (wf.completedAt != null) vtodo.updatePropertyWithValue('completed', utcTime(wf.completedAt));
+	vtodo.updatePropertyWithValue('description', buildHumanDescription(wf));
 	vtodo.updatePropertyWithValue(X_PROP, encodeWorkflow(wf));
 	vcal.addSubcomponent(vtodo);
 	return serialize(vcal);
