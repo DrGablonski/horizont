@@ -13,7 +13,9 @@ import type {
 	EventItem,
 	EventUpdateInput,
 	MainEventsResponse,
+	SetupResult,
 	SystemCaldavConfigView,
+	SystemCaldavSaveResult,
 	TasksResponse,
 	TaskCreateInput,
 	TaskItem,
@@ -50,6 +52,8 @@ export interface LoginInput {
 export interface SetupInput {
 	username: string;
 	password: string;
+	/** Optional: System-CalDAV-Konfiguration (Basis-URL + Admin-API-URL). */
+	caldav?: { baseUrl: string; adminApiUrl: string; adminToken?: string };
 }
 
 export interface AdminUserPatch {
@@ -78,7 +82,7 @@ export const api = {
 	login: (input: LoginInput) => req<AppUser>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }),
 	logout: () => req<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
 	me: () => req<AppUser>('/api/auth/me'),
-	setup: (input: SetupInput) => req<{ user: AppUser }>('/api/auth/setup', { method: 'POST', body: JSON.stringify(input) }),
+	setup: (input: SetupInput) => req<SetupResult>('/api/auth/setup', { method: 'POST', body: JSON.stringify(input) }),
 
 	// Admin: Users
 	adminUsers: () => req<{ users: AdminUserView[]; systemCaldav: SystemCaldavConfigView }>('/api/admin/users'),
@@ -92,7 +96,7 @@ export const api = {
 	// Admin: System-CALDAV
 	adminCaldav: () => req<SystemCaldavConfigView>('/api/admin/caldav'),
 	adminSaveCaldav: (input: AdminSystemCaldavInput) =>
-		req<SystemCaldavConfigView>('/api/admin/caldav', { method: 'POST', body: JSON.stringify(input) }),
+		req<SystemCaldavSaveResult>('/api/admin/caldav', { method: 'POST', body: JSON.stringify(input) }),
 	adminTestCaldav: (input?: { baseUrl?: string; adminApiUrl?: string; adminToken?: string }) =>
 		req<{ ok: boolean; error?: string }>('/api/admin/caldav/test', {
 			method: 'POST',

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, type AdminUserPatch } from '$lib/api';
-	import type { AdminUserView, CreateUserResult, SystemCaldavConfigView } from '$lib/types';
+	import type { AdminUserView, CreateUserResult, ProvisionSummary, SystemCaldavConfigView } from '$lib/types';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
@@ -167,6 +167,7 @@
 	let savingSys = $state(false);
 	let testingSys = $state(false);
 	let sysTestResult = $state<{ ok: boolean; error?: string } | null>(null);
+	let sysProvisioning = $state<ProvisionSummary | null>(null);
 
 	async function saveSys(): Promise<void> {
 		if (!sBaseUrl.trim() || !sAdminApiUrl.trim()) {
@@ -182,7 +183,21 @@
 			});
 			sysCaldav = v;
 			sToken = '';
-			toast.success('System-CALDAV-Konfiguration gespeichert.');
+			// Ergebnis der rückwirkenden Provisionierung für bestehende Users.
+			sysProvisioning = v.provisioning;
+			const { provisioned, failed } = v.provisioning;
+			if (failed.length > 0) {
+				toast.warning(
+					`Gespeichert, aber ${failed.length}× CalDAV-Anlage fehlgeschlagen. Details unten.`
+				);
+			} else if (provisioned.length > 0) {
+				toast.success(
+					`Gespeichert. CalDAV-Accounts für ${provisioned.length} bestehenden User(s) angelegt.`
+				);
+			} else {
+				toast.success('System-CALDAV-Konfiguration gespeichert.');
+			}
+			await load();
 		} catch (e) {
 			toast.error(errMsg(e));
 		} finally {
@@ -575,6 +590,43 @@
 							<CircleXIcon class="size-4" />
 							<span>{sysTestResult.error ?? 'Test fehlgeschlagen.'}</span>
 						{/if}
+					</div>
+				{/if}
+				{#if sysProvisioning}
+					<div class="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-sm">
+						<div class="mb-1.5 flex items-center gap-1.5 font-medium">
+							<UsersIcon class="size-4" />
+							<span>Rückwirkende CalDAV-Provisionierung</span>
+						</div>
+						<ul class="space-y-1 text-xs">
+							{#if sysProvisioning.provisioned.length > 0}
+								<li class="flex items-start gap-1.5 text-emerald-700 dark:text-emerald-400">
+									<CheckCircleIcon class="mt-0.5 size-3.5 shrink-0" />
+									<span>Angelegt: {sysProvisioning.provisioned.join(', ')}</span>
+								</li>
+							{/if}
+							{#if sysProvisioning.skipped.length > 0}
+								<li class="flex items-start gap-1.5 text-muted-foreground">
+									<CircleXIcon class="mt-0.5 size-3.5 shrink-0" />
+									<span>
+										Übersprungen (bereits zugewiesen / deaktiviert): {sysProvisioning.skipped.join(', ')}
+									</span>
+								</li>
+							{/if}
+							{#each sysProvisioning.failed as f}
+								<li class="flex items-start gap-1.5 text-destructive">
+									<CircleXIcon class="mt-0.5 size-3.5 shrink-0" />
+									<span>{f.username}: {f.error}</span>
+								</li>
+							{/each}
+							{#if sysProvisioning.provisioned.length === 0 &&
+								sysProvisioning.skipped.length === 0 &&
+								sysProvisioning.failed.length === 0}
+								<li class="text-muted-foreground">
+									Nichts zu tun – alle User sind bereits zugewiesen.
+								</li>
+							{/if}
+						</ul>
 					</div>
 				{/if}
 			</div>

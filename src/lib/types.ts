@@ -32,6 +32,16 @@ export interface CreateUserResult {
 	caldav: CaldavHandover | null;
 }
 
+/** Ergebnis des Setups: angelegter Admin + (optional) CalDAV-Handover. */
+export interface SetupResult {
+	ok: true;
+	user: AppUser;
+	/** CalDAV-Zugangsdaten des Admins, falls im Setup eine System-CalDAV hinterlegt wurde. */
+	caldav: CaldavHandover | null;
+	/** Fehlermeldung, falls die CalDAV-Anlage während des Setups fehlschlug (Setup selbst erfolgreich). */
+	caldavError: string | null;
+}
+
 // ── CalDAV-Verbindungen (Multi-Connection pro User) ──────────────────────
 
 /** Eine einzelne CalDAV-Verbindung (Credentials + Ziel). */
@@ -79,6 +89,24 @@ export interface SystemCaldavConfigView {
 	baseUrl: string;
 	adminApiUrl: string;
 	hasToken: boolean;
+}
+
+/** Ergebnis einer (rückwirkenden) CalDAV-Provisionierung für die bestehenden Users. */
+export interface ProvisionSummary {
+	/** User, für die ein CalDAV-Account neu angelegt wurde. */
+	provisioned: string[];
+	/** User, die übersprungen wurden (bereits zugewiesen / deaktiviert / keine Config). */
+	skipped: string[];
+	/** User, deren CalDAV-Anlage fehlschlug (inkl. Fehlerursache). */
+	failed: { username: string; error: string }[];
+}
+
+/**
+ * Antwort beim Speichern der System-CalDAV-Konfiguration: die Config-View plus
+ * das Ergebnis der rückwirkenden Provisionierung für bestehende Users.
+ */
+export interface SystemCaldavSaveResult extends SystemCaldavConfigView {
+	provisioning: ProvisionSummary;
 }
 
 export interface TestResult {

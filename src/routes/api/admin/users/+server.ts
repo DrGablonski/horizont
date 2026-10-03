@@ -7,7 +7,6 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
-import { randomBytes } from 'node:crypto';
 import {
 	createUser,
 	getUserByUsername,
@@ -15,9 +14,10 @@ import {
 	publicUser,
 	removeUser
 } from '$server/auth/userStore';
-import { getSystemCaldav, getSystemCaldavView } from '$server/store/system';
-import { setAssigned, listConnectionsView } from '$server/store/connections';
-import { createCaldavUser, SidecarError } from '$server/admin/caldavAdmin';
+import { getSystemCaldavView } from '$server/store/system';
+import { listConnectionsView } from '$server/store/connections';
+import { SidecarError } from '$server/admin/caldavAdmin';
+import { ensureCaldavForUser } from '$server/admin/provision';
 import type { AdminUserView, CreateUserResult, UserRole } from '$lib/types';
 
 function toAdminView(
@@ -73,24 +73,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	}
 
 	// CalDAV-Account anlegen (falls System-CALDAV konfiguriert).
-	const cfg = getSystemCaldav();
-	let caldav: CreateUserResult['caldav'] = null;
-	if (cfg) {
-		const caldavPassword = randomBytes(12).toString('base64url').slice(0, 16);
-		try {
-			await createCaldavUser(cfg, username, caldavPassword);
-		} catch (e) {
-			// CalDAV-Anlage fehlgeschlagen → App-User wieder entfernen (keine Halbzustände).
-			removeUser(user.id);
-			const msg =
-				e instanceof SidecarError
-					? `CalDAV-Account konnte nicht angelegt werden: ${e.message}`
-					: 'CalDAV-Admin-API nicht erreichbar.';
-			return json({ error: msg }, { status: 502 });
-		}
-		setAssigned(user.id, { url: cfg.baseUrl, username, password: caldavPassword });
-		caldav = { url: cfg.baseUrl, username, password: caldavPassword };
+	// ensureCaldavForUser ist idempotent: gibt null zurück, wenn nichts zu tun
+	// ist (keine Config / bereits zugewiesen), wirft sonst bei Sidecar-Fehler.
+	try {
+		const caldav = await ensureCaldavForUser(user.id, username);
+		return json({ user: publicUser(user), caldav } satisfies CreateUserResult, { status: 201 });
+	} catch (e) {
+		// CalDAV-Anlage fehlgeschlagen → App-User wieder entfernen (keine Halbzustände).
+		removeUser(user.id);
+		const msg =
+			e instanceof SidecarError
+				? `CalDAV-Account konnte nicht angelegt werden: ${e.message}`
+				: 'CalDAV-Admin-API nicht erreichbar.';
+		return json({ error: msg }, { status: 502 });
 	}
-
-	return json({ user: publicUser(user), caldav } satisfies CreateUserResult, { status: 201 });
 };
