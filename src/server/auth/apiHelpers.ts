@@ -25,12 +25,22 @@ export function clientIp(request: Request): string {
 	return 'local';
 }
 
-export function sessionCookieOptions() {
+/**
+ * Cookie-Optionen für die Session. `secure` wird explizit gesetzt:
+ * SvelteKits Default ('auto') markiert Cookies als Secure, es sei denn,
+ * es ist localhost-over-HTTP — das würde Sessions bei LAN-Deployments
+ * über plain HTTP brechen. Nur bei tatsächlichem HTTPS (direkt oder
+ * hinter einem TLS-terminierenden Reverse Proxy) wird Secure gesetzt.
+ */
+export function sessionCookieOptions(request: Request) {
+	const fwdProto = (request.headers.get('x-forwarded-proto') ?? '').split(',')[0].trim().toLowerCase();
+	const isHttps = request.url.startsWith('https:') || fwdProto === 'https';
 	return {
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax' as const,
-		maxAge: SESSION_MAX_AGE_S
+		maxAge: SESSION_MAX_AGE_S,
+		secure: isHttps
 	};
 }
 

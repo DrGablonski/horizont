@@ -40,6 +40,6 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	touchLastLogin(user.id);
 	const token = createSession(user.id);
-	cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+	cookies.set(SESSION_COOKIE, token, sessionCookieOptions(request));
 	return json({ ok: true, user: publicUser(user) });
 };
