@@ -1,5 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+	<!-- Horizont — reduced mark for 16-32px. Ticks omitted, heavier strokes. -->
 	<rect width="32" height="32" rx="7" fill="#111111"/>
-	<path d="M7 21h18" stroke="#f5f5f5" stroke-width="2" stroke-linecap="round"/>
-	<path d="M11 21a5 5 0 0 1 10 0" fill="none" stroke="#f5f5f5" stroke-width="2" stroke-linecap="round"/>
+	<g fill="none" stroke="#f5f5f5" stroke-width="3">
+		<path d="M3 17h26" stroke-linecap="round"/>
+		<path d="M10.8 17a5.2 7 0 0 1 10.4 0" stroke-linecap="butt"/>
+	</g>
+	<circle cx="16" cy="17" r="3.6" fill="#f5f5f5"/>
 </svg>
