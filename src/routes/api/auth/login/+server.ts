@@ -17,7 +17,8 @@ import {
 	verifyPassword
 } from '$server/auth/userStore';
 
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async (event) => {
+	const { request, cookies } = event;
 	const body = await readJsonBody<{ username?: string; password?: string }>(request);
 	if (!body) return json({ error: 'Ungültiger JSON-Body.' }, { status: 400 });
 
@@ -40,6 +41,6 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	touchLastLogin(user.id);
 	const token = createSession(user.id);
-	cookies.set(SESSION_COOKIE, token, sessionCookieOptions(request));
+	cookies.set(SESSION_COOKIE, token, sessionCookieOptions(event));
 	return json({ ok: true, user: publicUser(user) });
 };

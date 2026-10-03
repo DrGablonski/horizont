@@ -1,5 +1,6 @@
 // Gemeinsame Helfer für die Auth-API (Rate-Limit, Cookie-Optionen, Errors).
 
+import type { RequestEvent } from '@sveltejs/kit';
 import { SESSION_MAX_AGE_S } from '$server/auth/sessionStore';
 
 // ── Rate-Limiting (in-memory, pro IP) ─────────────────────────────────────
@@ -26,22 +27,43 @@ export function clientIp(request: Request): string {
 }
 
 /**
- * Cookie-Optionen für die Session. `secure` wird explizit gesetzt:
- * SvelteKits Default ('auto') markiert Cookies als Secure, es sei denn,
- * es ist localhost-over-HTTP — das würde Sessions bei LAN-Deployments
- * über plain HTTP brechen. Nur bei tatsächlichem HTTPS (direkt oder
- * hinter einem TLS-terminierenden Reverse Proxy) wird Secure gesetzt.
+ * Cookie-Optionen für die Session. `secure` wird explizit ermittelt:
+ * SvelteKits Default ('auto') behandelt jeden Nicht-localhost-Origin als
+ * HTTPS, und der Node-Adapter (adapter-node) baut die `Request`-URL immer
+ * mit `https://` (siehe `get_origin`, das auf 'https' defaultet) — die
+ * URL-Scheme ist daher kein verlässliches TLS-Signal.
+ *
+ * Verlässliche Signale:
+ *  - `x-forwarded-proto` hinter einem TLS-terminierenden Reverse-Proxy,
+ *  - der echte Socket-Zustand der Verbindung (`event.platform.req` ist
+ *    die rohe Node-Request, die der Adapter weiterreicht).
  */
-export function sessionCookieOptions(request: Request) {
-	const fwdProto = (request.headers.get('x-forwarded-proto') ?? '').split(',')[0].trim().toLowerCase();
-	const isHttps = request.url.startsWith('https:') || fwdProto === 'https';
+export function sessionCookieOptions(event: RequestEvent) {
 	return {
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax' as const,
 		maxAge: SESSION_MAX_AGE_S,
-		secure: isHttps
+		secure: requestIsSecure(event)
 	};
+}
+
+function requestIsSecure(event: RequestEvent): boolean {
+	// Hinter einem TLS-terminierenden Proxy ist der Header maßgeblich.
+	const fwd = (event.request.headers.get('x-forwarded-proto') ?? '')
+		.split(',')[0]
+		.trim()
+		.toLowerCase();
+	if (fwd === 'https') return true;
+	if (fwd === 'http') return false;
+
+	// Direkte Verbindung: `socket.encrypted` ist das echte Signal.
+	// `event.platform` ist ein Adapter-Konzept (leeres `App.Platform`),
+	// daher gezielter Cast auf die vom Node-Adapter übergebene Form.
+	const platform = event.platform as unknown as
+		| { req?: { socket?: { encrypted?: boolean } } }
+		| undefined;
+	return platform?.req?.socket?.encrypted === true;
 }
 
 export function jsonErr(e: unknown): { error: string } {

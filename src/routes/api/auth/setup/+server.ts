@@ -14,7 +14,8 @@ import {
 import { createUser, hasUsers, publicUser } from '$server/auth/userStore';
 import { migrateLegacySettings } from '$server/store/connections';
 
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async (event) => {
+	const { request, cookies } = event;
 	if (hasUsers()) {
 		return json({ error: 'Setup ist bereits abgeschlossen.' }, { status: 403 });
 	}
@@ -34,7 +35,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		// als zugewiesene Verbindung zuordnen und die Datei archivieren.
 		migrateLegacySettings(user.id);
 		const token = createSession(user.id);
-		cookies.set(SESSION_COOKIE, token, sessionCookieOptions(request));
+		cookies.set(SESSION_COOKIE, token, sessionCookieOptions(event));
 		return json({ ok: true, user: publicUser(user) });
 	} catch (e) {
 		return json(jsonErr(e), { status: 400 });
