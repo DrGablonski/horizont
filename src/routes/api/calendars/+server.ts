@@ -1,16 +1,18 @@
 import { json } from '@sveltejs/kit';
-import { getSettings } from '$server/store/store';
-import { resolveCalendars } from '$server/lib/caldav';
+import type { RequestHandler } from '@sveltejs/kit';
+import { listConnections } from '$server/store/connections';
+import { resolveAllCalendars } from '$server/caldav/multi';
 
-export async function GET() {
-	const settings = getSettings();
-	if (!settings) {
+export const GET: RequestHandler = async ({ locals }) => {
+	const connections = locals.user ? listConnections(locals.user.id) : [];
+	if (connections.length === 0) {
 		return json({ configured: false, calendars: [] });
 	}
-	try {
-		const calendars = await resolveCalendars(settings);
-		return json({ configured: true, calendars });
-	} catch (e: any) {
-		return json({ configured: true, calendars: [], error: e.message ?? 'Unbekannter Fehler' }, { status: 502 });
-	}
-}
+
+	const { items, errors } = await resolveAllCalendars(connections);
+	return json({
+		configured: true,
+		calendars: items.map((i) => i.calendar),
+		error: errors.length > 0 ? errors.join(' | ') : undefined
+	});
+};

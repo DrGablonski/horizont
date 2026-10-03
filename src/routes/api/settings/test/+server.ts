@@ -1,27 +1,39 @@
+// POST /api/settings/test — eine Verbindung testen (Formularwerte oder gespeicherte id).
+
 import { json } from '@sveltejs/kit';
+import type { RequestHandler } from '@sveltejs/kit';
 import { listCalendars, resolveHome } from '$server/caldav/client';
-import { getSettings } from '$server/store/store';
+import { listConnections } from '$server/store/connections';
 import type { CalDavSettings, TestResult } from '$lib/types';
 
-export async function POST({ request }: { request: Request }) {
-	const body = (await request.json().catch(() => null)) as Partial<CalDavSettings> | null;
-	let settings: CalDavSettings | null;
+export const POST: RequestHandler = async ({ request, locals }) => {
+	if (!locals.user) return json({ error: 'Nicht angemeldet.' }, { status: 401 });
 
-	// Formularwerte testen, falls eine URL übermittelt wurde; sonst gespeicherte Daten.
+	const body = (await request.json().catch(() => null)) as {
+		id?: string;
+		url?: string;
+		username?: string;
+		password?: string;
+	} | null;
+
+	let settings: CalDavSettings | null = null;
+
 	if (body && typeof body.url === 'string' && body.url.trim()) {
-		const current = getSettings();
+		// Formularwerte testen (unabhängig von gespeicherten Daten).
 		const url = body.url.trim().replace(/\/+$/, '');
 		const username = typeof body.username === 'string' ? body.username.trim() : '';
-		const incomingPassword = typeof body.password === 'string' ? body.password.trim() : '';
-		const password = incomingPassword !== '' ? incomingPassword : (current?.password ?? '').trim();
+		const password = typeof body.password === 'string' ? body.password.trim() : '';
 		settings = { url, username, password };
-	} else {
-		settings = getSettings();
+	} else if (body && typeof body.id === 'string' && body.id) {
+		// Gespeicherte Verbindung testen.
+		const conn = listConnections(locals.user.id).find((c) => c.id === body.id);
+		if (conn) settings = { url: conn.url, username: conn.username, password: conn.password };
 	}
 
 	if (!settings) {
-		return json({ error: 'Keine Einstellungen gespeichert.' }, { status: 400 });
+		return json({ error: 'Keine Verbindung zum Testen angegeben.' }, { status: 400 });
 	}
+
 	try {
 		const { home } = await resolveHome(settings);
 		const calendars = await listCalendars(settings, home);
@@ -36,4 +48,4 @@ export async function POST({ request }: { request: Request }) {
 		};
 		return json(result);
 	}
-}
+};

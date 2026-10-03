@@ -1,16 +1,33 @@
 # Horizont
 
-Minimalistischer, selbst hostbarer Kalender mit drei zusammenklappbaren Zeiträumen —
-**Vergangenheit**, **Jetzt** und **Zukunft** — plus einem **Workflow/Fokus-Modus** für
-sequenzielle Aufgabenlisten. Deine Termine kommen aus einem **CalDAV**-Backend
-(Radicale, Baïkal, iCal, Nextcloud, …). Der CalDAV-Server ist die einzige externe
-Abhängigkeit; alle Workflows und Einstellungen werden lokal im Datenverzeichnis
-persistiert.
+Minimalistischer, **multi-user-fähiger**, selbst hostbarer Kalender mit drei
+zusammenklappbaren Zeiträumen — **Vergangenheit**, **Jetzt** und **Zukunft** —
+plus einem **Workflow/Fokus-Modus** für sequenzielle Aufgabenlisten. Deine
+Termine kommen aus **CalDAV**-Backends (Radicale, Baïkal, iCal, Nextcloud, …).
+Jeder User hat eine eigene Datenwelt: eine ihm **zugewiesene** CalDAV-Verbindung
+(wird vom Admin angelegt, inkl. automatischem CalDAV-Account über den
+`caldav-admin`-Sidecar) und beliebig viele **externe** Verbindungen (z. B.
+eigene iCloud/Nextcloud-Accounts).
 
 ---
 
 ## Funktionen
 
+- **Multi-User-Auth**
+  - Login/Logout mit Session-Cookie (in-memory — bei Neustart alle Sessions
+    beendet), scrypt-gehashte Passwörter.
+  - **Erstes-Setup**: solange kein User existiert, ist `/setup` öffentlich und
+    legt den Admin an (übernimmt dabei die alte Einzel-User-Konfiguration).
+  - **Admin-Bereich** (`/admin`, nur für Admins):
+    - User anlegen/löschen/deaktivieren, Rollen verwalten (letzter aktiver
+      Admin ist geschützt).
+    - Beim User-Anlegen wird **automatisch** ein CalDAV-Account auf dem
+      konfigurierten Radicale-Server angelegt (via `caldav-admin`-Sidecar);
+      die CalDAV-Zugangsdaten werden **einmalig** zum Übergeben angezeigt.
+    - User-Löschung kaskadiert: CalDAV-Account + Collections + alle
+      Userdaten.
+    - System-CALDAV-Konfiguration (Basis-URL, Admin-API-URL, Admin-Token) mit
+      Verbindungstest.
 - **Drei Zeiträume, eine Ansicht**
   - *Vergangenheit*: die letzten 14 Tage
   - *Jetzt*: heute + 2 Tage (Heute, Morgen, Übermorgen)
@@ -23,8 +40,9 @@ persistiert.
   - **Fokus-Modus** (`/fokus/<id>`): ablenkungsfreie Vollansicht mit nur dem
     aktuellen Schritt.
   - Schrittemitfortschritt wird sofort gespeichert.
-- **CalDAV-Anbindung**: eigene URL + Zugangsdaten, Verbindungstest mit
-  Kalender-Liste, farbcodierte Kalender.
+- **CalDAV-Anbindung pro User**: eine zugewiesene (nur URL änderbar, vom Admin)
+  und beliebige externe Verbindungen (vollständig editierbar/löschbar),
+  Verbindungstest mit Kalender-Liste, farbcodierte Kalender.
 - **Dunkel-/Hellmodus** (klassenbasiert, folgt dem System) und dezent, ruhiges UI
   auf Basis von shadcn-svelte + Tailwind.
 
@@ -37,6 +55,8 @@ persistiert.
   [fast-xml-parser](https://github.com/NaturalIntelligence/fast-xml-parser) für CalDAV-XML
 - [adapter-node](https://kit.svelte.dev/adapter-node) für den produktiven Build
 - [Docker](https://www.docker.com/) für den Betrieb (Proxmox / beliebiger Host)
+- [caldav-admin](#caldav-admin-sidecar) (Python 3, Standardlib + passlib) als
+  Sidecar auf dem Radicale-Host
 
 ---
 
@@ -66,10 +86,16 @@ docker compose up -d --build
 
 Die App läuft danach unter <http://localhost:3000>.
 
+- **Erstes Starten**: <http://localhost:3000/setup> ist öffentlich (nur solange
+  kein User existiert) und legt den Admin an. Bestehende Daten aus einer
+  Einzel-User-Installation (`data/settings.json`) werden automatisch als
+  zugewiesene Verbindung des Admins übernommen; die Datei wird zu
+  `settings.json.legacy` archiviert.
 - Port ändern: in [`docker-compose.yml`](docker-compose.yml) unter `ports`
   (z. B. `"8080:3000"`).
-- Alle Daten (Workflows + CalDAV-Einstellungen) werden im Volume
-  `horizont-data` unter `/app/data` persistiert und überleben Neustarts.
+- Alle Daten werden im Volume `horizont-data` unter `/app/data` persistiert:
+  `users.json` (Accounts), `users/<id>/` (Verbindungen, Workflows),
+  `system/caldav.json` (System-CALDAV-Konfiguration).
 - Zum Löschen: `docker compose down -v`.
 
 > **Proxmox:** am einfachsten über eine Container-Template-VM mit Docker oder ein
@@ -77,17 +103,103 @@ Die App läuft danach unter <http://localhost:3000>.
 
 ---
 
-## CalDAV einrichten
+## Auth-Konzept
 
-1. Öffne <http://localhost:3000/einstellungen>.
-2. Trage die **CalDAV-URL**, den **Benutzernamen** und das **Passwort** ein.
-   - Die URL muss einen CalDAV-Discovery-/Kalender-Endpunkt sein
-     (PROPFIND/REPORT). Das trailing `/` ist optional.
-   - Beispiel Radicale: `http://<host>:5232/<benutzer>/`
-   - Beispiel Nextcloud: `https://<cloud>/remote/dav/<benutzer>/calendars/`
-3. **Verbindung testen** zeigt dir, welche Kalender gefunden werden, **bevor**
-   du speicherst.
-4. **Speichern**. Das Hauptfenster lädt nun die Termine.
+| Aspect           | Umsetzung                                                        |
+| ---------------- | ---------------------------------------------------------------- |
+| Passwort-Hashing | scrypt (N=16384, r=8, p=1), 16-Byte-Salt, 64-Byte-Key            |
+| Sessions         | in-memory (Prozess), 12 h TTL, httpOnly/sameSite=lax-Cookie      |
+| Autorisierung    | `src/hooks.server.ts`: `/api/*` → 401, Seiten → Redirect, `/admin*` → 403/Redirect für Nicht-Admins |
+| User-Store       | `DATA_DIR/users.json` (nur bei Bedarf im Prozess, kein DB)       |
+| Userdaten        | `DATA_DIR/users/<id>/` (Verbindungen, Workflows) — bei Löschung komplett entfernt |
+
+Der letzte aktive Admin kann nicht gelöscht, deaktiviert oder herabgestuft werden.
+
+---
+
+## System-CALDAV + caldav-admin-Sidecar
+
+Radicale hat keine Admin-API. Der **`caldav-admin`**-Sidecar (Python 3, nur
+Standardlib + `passlib`/`bcrypt`) läuft **auf dem Radicale-Host** und verwaltet:
+
+- `/etc/radicale/users` — htpasswd-Datei (bcrypt, von Radicale per
+  `htpasswd_encryption = autodetect` gelesen)
+- `/var/lib/radicale/collections/<login>/` — Collection-Verzeichnis pro User
+
+### Endpunkte (Token via `X-Admin-Token`)
+
+| Methode | Pfad               | Wirkung                                  |
+| ------- | ------------------ | ---------------------------------------- |
+| GET     | `/health`          | `{"ok": true}` (Token-Check)             |
+| GET     | `/api/v1/users`    | User-Liste                               |
+| POST    | `/api/v1/users`    | User anlegen (Body: `login`, `password`) |
+| DELETE  | `/api/v1/users/{login}` | User + Collections entfernen      |
+
+### Einrichtung auf dem Radicale-Host (Beispiel: Debian)
+
+```bash
+# 1) Dependencies (passlib + bcrypt) — auf Debian:
+apt install -y python3-passlib python3-bcrypt   # oder via pip
+
+# 2) Verzeichnisse + Token:
+mkdir -p /opt/caldav-admin /etc/caldav-admin
+umask 077
+printf 'ADMIN_TOKEN=%s\n' "$(openssl rand -hex 32)" > /etc/caldav-admin/admin.env
+chmod 600 /etc/caldav-admin/admin.env
+
+# 3) Server (aus diesem Repo):
+cp caldav-admin/server.py /opt/caldav-admin/server.py
+chmod 755 /opt/caldav-admin/server.py
+
+# 4) systemd:
+cat > /etc/systemd/system/caldav-admin.service <<'EOF'
+[Unit]
+Description=caldav-admin - Admin-API für Radicale-htpasswd-User
+After=network.target radicale.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/caldav-admin/server.py
+Restart=on-failure
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable --now caldav-admin
+```
+
+Das Service läuft als `root`, weil es sowohl die htpasswd-Datei
+(`root:radicale`, 640) als auch das Collections-Verzeichnis (`radicale:radicale`,
+750) schreiben muss; der Port ist nur mit gültigem Admin-Token nutzbar.
+
+### Verdrahtung in Horizont
+
+In **Admin → System-CALDAV** konfiguriertest du:
+
+1. **Basis-URL** des CalDAV-Servers (z. B. `http://<host>:5232`)
+2. **Admin-API-URL** des Sidecars (z. B. `http://<host>:5233`)
+3. **Admin-Token** (identisch zu `ADMIN_TOKEN` in `/etc/caldav-admin/admin.env`)
+4. **Testen** prüft Erreichbarkeit + Token.
+
+Danach bekommt jeder neu angelegte User automatisch einen CalDAV-Account mit
+**zufälligem Passwort** (einmalig in der Admin-UI angezeigt) und eine
+entsprechende zugewiesene Verbindung.
+
+> **Wichtig:** Der Admin-Token ist ein Geheimnis. Er liegt im App-Data-Verzeichnis
+> (`system/caldav.json`) und darf nicht ins Backup-/Git-Leak wandern.
+
+---
+
+## CalDAV einrichten (pro User)
+
+1. Logge dich ein und öffne <`/einstellungen`>.
+2. **Zugewiesene Verbindung** (falls vorhanden): URL ist editierbar,
+   Zugangsdaten zeigt der Admin; **nicht** löschbar.
+3. **Externe Verbindungen**: URL + Benutzername + Passwort frei anlegbar,
+   editierbar, löschbar (z. B. eigener iCloud- oder Nextcloud-Account).
+4. **Verbindung testen** zeigt die gefundenen Kalender, **bevor** du speicherst.
 
 > Passwörter bleiben gespeichert: ein leeres Passwort-Feld beim Speichern
 > bedeutet „beibehalten", sofern bereits eines hinterlegt ist.
@@ -104,7 +216,8 @@ bun run build      # produktiver Build nach ./build
 ```
 
 - Daten werden lokal in `./data` abgelegt (überschreibbar via `DATA_DIR`).
-- Für ein sauberes Testen: `rm -rf data` löscht Workflows + Einstellungen.
+- Für ein sauberes Testen: `rm -rf data` löscht Users, Workflows + Einstellungen.
+- Ohne `data/users.json` ist `/setup` öffentlich (First-Run).
 
 ### Umgebungsvariablen
 
@@ -120,24 +233,47 @@ bun run build      # produktiver Build nach ./build
 ## API (Übersicht)
 
 Alle Endpunkte liegen unter `/api` und sind serverseitig (Node-Adapter).
-Die App ruft sie ausschließlich clientseitig auf.
+Die App ruft sie ausschließlich clientseitig auf. **Alle** Endpunkte
+(außer Login/Setup) erfordern eine gültige Session; `/api/admin/*` zusätzlich
+die Admin-Rolle.
 
-| Methode | Pfad                                  | Beschreibung                          |
-| ------- | ------------------------------------- | ------------------------------------- |
-| GET     | `/api/events?scope=main`              | Panels (past/now/future) + Status    |
-| GET     | `/api/events?scope=archive&page=N`    | Archiv-Seite (31 Tage) + Pagination   |
-| GET     | `/api/settings`                       | aktuelle Einstellungen (ohne PW)      |
-| POST    | `/api/settings`                       | Einstellungen speichern               |
-| POST    | `/api/settings/test`                  | Verbindung testen (optional mit PW)   |
-| GET     | `/api/workflows`                      | alle Workflows                        |
-| POST    | `/api/workflows`                      | Workflow anlegen                      |
-| GET     | `/api/workflows/:id`                  | Workflow laden                        |
-| PATCH   | `/api/workflows/:id`                  | Titel/Notizen ändern                  |
-| DELETE  | `/api/workflows/:id`                  | Workflow löschen                      |
-| POST    | `/api/workflows/:id/steps`            | Schritt anfügen                       |
-| PATCH   | `/api/workflows/:id/steps/:sid`       | Schritt (done/title) ändern          |
-| DELETE  | `/api/workflows/:id/steps/:sid`       | Schritt löschen                       |
-| POST    | `/api/workflows/:id/reset`            | Workflow zurücksetzen                 |
+| Methode | Pfad                                      | Beschreibung                              |
+| ------- | ----------------------------------------- | ----------------------------------------- |
+| POST    | `/api/auth/login`                         | Login (Session-Cookie)                    |
+| POST    | `/api/auth/logout`                        | Logout                                    |
+| GET     | `/api/auth/me`                            | Aktuellen User                            |
+| POST    | `/api/auth/setup`                         | First-Run: Admin anlegen (nur ohne Users) |
+| GET     | `/api/events?scope=main`                  | Panels (past/now/future) + Status        |
+| GET     | `/api/events?scope=archive&page=N`        | Archiv-Seite (31 Tage) + Pagination       |
+| GET     | `/api/events?scope=calendars`             | Kalender-Liste (alle Verbindungen)        |
+| POST    | `/api/events`                             | Termin anlegen                            |
+| PATCH   | `/api/events/[calendarId]/[uid]`          | Termin ändern                             |
+| DELETE  | `/api/events/[calendarId]/[uid]`          | Termin löschen                            |
+| GET     | `/api/tasks`                              | Aufgaben (VTODO)                          |
+| POST    | `/api/tasks`                              | Aufgabe anlegen                           |
+| PATCH   | `/api/tasks/[calendarId]/[uid]`           | Aufgabe ändern                            |
+| DELETE  | `/api/tasks/[calendarId]/[uid]`           | Aufgabe löschen                           |
+| GET     | `/api/calendars`                          | Verbindungs- + Kalender-Übersicht         |
+| GET     | `/api/settings`                           | Verbindungen (ohne PW)                    |
+| POST    | `/api/settings`                           | Externe Verbindung anlegen/ändern         |
+| DELETE  | `/api/settings/[id]`                      | Externe Verbindung löschen                |
+| POST    | `/api/settings/test`                      | Verbindung testen                         |
+| GET     | `/api/workflows`                          | alle Workflows                            |
+| POST    | `/api/workflows`                          | Workflow anlegen                          |
+| GET     | `/api/workflows/:id`                      | Workflow laden                            |
+| PATCH   | `/api/workflows/:id`                      | Titel/Notizen ändern                      |
+| DELETE  | `/api/workflows/:id`                      | Workflow löschen                          |
+| POST    | `/api/workflows/:id/steps`                | Schritt anfügen                           |
+| PATCH   | `/api/workflows/:id/steps/:sid`           | Schritt (done/title) ändern              |
+| DELETE  | `/api/workflows/:id/steps/:sid`           | Schritt löschen                           |
+| POST    | `/api/workflows/:id/reset`                | Workflow zurücksetzen                     |
+| GET     | `/api/admin/users`                        | User-Liste + System-CALDAV-Status        |
+| POST    | `/api/admin/users`                        | User anlegen (+ CalDAV via Sidecar)      |
+| PATCH   | `/api/admin/users/:id`                    | Rolle/Status/Passwort/Verbindung ändern   |
+| DELETE  | `/api/admin/users/:id`                    | User löschen (Kaskade)                   |
+| GET     | `/api/admin/caldav`                       | System-CALDAV-Konfiguration (ohne PW)    |
+| POST    | `/api/admin/caldav`                       | System-CALDAV-Konfiguration speichern     |
+| POST    | `/api/admin/caldav/test`                  | Sidecar-Erreichbarkeit + Token prüfen     |
 
 ---
 
@@ -151,27 +287,41 @@ src/
     dates.ts, theme.ts     # isomorphe Helfer
     components/            # App-Komponenten (TimePanel, DayBlock, WorkflowCard, …)
   server/
-    caldav/                # CalDAV-Client + iCal-Parsing
-    store/                 # JSON-Persistenz (Workflows + Einstellungen)
+    auth/                  # userStore (scrypt), sessionStore (in-memory), apiHelpers
+    admin/
+      caldavAdmin.ts       # Client für den caldav-admin-Sidecar
+    caldav/                # CalDAV-Client (multi-Connection) + iCal-Parsing
+    store/
+      connections.ts       # pro-User-Verbindungen (assigned/external) + Legacy-Migration
+      system.ts            # System-CALDAV-Konfiguration (DATA_DIR/system/)
+      store.ts, workflowStore.ts
     lib/                   # Konstanten + Panel-Logik
+  hooks.server.ts          # zentrales Auth-Gate
   routes/
-    +layout.svelte         # Layout, Navigation, Theme
+    +layout.svelte         # Layout, Navigation (auth-aware), Theme
     +page.svelte           # Hauptansicht
     archiv/+page.svelte    # Archiv (paginiert)
-    einstellungen/+page.svelte
+    einstellungen/+page.svelte   # Connections (assigned + external)
     fokus/[id]/+page.svelte
+    login/+page.svelte
+    setup/+page.svelte     # First-Run
+    admin/+page.svelte     # User-Verwaltung + System-CALDAV
     api/                   # alle Endpunkte
+caldav-admin/
+  server.py                # caldav-admin-Sidecar (für den Radicale-Host)
 ```
 
 ---
 
 ## Datenschutz
 
-- Es wird **nicht** mit einer eigenen Cloud kommuniziert: nur mit deinem
-  CalDAV-Server und lokal.
-- Workflows und Einstellungen liegen ausschließlich in `DATA_DIR`.
+- Es wird **nicht** mit einer eigenen Cloud kommuniziert: nur mit deinen
+  CalDAV-Servern und lokal.
+- User- und Verbindungsdaten liegen ausschließlich in `DATA_DIR`.
 - Keine Analytics, keine Tracking-Pixel, keine externen Fonts zur Laufzeit
   (Inter wird lokal via `@fontsource-variable/inter` gebündelt).
+- Der Admin-Token des caldav-admin-Sidecars ist ein Geheimnis und gehört nicht
+  in Backups, die andere Nutzer lesen können.
 
 ## Lizenz
 

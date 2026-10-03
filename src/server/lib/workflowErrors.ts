@@ -1,18 +1,28 @@
 // Mappt Serverfehler der Workflow-API in HTTP-Antworten (Status + deutsche Meldung).
 //
-//   - CalDavError  → 502 (DAV-Server nicht erreichbar / abgelehnt)
-//   - nicht konfiguriert (requireSettings) → 503
-//   - sonst        → 500
+//   - NotConfiguredError (keine Primary-Verbindung) → 503
+//   - CalDavError → 502 (DAV-Server nicht erreichbar / abgelehnt)
+//   - sonst → 500
 
 import { CalDavError } from '$server/caldav/client';
 
-export function mapError(err: unknown): { status: number; message: string } {
-	if (err instanceof CalDavError) {
-		return { status: 502, message: 'CalDAV-Verbindung fehlgeschlagen. Bitte die Einstellungen prüfen.' };
+/** Geworfene, wenn der User keine zugewiesene CalDAV-Verbindung hat. */
+export class NotConfiguredError extends Error {
+	constructor(msg: string) {
+		super(msg);
+		this.name = 'NotConfiguredError';
 	}
-	const msg = err instanceof Error ? err.message : String(err);
-	if (/nicht konfiguriert/i.test(msg)) {
-		return { status: 503, message: msg };
+}
+
+export function mapError(err: unknown): { status: number; message: string } {
+	if (err instanceof NotConfiguredError) {
+		return { status: 503, message: err.message };
+	}
+	if (err instanceof CalDavError) {
+		return {
+			status: 502,
+			message: 'CalDAV-Verbindung fehlgeschlagen. Bitte die Einstellungen prüfen.'
+		};
 	}
 	return { status: 500, message: 'Unerwarteter Fehler beim Zugriff auf Workflows.' };
 }

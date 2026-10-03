@@ -1,25 +1,84 @@
 // Gemeinsame Typen (Client + Server)
 
-// ── CalDAV ────────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────────────────────────
 
+export type UserRole = 'admin' | 'user';
+
+/** Öffentliche User-Daten (ohne Hashes). */
+export interface AppUser {
+	id: string;
+	username: string;
+	role: UserRole;
+	createdAt: number;
+	lastLoginAt: number | null;
+}
+
+/** Admin-View eines Users (zusätzliche Felder). */
+export interface AdminUserView extends AppUser {
+	disabled: boolean;
+	/** Hat der User eine zugewiesene CalDAV-Verbindung? */
+	hasAssignedConnection: boolean;
+}
+
+/** Ergebnis einer User-Anlage: CalDAV-Handover für die Übergabe an den User. */
+export interface CaldavHandover {
+	url: string;
+	username: string;
+	password: string;
+}
+
+export interface CreateUserResult {
+	user: AppUser;
+	caldav: CaldavHandover | null;
+}
+
+// ── CalDAV-Verbindungen (Multi-Connection pro User) ──────────────────────
+
+/** Eine einzelne CalDAV-Verbindung (Credentials + Ziel). */
 export interface CalDavSettings {
 	url: string;
 	username: string;
 	password: string;
 }
 
-export interface CalDavSettingsView {
-	configured: boolean;
+export type ConnectionKind = 'assigned' | 'external';
+
+/** Eine gespeicherte Verbindung eines Users. `assigned` = vom Admin zugewiesen (read-only). */
+export interface CalDavConnection extends CalDavSettings {
+	id: string;
+	name: string;
+	kind: ConnectionKind;
+}
+
+/** View einer Verbindung ohne Klartext-Passwort. */
+export interface ConnectionView {
+	id: string;
+	name: string;
+	kind: ConnectionKind;
 	url: string;
 	username: string;
 	hasPassword: boolean;
 }
 
-export interface CalDavCalendar {
-	id: string;
-	name: string;
-	color: string;
-	url: string;
+export interface ConnectionsResponse {
+	configured: boolean;
+	connections: ConnectionView[];
+}
+
+/** System-CALDAV (Admin-Konfiguration für User-Anlage/-Löschung). */
+export interface SystemCaldavConfig {
+	/** Basis-URL des Radicale-Servers, z. B. http://192.168.1.135:5232 */
+	baseUrl: string;
+	/** Admin-API (caldav-admin-Sidecar), z. B. http://192.168.1.135:5233 */
+	adminApiUrl: string;
+	adminToken: string;
+}
+
+export interface SystemCaldavConfigView {
+	configured: boolean;
+	baseUrl: string;
+	adminApiUrl: string;
+	hasToken: boolean;
 }
 
 export interface TestResult {
@@ -27,6 +86,15 @@ export interface TestResult {
 	error?: string;
 	calendars: CalDavCalendar[];
 	eventCount: number;
+}
+
+export interface CalDavCalendar {
+	id: string;
+	name: string;
+	color: string;
+	url: string;
+	/** Name der Verbindung, aus der dieser Kalender stammt (Multi-Connection). */
+	connectionName?: string;
 }
 
 // ── Events ────────────────────────────────────────────────────────────────

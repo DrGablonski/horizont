@@ -5,7 +5,7 @@
 
 import type {
 	ArchivePage,
-	CalDavSettings,
+	CalDavConnection,
 	DayGroup,
 	EventItem,
 	MainEventsResponse,
@@ -32,7 +32,8 @@ import {
 	NOW_EXTRA_DAYS,
 	PAST_DAYS
 } from '$server/lib/constants';
-import { fetchCalendarIcs, listCalendars, resolveHome } from '$server/caldav/client';
+import { fetchCalendarIcs } from '$server/caldav/client';
+import { resolveAllCalendars } from '$server/caldav/multi';
 import { icalToEventItems } from '$server/caldav/ical';
 
 interface Range {
@@ -101,38 +102,41 @@ function bucketDays(events: EventItem[], keys: string[], today: string): DayGrou
 // ── Hauptansicht ──────────────────────────────────────────────────────────
 
 async function fetchEventsInRange(
-	settings: CalDavSettings,
+	connections: CalDavConnection[],
 	rangeStart: number,
 	rangeEnd: number
-): Promise<{ events: EventItem[]; error: string | null }> {
+): Promise<{ events: EventItem[]; error: string | null; errors: string[] }> {
 	try {
-		const { home } = await resolveHome(settings);
-		const calendars = await listCalendars(settings, home);
+		const { items, errors } = await resolveAllCalendars(connections);
 		const events: EventItem[] = [];
-		for (const cal of calendars) {
-			const icsList = await fetchCalendarIcs(settings, cal, toIcsUtc(rangeStart), toIcsUtc(rangeEnd));
-			events.push(...icalToEventItems(icsList, cal, rangeStart, rangeEnd));
+		for (const { connection, calendar } of items) {
+			const icsList = await fetchCalendarIcs(connection, calendar, toIcsUtc(rangeStart), toIcsUtc(rangeEnd));
+			events.push(...icalToEventItems(icsList, calendar, rangeStart, rangeEnd));
 		}
 		events.sort((a, b) => a.startMs - b.startMs || a.summary.localeCompare(b.summary, 'de'));
-		return { events, error: null };
+		return {
+			events,
+			error: errors.length > 0 ? errors.join(' | ') : null,
+			errors
+		};
 	} catch (e) {
-		return { events: [], error: e instanceof Error ? e.message : String(e) };
+		return { events: [], error: e instanceof Error ? e.message : String(e), errors: [] };
 	}
 }
 
-export async function buildMainResponse(settings: CalDavSettings | null): Promise<MainEventsResponse> {
+export async function buildMainResponse(connections: CalDavConnection[]): Promise<MainEventsResponse> {
 	const today = todayKey();
 	const todayStart = msFromKey(today);
 	const base: Omit<MainEventsResponse, 'panels'> = {
 		todayKey: today,
 		generatedAt: Date.now(),
-		configured: settings != null
+		configured: connections.length > 0
 	};
 
-	if (!settings) return emptyResponse(base);
+	if (connections.length === 0) return emptyResponse(base);
 
 	const { startMs, endMs } = mainRange(todayStart);
-	const { events, error } = await fetchEventsInRange(settings, startMs, endMs);
+	const { events, error } = await fetchEventsInRange(connections, startMs, endMs);
 
 	const panels: TimePanel[] = (['past', 'now', 'future'] as PanelId[]).map((id) => {
 		const r = panelRange(todayStart, id);
@@ -174,7 +178,7 @@ export function archiveMeta(todayStart: number): ArchiveMeta {
 }
 
 export async function buildArchiveResponse(
-	settings: CalDavSettings | null,
+	connections: CalDavConnection[],
 	page: number
 ): Promise<ArchivePage> {
 	const today = todayKey();
@@ -185,10 +189,10 @@ export async function buildArchiveResponse(
 	const out: Omit<ArchivePage, 'days' | 'eventCount'> = {
 		page: pageSafe,
 		hasMore: false,
-		configured: settings != null
+		configured: connections.length > 0
 	};
 
-	if (!settings || meta.totalDays === 0) {
+	if (connections.length === 0 || meta.totalDays === 0) {
 		return { ...out, days: [], eventCount: 0 };
 	}
 
@@ -202,7 +206,7 @@ export async function buildArchiveResponse(
 
 	const pageStart = msFromKey(pageKeysAsc[0]);
 	const pageEnd = addDaysMs(msFromKey(pageKeysAsc[pageKeysAsc.length - 1]), 1);
-	const { events, error } = await fetchEventsInRange(settings, pageStart, pageEnd);
+	const { events, error } = await fetchEventsInRange(connections, pageStart, pageEnd);
 
 	const groups = bucketDays(events, pageKeysAsc, today);
 	const eventCount = groups.reduce((n, g) => n + g.events.length, 0);

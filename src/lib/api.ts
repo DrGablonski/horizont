@@ -1,15 +1,19 @@
 // Client-seitiger API-Zugriff auf die /api-Endpunkte.
 
 import type {
+	AdminUserView,
 	ArchivePage,
-	CalDavSettings,
-	CalDavSettingsView,
 	CalendarsResponse,
+	ConnectionsResponse,
+	CreateUserResult,
 	CreateWorkflowInput,
+	AppUser,
+	CalDavSettings,
 	EventCreateInput,
 	EventItem,
 	EventUpdateInput,
 	MainEventsResponse,
+	SystemCaldavConfigView,
 	TasksResponse,
 	TaskCreateInput,
 	TaskItem,
@@ -38,18 +42,81 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 	return (await res.json()) as T;
 }
 
+export interface LoginInput {
+	username: string;
+	password: string;
+}
+
+export interface SetupInput {
+	username: string;
+	password: string;
+}
+
+export interface AdminUserPatch {
+	role?: 'admin' | 'user';
+	disabled?: boolean;
+	password?: string;
+	caldav?: CalDavSettings | null;
+}
+
+export interface AdminSystemCaldavInput {
+	baseUrl: string;
+	adminApiUrl: string;
+	adminToken?: string;
+}
+
+export interface ExternalConnectionInput {
+	id?: string;
+	name?: string;
+	url: string;
+	username: string;
+	password?: string;
+}
+
 export const api = {
+	// Auth
+	login: (input: LoginInput) => req<AppUser>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }),
+	logout: () => req<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
+	me: () => req<AppUser>('/api/auth/me'),
+	setup: (input: SetupInput) => req<{ user: AppUser }>('/api/auth/setup', { method: 'POST', body: JSON.stringify(input) }),
+
+	// Admin: Users
+	adminUsers: () => req<{ users: AdminUserView[]; systemCaldav: SystemCaldavConfigView }>('/api/admin/users'),
+	adminCreateUser: (input: { username: string; password: string }) =>
+		req<CreateUserResult>('/api/admin/users', { method: 'POST', body: JSON.stringify(input) }),
+	adminPatchUser: (id: string, patch: AdminUserPatch) =>
+		req<AppUser>(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+	adminDeleteUser: (id: string) =>
+		req<{ ok: true }>(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+	// Admin: System-CALDAV
+	adminCaldav: () => req<SystemCaldavConfigView>('/api/admin/caldav'),
+	adminSaveCaldav: (input: AdminSystemCaldavInput) =>
+		req<SystemCaldavConfigView>('/api/admin/caldav', { method: 'POST', body: JSON.stringify(input) }),
+	adminTestCaldav: (input?: { baseUrl?: string; adminApiUrl?: string; adminToken?: string }) =>
+		req<{ ok: boolean; error?: string }>('/api/admin/caldav/test', {
+			method: 'POST',
+			body: JSON.stringify(input ?? {})
+		}),
+
+	// Verbindungen (pro User)
+	connections: () => req<ConnectionsResponse>('/api/settings'),
+	createConnection: (input: Omit<ExternalConnectionInput, 'id'>) =>
+		req<ConnectionsResponse>('/api/settings', { method: 'POST', body: JSON.stringify(input) }),
+	updateConnection: (id: string, input: { name?: string; url?: string; username?: string; password?: string }) =>
+		req<ConnectionsResponse>('/api/settings', {
+			method: 'PATCH',
+			body: JSON.stringify({ id, ...input })
+		}),
+	deleteConnection: (id: string) =>
+		req<ConnectionsResponse>('/api/settings', { method: 'DELETE', body: JSON.stringify({ id }) }),
+	testConnection: (input?: { id?: string; url?: string; username?: string; password?: string }) =>
+		req<TestResult>('/api/settings/test', { method: 'POST', body: JSON.stringify(input ?? {}) }),
+
 	// Events
 	mainEvents: () => req<MainEventsResponse>('/api/events?scope=main'),
 	archive: (page: number) =>
 		req<ArchivePage>(`/api/events?scope=archive&page=${encodeURIComponent(page)}`),
-
-	// Einstellungen
-	getSettings: () => req<CalDavSettingsView>('/api/settings'),
-	saveSettings: (s: CalDavSettings) =>
-		req<CalDavSettingsView>('/api/settings', { method: 'POST', body: JSON.stringify(s) }),
-	testSettings: (s?: CalDavSettings) =>
-		req<TestResult>('/api/settings/test', { method: 'POST', body: JSON.stringify(s ?? {}) }),
 
 	// Workflows
 	workflows: () => req<Workflow[]>('/api/workflows'),

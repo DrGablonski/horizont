@@ -1,0 +1,61 @@
+// Multi-Connection-Auflösung: alle CalDAV-Verbindungen eines Users abfragen,
+// Kalender aggregieren (mit Verbindungsname) und Kalender über alle
+// Verbindungen hinweg finden (für Write-Operationen).
+
+import type { CalDavCalendar, CalDavConnection } from '$lib/types';
+import { listCalendars, resolveHome } from '$server/caldav/client';
+
+export interface ResolvedCalendar {
+	connection: CalDavConnection;
+	calendar: CalDavCalendar; // enthält connectionName
+}
+
+export interface ResolvedAll {
+	items: ResolvedCalendar[];
+	errors: string[];
+}
+
+/**
+ * Löst alle Verbindungen des Users ab und liefert alle Kalender.
+ * Fehler einzelner Verbindungen werden gesammelt (nicht thrown), damit
+ * eine defekte externe Verbindung die anderen nicht blockiert.
+ */
+export async function resolveAllCalendars(connections: CalDavConnection[]): Promise<ResolvedAll> {
+	const items: ResolvedCalendar[] = [];
+	const errors: string[] = [];
+
+	for (const conn of connections) {
+		try {
+			const { home } = await resolveHome(conn);
+			const calendars = await listCalendars(conn, home);
+			for (const cal of calendars) {
+				items.push({ connection: conn, calendar: { ...cal, connectionName: conn.name } });
+			}
+		} catch (e) {
+			errors.push(`${conn.name}: ${e instanceof Error ? e.message : String(e)}`);
+		}
+	}
+
+	return { items, errors };
+}
+
+/**
+ * Findet einen Kalender (id = Hash seiner URL) über alle Verbindungen des
+ * Users. Deterministisch: erste Verbindung mit einem Treffer.
+ */
+export async function findCalendarAcross(
+	connections: CalDavConnection[],
+	calendarId: string
+): Promise<ResolvedCalendar | null> {
+	for (const conn of connections) {
+		try {
+			const { home } = await resolveHome(conn);
+			const calendars = await listCalendars(conn, home);
+			const cal = calendars.find((c) => c.id === calendarId);
+			if (cal) return { connection: conn, calendar: { ...cal, connectionName: conn.name } };
+		} catch {
+			// Verbindung nicht erreichbar → nächste versuchen
+		}
+	}
+	return null;
+}

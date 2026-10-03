@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
-import { getSettings } from '$server/store/store';
+import type { RequestHandler } from './$types';
+import { listConnections } from '$server/store/connections';
 import { mutateEvent, removeEvent, NotFoundError, ValidationError } from '$server/lib/write';
 import { CalDavError } from '$server/caldav/client';
 import type { EventUpdateInput } from '$lib/types';
@@ -11,9 +12,11 @@ function handleError(e: any) {
 	return json({ error: e.message ?? 'Unbekannter Fehler' }, { status: 500 });
 }
 
-export async function PATCH({ params, request }: { params: { calendarId: string; uid: string }; request: Request }) {
-	const settings = getSettings();
-	if (!settings) return json({ error: 'Keine CalDAV-Konfiguration.' }, { status: 400 });
+export const PATCH: RequestHandler = async ({ params, request, locals }) => {
+	const connections = locals.user ? listConnections(locals.user.id) : [];
+	if (connections.length === 0) {
+		return json({ error: 'Keine CalDAV-Verbindung konfiguriert.' }, { status: 400 });
+	}
 
 	let body: EventUpdateInput;
 	try {
@@ -23,21 +26,23 @@ export async function PATCH({ params, request }: { params: { calendarId: string;
 	}
 
 	try {
-		const item = await mutateEvent(settings, params.calendarId, params.uid, body);
+		const item = await mutateEvent(connections, params.calendarId, params.uid, body);
 		return json(item);
 	} catch (e: any) {
 		return handleError(e);
 	}
-}
+};
 
-export async function DELETE({ params }: { params: { calendarId: string; uid: string } }) {
-	const settings = getSettings();
-	if (!settings) return json({ error: 'Keine CalDAV-Konfiguration.' }, { status: 400 });
+export const DELETE: RequestHandler = async ({ params, locals }) => {
+	const connections = locals.user ? listConnections(locals.user.id) : [];
+	if (connections.length === 0) {
+		return json({ error: 'Keine CalDAV-Verbindung konfiguriert.' }, { status: 400 });
+	}
 
 	try {
-		await removeEvent(settings, params.calendarId, params.uid);
+		await removeEvent(connections, params.calendarId, params.uid);
 		return json({ ok: true });
 	} catch (e: any) {
 		return handleError(e);
 	}
-}
+};

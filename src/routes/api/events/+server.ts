@@ -1,23 +1,26 @@
 import { json } from '@sveltejs/kit';
+import type { RequestHandler } from '@sveltejs/kit';
 import { buildArchiveResponse, buildMainResponse } from '$server/lib/panels';
-import { getSettings } from '$server/store/store';
-import { createEvent } from '$server/lib/write';
-import { NotFoundError, ValidationError } from '$server/lib/write';
+import { listConnections } from '$server/store/connections';
+import { createEvent, NotFoundError, ValidationError } from '$server/lib/write';
 import { CalDavError } from '$server/caldav/client';
 import type { EventCreateInput } from '$lib/types';
 
-export async function GET({ url }: { url: URL }) {
+export const GET: RequestHandler = async ({ url, locals }) => {
+	const connections = locals.user ? listConnections(locals.user.id) : [];
 	const scope = url.searchParams.get('scope') ?? 'main';
 	if (scope === 'archive') {
 		const page = Number(url.searchParams.get('page') ?? '1');
-		return json(await buildArchiveResponse(getSettings(), page));
+		return json(await buildArchiveResponse(connections, page));
 	}
-	return json(await buildMainResponse(getSettings()));
-}
+	return json(await buildMainResponse(connections));
+};
 
-export async function POST({ request }: { request: Request }) {
-	const settings = getSettings();
-	if (!settings) return json({ error: 'Keine CalDAV-Konfiguration.' }, { status: 400 });
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const connections = locals.user ? listConnections(locals.user.id) : [];
+	if (connections.length === 0) {
+		return json({ error: 'Keine CalDAV-Verbindung konfiguriert.' }, { status: 400 });
+	}
 
 	let body: EventCreateInput;
 	try {
@@ -27,12 +30,14 @@ export async function POST({ request }: { request: Request }) {
 	}
 
 	try {
-		const item = await createEvent(settings, body);
+		const item = await createEvent(connections, body);
 		return json(item, { status: 201 });
 	} catch (e: any) {
 		if (e instanceof ValidationError) return json({ error: e.message }, { status: 400 });
 		if (e instanceof NotFoundError) return json({ error: e.message }, { status: 404 });
-		if (e instanceof CalDavError) return json({ error: e.message }, { status: e.status >= 400 && e.status < 500 ? e.status : 502 });
+		if (e instanceof CalDavError) {
+			return json({ error: e.message }, { status: e.status >= 400 && e.status < 500 ? e.status : 502 });
+		}
 		return json({ error: e.message ?? 'Unbekannter Fehler' }, { status: 500 });
 	}
-}
+};

@@ -3,7 +3,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import type {
-	CalDavSettings,
+	CalDavConnection,
 	CalDavCalendar,
 	EventItem,
 	EventCreateInput,
@@ -20,7 +20,7 @@ import {
 	deleteIcs,
 	getObjectIcs
 } from '$server/caldav/client';
-import { findCalendar, resolveCalendars } from '$server/lib/caldav';
+import { findCalendarAcross, resolveAllCalendars } from '$server/caldav/multi';
 import {
 	buildEventIcs,
 	updateEventIcs,
@@ -132,17 +132,18 @@ function buildEventItemFromInput(
 // ── Event: Create ─────────────────────────────────────────────────────────
 
 export async function createEvent(
-	settings: CalDavSettings,
+	connections: CalDavConnection[],
 	input: EventCreateInput
 ): Promise<EventItem> {
 	validateEventInput(input);
-	const calendar = await findCalendar(settings, input.calendarId);
-	if (!calendar) throw new NotFoundError('Kalender nicht gefunden.');
+	const found = await findCalendarAcross(connections, input.calendarId);
+	if (!found) throw new NotFoundError('Kalender nicht gefunden.');
+	const { connection, calendar } = found;
 
 	const uid = `horizont-${randomUUID()}`;
 	const { ics } = buildEventIcs(uid, input);
 	const url = `${calendar.url.replace(/\/?$/, '/')}${uid}.ics`;
-	await putIcs(settings, url, ics);
+	await putIcs(connection, url, ics);
 
 	return buildEventItemFromInput(calendar, uid, input);
 }
@@ -150,20 +151,21 @@ export async function createEvent(
 // ── Event: Mutate ─────────────────────────────────────────────────────────
 
 export async function mutateEvent(
-	settings: CalDavSettings,
+	connections: CalDavConnection[],
 	calendarId: string,
 	uid: string,
 	input: EventUpdateInput
 ): Promise<EventItem> {
 	validateEventInput(input);
-	const calendar = await findCalendar(settings, calendarId);
-	if (!calendar) throw new NotFoundError('Kalender nicht gefunden.');
+	const cal = await findCalendarAcross(connections, calendarId);
+	if (!cal) throw new NotFoundError('Kalender nicht gefunden.');
+	const { connection, calendar } = cal;
 
-	const found = await findObjectByUid(settings, calendar, uid);
+	const found = await findObjectByUid(connection, calendar, uid);
 	if (!found) throw new NotFoundError('Kalendereintrag nicht gefunden.');
 
 	const { ics } = updateEventIcs(found.ics, uid, input);
-	await putIcs(settings, found.url, ics, found.etag);
+	await putIcs(connection, found.url, ics, found.etag);
 
 	return buildEventItemFromInput(calendar, uid, input);
 }
@@ -171,17 +173,18 @@ export async function mutateEvent(
 // ── Event: Delete ─────────────────────────────────────────────────────────
 
 export async function removeEvent(
-	settings: CalDavSettings,
+	connections: CalDavConnection[],
 	calendarId: string,
 	uid: string
 ): Promise<void> {
-	const calendar = await findCalendar(settings, calendarId);
-	if (!calendar) throw new NotFoundError('Kalender nicht gefunden.');
+	const cal = await findCalendarAcross(connections, calendarId);
+	if (!cal) throw new NotFoundError('Kalender nicht gefunden.');
+	const { connection, calendar } = cal;
 
-	const found = await findObjectByUid(settings, calendar, uid);
+	const found = await findObjectByUid(connection, calendar, uid);
 	if (!found) throw new NotFoundError('Kalendereintrag nicht gefunden.');
 
-	await deleteIcs(settings, found.url, found.etag);
+	await deleteIcs(connection, found.url, found.etag);
 }
 
 // ── Task: Create ──────────────────────────────────────────────────────────
@@ -225,17 +228,18 @@ function buildTaskItemFromInput(
 }
 
 export async function createTask(
-	settings: CalDavSettings,
+	connections: CalDavConnection[],
 	input: TaskCreateInput
 ): Promise<TaskItem> {
 	validateTaskCreateInput(input);
-	const calendar = await findCalendar(settings, input.calendarId);
-	if (!calendar) throw new NotFoundError('Kalender nicht gefunden.');
+	const found = await findCalendarAcross(connections, input.calendarId);
+	if (!found) throw new NotFoundError('Kalender nicht gefunden.');
+	const { connection, calendar } = found;
 
 	const uid = `horizont-${randomUUID()}`;
 	const { ics } = buildTaskIcs(uid, input);
 	const url = `${calendar.url.replace(/\/?$/, '/')}${uid}.ics`;
-	await putIcs(settings, url, ics);
+	await putIcs(connection, url, ics);
 
 	return buildTaskItemFromInput(calendar, uid, input);
 }
@@ -243,20 +247,21 @@ export async function createTask(
 // ── Task: Mutate (partial) ────────────────────────────────────────────────
 
 export async function mutateTask(
-	settings: CalDavSettings,
+	connections: CalDavConnection[],
 	calendarId: string,
 	uid: string,
 	input: TaskUpdateInput
 ): Promise<TaskItem> {
 	validateTaskPatch(input);
-	const calendar = await findCalendar(settings, calendarId);
-	if (!calendar) throw new NotFoundError('Kalender nicht gefunden.');
+	const cal = await findCalendarAcross(connections, calendarId);
+	if (!cal) throw new NotFoundError('Kalender nicht gefunden.');
+	const { connection, calendar } = cal;
 
-	const found = await findObjectByUid(settings, calendar, uid);
+	const found = await findObjectByUid(connection, calendar, uid);
 	if (!found) throw new NotFoundError('Aufgabe nicht gefunden.');
 
 	const { ics } = updateTaskIcs(found.ics, uid, input);
-	await putIcs(settings, found.url, ics, found.etag);
+	await putIcs(connection, found.url, ics, found.etag);
 
 	const items = icalToTaskItems(ics, calendar);
 	const item = items.find((t) => t.uid === uid);
@@ -267,30 +272,31 @@ export async function mutateTask(
 // ── Task: Delete ──────────────────────────────────────────────────────────
 
 export async function removeTask(
-	settings: CalDavSettings,
+	connections: CalDavConnection[],
 	calendarId: string,
 	uid: string
 ): Promise<void> {
-	const calendar = await findCalendar(settings, calendarId);
-	if (!calendar) throw new NotFoundError('Kalender nicht gefunden.');
+	const cal = await findCalendarAcross(connections, calendarId);
+	if (!cal) throw new NotFoundError('Kalender nicht gefunden.');
+	const { connection, calendar } = cal;
 
-	const found = await findObjectByUid(settings, calendar, uid);
+	const found = await findObjectByUid(connection, calendar, uid);
 	if (!found) throw new NotFoundError('Aufgabe nicht gefunden.');
 
-	await deleteIcs(settings, found.url, found.etag);
+	await deleteIcs(connection, found.url, found.etag);
 }
 
 // ── Tasks: Read (für API GET) ─────────────────────────────────────────────
 
-export async function listAllTasks(settings: CalDavSettings): Promise<TaskItem[]> {
-	const calendars = await resolveCalendars(settings);
+export async function listAllTasks(connections: CalDavConnection[]): Promise<TaskItem[]> {
+	const { items } = await resolveAllCalendars(connections);
 	const tasks: TaskItem[] = [];
 
-	for (const cal of calendars) {
+	for (const { connection, calendar: cal } of items) {
 		try {
-			const objects = await listCalendarObjects(settings, cal.url);
+			const objects = await listCalendarObjects(connection, cal.url);
 			for (const obj of objects) {
-				const ics = await getObjectIcs(settings, obj.url);
+				const ics = await getObjectIcs(connection, obj.url);
 				if (!ics) continue;
 				const items = icalToTaskItems(ics, cal);
 				tasks.push(...items);

@@ -1,25 +1,31 @@
 import { json } from '@sveltejs/kit';
-import { getSettings } from '$server/store/store';
+import type { RequestHandler } from '@sveltejs/kit';
+import { listConnections } from '$server/store/connections';
 import { listAllTasks, createTask, NotFoundError, ValidationError } from '$server/lib/write';
 import { CalDavError } from '$server/caldav/client';
 import type { TaskCreateInput } from '$lib/types';
 
-export async function GET() {
-	const settings = getSettings();
-	if (!settings) {
+export const GET: RequestHandler = async ({ locals }) => {
+	const connections = locals.user ? listConnections(locals.user.id) : [];
+	if (connections.length === 0) {
 		return json({ configured: false, tasks: [] });
 	}
 	try {
-		const tasks = await listAllTasks(settings);
+		const tasks = await listAllTasks(connections);
 		return json({ configured: true, tasks });
 	} catch (e: any) {
-		return json({ configured: true, tasks: [], error: e.message ?? 'Unbekannter Fehler' }, { status: 502 });
+		return json(
+			{ configured: true, tasks: [], error: e.message ?? 'Unbekannter Fehler' },
+			{ status: 502 }
+		);
 	}
-}
+};
 
-export async function POST({ request }: { request: Request }) {
-	const settings = getSettings();
-	if (!settings) return json({ error: 'Keine CalDAV-Konfiguration.' }, { status: 400 });
+export const POST: RequestHandler = async ({ request, locals }) => {
+	const connections = locals.user ? listConnections(locals.user.id) : [];
+	if (connections.length === 0) {
+		return json({ error: 'Keine CalDAV-Verbindung konfiguriert.' }, { status: 400 });
+	}
 
 	let body: TaskCreateInput;
 	try {
@@ -29,7 +35,7 @@ export async function POST({ request }: { request: Request }) {
 	}
 
 	try {
-		const item = await createTask(settings, body);
+		const item = await createTask(connections, body);
 		return json(item, { status: 201 });
 	} catch (e: any) {
 		if (e instanceof ValidationError) return json({ error: e.message }, { status: 400 });
@@ -37,4 +43,4 @@ export async function POST({ request }: { request: Request }) {
 		if (e instanceof CalDavError) return json({ error: e.message }, { status: 502 });
 		return json({ error: e.message ?? 'Unbekannter Fehler' }, { status: 500 });
 	}
-}
+};
