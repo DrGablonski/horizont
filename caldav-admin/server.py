@@ -101,6 +101,18 @@ def collection_dir(login: str) -> str:
     return os.path.join(COLLECTIONS_DIR, login)
 
 
+def principal_dir(login: str) -> str:
+    # CalDAV-Principal (Radicale legt es beim ersten Zugriff an); hier liegen
+    # die eigentlichen Kalender + .ics-Dateien.
+    return os.path.join(COLLECTIONS_DIR, "collection-root", login)
+
+
+def _remove_dir(path: str) -> None:
+    if os.path.isdir(path):
+        shutil.rmtree(path, ignore_errors=True)
+        log(f"Verzeichnis entfernt: {path}")
+
+
 def ensure_collection_dir(login: str) -> None:
     path = collection_dir(login)
     if os.path.isdir(path):
@@ -112,13 +124,6 @@ def ensure_collection_dir(login: str) -> None:
         os.chown(path, pw.pw_uid, pw.pw_gid)
     except KeyError:
         log(f"keinen User 'radicale' gefunden, chown übersprungen für {path}")
-
-
-def remove_collection_dir(login: str) -> None:
-    path = collection_dir(login)
-    if os.path.isdir(path):
-        shutil.rmtree(path, ignore_errors=True)
-        log(f"Collection-Verzeichnis entfernt: {path}")
 
 
 def create_user(login: str, password: str) -> None:
@@ -143,7 +148,8 @@ def delete_user(login: str) -> None:
             raise ApiError(f"User '{login}' existiert nicht.", 404)
         del users[login]
         write_users(users)
-        remove_collection_dir(login)
+        _remove_dir(collection_dir(login))
+        _remove_dir(principal_dir(login))
     log(f"User entfernt: {login}")
 
 
