@@ -6,15 +6,46 @@
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
+	import type { CaldavHandover } from '$lib/types';
 	import CalendarIcon from '@lucide/svelte/icons/calendar';
 	import ShieldIcon from '@lucide/svelte/icons/shield-check';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import CheckCircleIcon from '@lucide/svelte/icons/check-circle';
+	import CopyIcon from '@lucide/svelte/icons/copy';
 
 	let username = $state('');
 	let password = $state('');
 	let confirm = $state('');
 	let busy = $state(false);
 	let error = $state<string | null>(null);
+
+	// Nach erfolgreichem Setup: Erfolgsanzeige (ggf. mit einmaligem CalDAV-Handover).
+	let setupDone = $state(false);
+	let adminName = $state('');
+	let handover = $state<CaldavHandover | null>(null);
+
+	async function copy(text: string): Promise<void> {
+		try {
+			await navigator.clipboard.writeText(text);
+			toast.success('In die Zwischenablage kopiert.');
+		} catch {
+			toast.error('Kopieren nicht möglich.');
+		}
+	}
+
+	function copyCaldav(field: 'url' | 'username' | 'password' | 'all'): void {
+		const c = handover;
+		if (!c) return;
+		void copy(
+			field === 'all'
+				? `CalDAV-Zugang für ${adminName}:\nURL: ${c.url}\nBenutzername: ${c.username}\nPasswort: ${c.password}`
+				: c[field]
+		);
+	}
+
+	async function enterApp(): Promise<void> {
+		await goto('/', { invalidateAll: true });
+	}
 
 	// Optional: System-CalDAV (Radicale + caldav-admin-Sidecar).
 	let showCaldav = $state(false);
@@ -62,14 +93,15 @@
 		};
 		try {
 			const r = await api.setup(input);
-			if (r.caldavError) {
+			adminName = r.user.username;
+			if (r.caldav) {
+				handover = r.caldav;
+			} else if (r.caldavError) {
 				toast.warning(
 					`Setup abgeschlossen, aber der CalDAV-Account konnte nicht angelegt werden: ${r.caldavError}`
 				);
-			} else if (r.caldav) {
-				toast.success('System-CalDAV eingerichtet, Admin-CalDAV-Account angelegt.');
 			}
-			await goto('/', { invalidateAll: true });
+			setupDone = true;
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -82,8 +114,9 @@
 	<title>Ersteinrichtung · Horizont</title>
 </svelte:head>
 
-<div class="mx-auto flex min-h-[70vh] w-full max-w-md flex-col justify-center">
-	<div class="mb-6 flex flex-col items-center gap-2 text-center">
+	<div class="mx-auto flex min-h-[70vh] w-full max-w-md flex-col justify-center">
+		{#if !setupDone}
+		<div class="mb-6 flex flex-col items-center gap-2 text-center">
 		<CalendarIcon class="size-8" />
 		<h1 class="text-xl font-semibold tracking-tight">Ersteinrichtung</h1>
 		<p class="text-sm text-muted-foreground">
@@ -204,4 +237,64 @@
 			{/if}
 		</Button>
 	</form>
-</div>
+		{:else}
+		<div class="mb-6 flex flex-col items-center gap-2 text-center">
+			<CheckCircleIcon class="size-8 text-emerald-500" />
+			<h1 class="text-xl font-semibold tracking-tight">Setup abgeschlossen</h1>
+			<p class="text-sm text-muted-foreground">
+				Account „{adminName}" ist angelegt und angemeldet.
+			</p>
+		</div>
+
+		{#if handover}
+			<div class="space-y-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-5">
+				<div class="flex items-center gap-2">
+					<CheckCircleIcon class="size-4 text-emerald-600 dark:text-emerald-400" />
+					<span class="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+						CalDAV-Account angelegt – Zugangsdaten einmalig anzeigen
+					</span>
+				</div>
+				<div class="space-y-2 rounded-md bg-background p-3">
+					<p class="text-xs font-medium text-muted-foreground">
+						CalDAV-Zugang (bevor die Seite verlassen wird, kopieren)
+					</p>
+					<div class="flex items-center justify-between gap-2">
+						<p class="truncate font-mono text-xs">{handover.url}</p>
+						<Button size="icon-xs" variant="ghost" title="Kopieren" onclick={() => copyCaldav('url')}>
+							<CopyIcon class="size-3" />
+						</Button>
+					</div>
+					<div class="flex items-center justify-between gap-2">
+						<p class="truncate font-mono text-xs">{handover.username}</p>
+						<Button size="icon-xs" variant="ghost" title="Kopieren" onclick={() => copyCaldav('username')}>
+							<CopyIcon class="size-3" />
+						</Button>
+					</div>
+					<div class="flex items-center justify-between gap-2">
+						<p class="truncate font-mono text-xs">{handover.password}</p>
+						<Button size="icon-xs" variant="ghost" title="Kopieren" onclick={() => copyCaldav('password')}>
+							<CopyIcon class="size-3" />
+						</Button>
+					</div>
+					<Button size="sm" variant="secondary" class="mt-1" onclick={() => copyCaldav('all')}>
+						<CopyIcon class="size-3.5" />
+						<span>Alles kopieren</span>
+					</Button>
+				</div>
+				<p class="text-xs text-muted-foreground">
+					Diese Daten werden nach dem Verlassen dieser Seite nicht erneut angezeigt.
+				</p>
+			</div>
+		{:else}
+			<p class="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+				Kein System-CalDAV hinterlegt. Die CalDAV-Konfiguration kann später unter „Admin"
+				angelegt werden – bestehende Accounts werden dabei nachträglich versorgt.
+			</p>
+		{/if}
+
+		<Button class="mt-4 w-full" onclick={enterApp}>
+			<ShieldIcon class="size-4" />
+			<span>Weiter zur App</span>
+		</Button>
+		{/if}
+	</div>

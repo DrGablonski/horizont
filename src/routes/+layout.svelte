@@ -19,6 +19,23 @@
 	// Der Server-Hook leitet unangemeldete Requests von App-Seiten bereits
 	// zu /login bzw. /setup weiter. Auf /login und /setup bleibt `user` null.
 	let user = $state<AppUser | null>(null);
+
+	// Session-Status holen – reaktiv auf Navigation, damit auch nach einer
+	// Client-Side-Auth (Login/Setup, wo onMount nicht erneut läuft) Header
+	// und Nav korrekt gerendert werden.
+	let meRequest = 0;
+	$effect(() => {
+		const p = page.url.pathname;
+		if (p === '/login' || p === '/setup') return;
+		if (user) return;
+		const id = ++meRequest;
+		api
+			.me()
+			.then((u) => {
+				if (id === meRequest) user = u;
+			})
+			.catch(() => {});
+	});
 	const loggedIn = $derived(user !== null);
 
 	const nav = $derived([
@@ -52,14 +69,6 @@
 		const mq = window.matchMedia('(prefers-color-scheme: dark)');
 		const onChange = () => applyTheme(getStoredTheme());
 		mq.addEventListener('change', onChange);
-
-		const p = page.url.pathname;
-		if (p !== '/login' && p !== '/setup') {
-			api
-				.me()
-				.then((u) => (user = u))
-				.catch(() => {});
-		}
 		return () => mq.removeEventListener('change', onChange);
 	});
 </script>
