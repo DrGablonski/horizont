@@ -79,9 +79,17 @@ export interface ExternalConnectionInput {
 
 export const api = {
 	// Auth
-	login: (input: LoginInput) => req<AppUser>('/api/auth/login', { method: 'POST', body: JSON.stringify(input) }),
+	login: (input: LoginInput) =>
+		req<{ ok: true; user: AppUser }>('/api/auth/login', {
+			method: 'POST',
+			body: JSON.stringify(input)
+		}),
 	logout: () => req<{ ok: true }>('/api/auth/logout', { method: 'POST' }),
-	me: () => req<AppUser>('/api/auth/me'),
+	// Der Endpunkt liefert `{ user }` — hier wird der User entpackt.
+	me: async () => {
+		const data = await req<{ user: AppUser }>('/api/auth/me');
+		return data.user;
+	},
 	setup: (input: SetupInput) => req<SetupResult>('/api/auth/setup', { method: 'POST', body: JSON.stringify(input) }),
 
 	// Admin: Users

@@ -7,7 +7,6 @@
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
 	import type { CaldavHandover } from '$lib/types';
-	import CalendarIcon from '@lucide/svelte/icons/calendar';
 	import ShieldIcon from '@lucide/svelte/icons/shield-check';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import CheckCircleIcon from '@lucide/svelte/icons/check-circle';
@@ -116,8 +115,8 @@
 
 	<div class="mx-auto flex min-h-[70vh] w-full max-w-md flex-col justify-center">
 		{#if !setupDone}
-		<div class="mb-6 flex flex-col items-center gap-2 text-center">
-		<CalendarIcon class="size-8" />
+		<div class="mb-6 flex flex-col items-center gap-3 text-center">
+		<img src="/logo.png" alt="Horizont" class="h-12 w-auto" draggable="false" />
 		<h1 class="text-xl font-semibold tracking-tight">Ersteinrichtung</h1>
 		<p class="text-sm text-muted-foreground">
 			Lege den ersten Admin-Account an. Damit wird Horizont freigeschaltet.

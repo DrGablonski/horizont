@@ -6,7 +6,6 @@
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
 	import { api } from '$lib/api';
 	import { toast } from 'svelte-sonner';
-	import CalendarIcon from '@lucide/svelte/icons/calendar';
 	import LogInIcon from '@lucide/svelte/icons/log-in';
 
 	let username = $state('');
@@ -35,8 +34,8 @@
 </svelte:head>
 
 <div class="mx-auto flex min-h-[70vh] w-full max-w-sm flex-col justify-center">
-	<div class="mb-6 flex flex-col items-center gap-2">
-		<CalendarIcon class="size-8" />
+	<div class="mb-6 flex flex-col items-center gap-3">
+		<img src="/logo.png" alt="Horizont" class="h-12 w-auto" draggable="false" />
 		<h1 class="text-xl font-semibold tracking-tight">Horizont</h1>
 		<p class="text-sm text-muted-foreground">Melde dich an, um fortzufahren.</p>
 	</div>
