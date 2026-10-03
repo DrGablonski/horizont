@@ -12,6 +12,7 @@
 	import type { AppUser } from '$lib/types';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
+	import HorizontMark from '$lib/components/HorizontMark.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -75,7 +76,7 @@
 	<header class="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
 		<div class="mx-auto flex h-14 w-full max-w-5xl items-center gap-4 px-4">
 			<a href="/" class="flex items-center gap-2.5 font-semibold tracking-tight">
-				<img src="/logo.png" alt="Horizont" class="h-6 w-auto" draggable="false" />
+				<HorizontMark class="h-6 w-auto shrink-0 text-foreground" />
 				<span class="text-base">Horizont</span>
 			</a>
 
