@@ -58,11 +58,6 @@ export function getAssigned(userId: string): CalDavConnection | null {
 	return listConnections(userId).find((c) => c.kind === 'assigned') ?? null;
 }
 
-/** Nur die extern vom User verwalteten Verbindungen. */
-export function getExternal(userId: string): CalDavConnection[] {
-	return listConnections(userId).filter((c) => c.kind === 'external');
-}
-
 /** Credentials-Teil einer Verbindung (für den CalDAV-Client). */
 export function toSettings(conn: CalDavConnection): CalDavSettings {
 	return { url: conn.url, username: conn.username, password: conn.password };

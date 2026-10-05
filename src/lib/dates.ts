@@ -38,10 +38,6 @@ export function shiftDayKey(key: string, days: number): string {
 	return dayKey(addDaysMs(msFromKey(key), days));
 }
 
-export function nextDayKey(key: string): string {
-	return shiftDayKey(key, 1);
-}
-
 /**
  * Alle lokalen Tages-Schlüssel in [startMs, endMsExcl), aufsteigend.
  * `endMs` ist exklusiv. Start wird auf lokale Mitternacht normalisiert.
