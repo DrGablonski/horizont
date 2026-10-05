@@ -6,6 +6,7 @@
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
 	import { api } from '$lib/api';
 	import { toast } from 'svelte-sonner';
+	import HorizontMark from '$lib/components/HorizontMark.svelte';
 	import LogInIcon from '@lucide/svelte/icons/log-in';
 
 	let username = $state('');
@@ -35,6 +36,7 @@
 
 <div class="mx-auto flex min-h-[70vh] w-full max-w-sm flex-col justify-center">
 	<div class="mb-6 flex flex-col items-center gap-3">
+		<HorizontMark size={72} />
 		<h1 class="text-2xl font-bold tracking-tight">Horizont</h1>
 		<p class="text-sm text-muted-foreground">Melde dich an, um fortzufahren.</p>
 	</div>

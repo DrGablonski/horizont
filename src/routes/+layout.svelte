@@ -10,6 +10,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { api } from '$lib/api';
 	import type { AppUser } from '$lib/types';
+	import HorizontMark from '$lib/components/HorizontMark.svelte';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
 
@@ -74,7 +75,10 @@
 <div class="flex min-h-screen flex-col bg-background text-foreground">
 	<header class="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
 		<div class="mx-auto flex h-14 w-full max-w-5xl items-center gap-4 px-4">
-			<a href="/" class="text-lg font-semibold tracking-tight">Horizont</a>
+			<a href="/" class="flex items-center gap-2.5">
+				<HorizontMark size={26} class="shrink-0" />
+				<span class="text-lg font-semibold tracking-tight">Horizont</span>
+			</a>
 
 			{#if loggedIn}
 				<nav class="ml-auto flex items-center gap-1">

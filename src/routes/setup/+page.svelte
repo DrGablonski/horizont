@@ -6,6 +6,7 @@
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
 	import { toast } from 'svelte-sonner';
 	import { api } from '$lib/api';
+	import HorizontMark from '$lib/components/HorizontMark.svelte';
 	import type { CaldavHandover } from '$lib/types';
 	import ShieldIcon from '@lucide/svelte/icons/shield-check';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
@@ -116,6 +117,7 @@
 	<div class="mx-auto flex min-h-[70vh] w-full max-w-md flex-col justify-center">
 		{#if !setupDone}
 		<div class="mb-6 flex flex-col items-center gap-3 text-center">
+		<HorizontMark size={72} />
 		<h1 class="text-2xl font-bold tracking-tight">Ersteinrichtung</h1>
 		<p class="text-sm text-muted-foreground">
 			Lege den ersten Admin-Account an. Damit wird Horizont freigeschaltet.
