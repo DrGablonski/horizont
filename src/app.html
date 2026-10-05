@@ -6,7 +6,23 @@
 	<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<link rel="manifest" href="/manifest.webmanifest" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<meta name="theme-color" content="#ffffff" />
+		<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+		<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171717" />
+		<script>
+			// Wendet das gespeicherte Theme vor dem ersten Paint an, damit auf
+			// Dark-Mode-Geräten nicht kurz Hell aufblitzt. Logik wie in $lib/theme.ts.
+			(function () {
+				try {
+					var t = localStorage.getItem('horizont-theme');
+					if (
+						t === 'dark' ||
+						(t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+					) {
+						document.documentElement.classList.add('dark');
+					}
+				} catch (e) {}
+			})();
+		</script>
 		<title>Horizont</title>
 		%sveltekit.head%
 	</head>
