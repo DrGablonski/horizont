@@ -76,7 +76,7 @@
 	<header class="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
 		<div class="mx-auto flex h-14 w-full max-w-5xl items-center gap-4 px-4">
 			<a href="/" class="flex items-center gap-2.5">
-				<HorizontMark size={26} class="shrink-0" />
+				<HorizontMark size={36} class="shrink-0" />
 				<span class="text-lg font-semibold tracking-tight">Horizont</span>
 			</a>
 

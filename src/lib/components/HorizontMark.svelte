@@ -8,7 +8,7 @@
 </script>
 
 <svg
-	viewBox="0 0 512 512"
+	viewBox="80 92 352 352"
 	width={size}
 	height={size}
 	role="img"
@@ -20,7 +20,7 @@
 		d="M104 316 Q256 268 408 316"
 		fill="none"
 		stroke="currentColor"
-		stroke-width="18"
+		stroke-width="24"
 		stroke-linecap="round"
 	/>
 	<circle
@@ -29,6 +29,6 @@
 		r="72"
 		fill="none"
 		stroke="currentColor"
-		stroke-width="18"
+		stroke-width="24"
 	/>
 </svg>
