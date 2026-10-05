@@ -7,7 +7,6 @@
 	import { api } from '$lib/api';
 	import { toast } from 'svelte-sonner';
 	import LogInIcon from '@lucide/svelte/icons/log-in';
-	import HorizontMark from '$lib/components/HorizontMark.svelte';
 
 	let username = $state('');
 	let password = $state('');
@@ -36,8 +35,7 @@
 
 <div class="mx-auto flex min-h-[70vh] w-full max-w-sm flex-col justify-center">
 	<div class="mb-6 flex flex-col items-center gap-3">
-		<HorizontMark variant="full" class="h-16 w-auto text-foreground" />
-		<h1 class="text-xl font-semibold tracking-tight">Horizont</h1>
+		<h1 class="text-2xl font-bold tracking-tight">Horizont</h1>
 		<p class="text-sm text-muted-foreground">Melde dich an, um fortzufahren.</p>
 	</div>
 
