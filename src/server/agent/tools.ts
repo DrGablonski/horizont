@@ -249,6 +249,22 @@ export const AGENT_TOOLS: ToolDef[] = [
 	}
 ];
 
+const NEEDS_CONFIRMATION = {
+	type: 'boolean',
+	description:
+		'true → vor der Ausführung muss der User die Aktion in einer Bestätigungs-Karte freigeben. NUR setzen, wenn du UNSICHER bist (mehrere mögliche Treffer, unklare Angabe) oder die Aktion destruktiv/irreversibel ist (z. B. löschen). Wenn du sicher bist: weglassen → die Aktion wird direkt ausgeführt.'
+};
+
+// Alle Write-Tools erhalten das optionale needsConfirmation-Flag, damit das
+// Modell pro Aktion entscheiden kann: direkt ausführen oder vorher eine
+// Bestätigungs-Karte vom User anfordern.
+for (const t of AGENT_TOOLS) {
+	if (t.effect === 'write') {
+		const props = (t.parameters.properties ?? {}) as Record<string, unknown>;
+		props.needsConfirmation = NEEDS_CONFIRMATION;
+	}
+}
+
 export const TOOL_BY_NAME: Map<string, ToolDef> = new Map(AGENT_TOOLS.map((t) => [t.name, t]));
 
 /** Deutsch-Anzeige für die Approval-Karte. */

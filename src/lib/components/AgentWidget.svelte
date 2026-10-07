@@ -209,7 +209,7 @@
 					<div class="space-y-3 pt-6 text-center">
 						<p class="text-sm text-muted-foreground">
 							Frage mich nach Terminen, Aufgaben oder Workflows – oder lass mich etwas anlegen.
-							Schreibaktionen bestätigst du vorab.
+							Eindeutige Aktionen führe ich direkt aus – bin ich unsicher, frage ich vorher nach.
 						</p>
 						<div class="flex flex-col items-center gap-1.5">
 							{#each SUGGESTIONS as s (s)}

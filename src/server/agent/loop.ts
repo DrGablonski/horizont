@@ -86,51 +86,56 @@ export async function advance(params: LoopParams): Promise<AgentLoopResult> {
 			return 'completed';
 		}
 
-		// Rufe- und Schreib-Tools trennen. Bei einem Schreib-Tool pausieren
-		// wir: vorangegangene Reads werden ausgeführt, alle ab dem ersten
-		// Write erhalten Platzhalter, die bei Resume aufgelöst werden.
-		const firstWriteIdx = toolCalls.findIndex((tc) => toolEffect(tc.name) === 'write');
+		// Tool-Batch verarbeiten:
+		//   - Read-Tools und Write-Tools OHNE needsConfirmation werden direkt ausgeführt.
+		//   - Erster Write mit needsConfirmation=true → Pause: alles ab hier erhält
+		//     Platzhalter, Approval-Event an den Client, Loop hält (siehe resume).
+		const wantsConfirmation = (tc: ToolCall): boolean =>
+			toolEffect(tc.name) === 'write' && tc.args.needsConfirmation === true;
+		const confirmIdx = toolCalls.findIndex(wantsConfirmation);
 
-		if (firstWriteIdx === -1) {
-			// Nur Reads → alle ausführen und weiter.
+		/** Ein Tool direkt ausführen, Ergebnis senden und als Tool-Message anhängen. */
+		const runDirect = async (tc: ToolCall): Promise<void> => {
+			const effect = toolEffect(tc.name);
+			const result: ToolResult = !TOOL_BY_NAME.has(tc.name)
+				? { ok: false, error: `Unbekanntes Tool: ${tc.name}` }
+				: effect === 'write'
+					? await runWriteTool(ctx, tc.name, tc.args)
+					: await runReadTool(ctx, tc.name, tc.args);
+			send({
+				type: 'tool_result',
+				name: tc.name,
+				ok: result.ok,
+				write: effect === 'write',
+				label: TOOL_LABELS[tc.name] ?? tc.name
+			});
+			appendMessage(session, {
+				role: 'tool',
+				toolCallId: tc.id,
+				name: tc.name,
+				content: toolResultText(result)
+			});
+		};
+
+		// Keine Bestätigung erforderlich → ganzer Batch direkt ausführen.
+		if (confirmIdx === -1) {
 			for (const tc of toolCalls) {
 				if (signal.aborted) return 'aborted';
-				const def = TOOL_BY_NAME.get(tc.name);
-				const result: ToolResult = def
-					? await runReadTool(ctx, tc.name, tc.args)
-					: { ok: false, error: `Unbekanntes Tool: ${tc.name}` };
-				send({ type: 'tool_result', name: tc.name, ok: result.ok, write: false, label: TOOL_LABELS[tc.name] ?? tc.name });
-				appendMessage(session, {
-					role: 'tool',
-					toolCallId: tc.id,
-					name: tc.name,
-					content: toolResultText(result)
-				});
+				await runDirect(tc);
 			}
 			continue;
 		}
 
-		// Reads vor dem ersten Write ausführen.
-		for (let i = 0; i < firstWriteIdx; i += 1) {
-			const tc = toolCalls[i];
+		// Vor dem Bestätigungs-Write: Batch-Anteil direkt ausführen.
+		for (let i = 0; i < confirmIdx; i += 1) {
 			if (signal.aborted) return 'aborted';
-			const def = TOOL_BY_NAME.get(tc.name);
-			const result: ToolResult = def
-					? await runReadTool(ctx, tc.name, tc.args)
-					: { ok: false, error: `Unbekanntes Tool: ${tc.name}` };
-				send({ type: 'tool_result', name: tc.name, ok: result.ok, write: false, label: TOOL_LABELS[tc.name] ?? tc.name });
-				appendMessage(session, {
-					role: 'tool',
-					toolCallId: tc.id,
-					name: tc.name,
-					content: toolResultText(result)
-				});
-			}
+			await runDirect(toolCalls[i]);
+		}
 
-		// Ab dem ersten Write: Platzhalter anlegen und Pause.
+		// Ab dem Bestätigungs-Write: Platzhalter anlegen und Pause.
 		const approvalId = randomUUID();
 		const calls: PendingCall[] = [];
-		for (let i = firstWriteIdx; i < toolCalls.length; i += 1) {
+		for (let i = confirmIdx; i < toolCalls.length; i += 1) {
 			const tc = toolCalls[i];
 			appendMessage(session, {
 				role: 'tool',
@@ -143,7 +148,7 @@ export async function advance(params: LoopParams): Promise<AgentLoopResult> {
 				name: tc.name,
 				args: tc.args,
 				messageIndex: session.messages.length - 1,
-				isPrimary: i === firstWriteIdx
+				isPrimary: i === confirmIdx
 			});
 		}
 
