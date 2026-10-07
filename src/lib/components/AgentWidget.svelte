@@ -6,6 +6,7 @@
 	import type { AgentStatus } from '$lib/types';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
+	import { randomUUID } from '$lib/utils';
 	import BotIcon from '@lucide/svelte/icons/bot';
 	import XIcon from '@lucide/svelte/icons/x';
 	import CheckIcon from '@lucide/svelte/icons/check';
@@ -36,7 +37,7 @@
 
 	let status = $state<AgentStatus | null>(null);
 	let open = $state(false);
-	let sessionKey = $state(crypto.randomUUID());
+	let sessionKey = $state(randomUUID());
 	let msgs = $state<UiMsg[]>([]);
 	let busy = $state(false);
 	let draft = $state('');
@@ -128,7 +129,7 @@
 
 	function restart(): void {
 		stop();
-		sessionKey = crypto.randomUUID();
+		sessionKey = randomUUID();
 		msgs = [];
 		draft = '';
 		note = '';
