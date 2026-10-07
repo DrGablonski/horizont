@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import '../app.css';
 	import { applyTheme, getStoredTheme } from '$lib/theme';
@@ -13,6 +13,8 @@
 	import type { AppUser } from '$lib/types';
 	import HorizontMark from '$lib/components/HorizontMark.svelte';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
+	import MenuIcon from '@lucide/svelte/icons/menu';
+	import XIcon from '@lucide/svelte/icons/x';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -52,6 +54,38 @@
 			: 'text-muted-foreground hover:bg-muted/60 hover:text-foreground';
 	}
 
+	// Mobiles Burger-Menü: Auf schmalen Screens ersetzen die einzelnen Nav-
+	// Buttons (die sonst zur Seite rausscrollen) ein Dropdown unter dem
+	// Burger-Button.
+	let mobileOpen = $state(false);
+	let mobileAnchor: HTMLDivElement | null = $state(null);
+
+	// Bei jeder Navigation schließen – nur auf den Pfad reagieren.
+	$effect(() => {
+		const path = page.url.pathname;
+		untrack(() => {
+			if (mobileOpen) mobileOpen = false;
+		});
+		void path;
+	});
+
+	// Auf Klick außerhalb bzw. Escape schließen.
+	$effect(() => {
+		if (!mobileOpen) return;
+		function onKeyDown(e: KeyboardEvent) {
+			if (e.key === 'Escape') mobileOpen = false;
+		}
+		function onPointerDown(e: MouseEvent) {
+			if (mobileAnchor && !mobileAnchor.contains(e.target as Node)) mobileOpen = false;
+		}
+		document.addEventListener('keydown', onKeyDown);
+		document.addEventListener('pointerdown', onPointerDown, true);
+		return () => {
+			document.removeEventListener('keydown', onKeyDown);
+			document.removeEventListener('pointerdown', onPointerDown, true);
+		};
+	});
+
 	let loggingOut = $state(false);
 	async function logout(): Promise<void> {
 		loggingOut = true;
@@ -83,31 +117,96 @@
 
 			{#if loggedIn}
 				<nav class="ml-auto flex items-center gap-1">
-					{#each nav as item (item.href)}
-						<a
-							href={item.href}
-							class="rounded-md px-3 py-1.5 text-sm transition-colors {navClass(item.href)}"
+					<!-- Desktop-Navigation -->
+					<div class="hidden items-center gap-1 sm:flex">
+						{#each nav as item (item.href)}
+							<a
+								href={item.href}
+								class="rounded-md px-3 py-1.5 text-sm transition-colors {navClass(item.href)}"
+							>
+								{item.label}
+							</a>
+						{/each}
+						<ThemeToggle />
+						<div class="mx-2 h-6 w-px bg-border"></div>
+						<div class="flex items-center gap-2">
+							<span class="max-w-40 truncate text-sm text-muted-foreground">{user?.username}</span>
+							{#if user?.role === 'admin'}
+								<span class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+									Admin
+								</span>
+							{/if}
+						</div>
+						<Button variant="ghost" size="icon" title="Abmelden" disabled={loggingOut} onclick={logout}>
+							{#if loggingOut}
+								<Spinner class="size-4" />
+							{:else}
+								<LogOutIcon class="size-4" />
+							{/if}
+						</Button>
+					</div>
+
+					<!-- Mobile: Burger-Menü -->
+					<div class="relative sm:hidden" bind:this={mobileAnchor}>
+						<Button
+							variant="ghost"
+							size="icon"
+							title="Menü"
+							aria-label="Menü öffnen oder schließen"
+							aria-expanded={mobileOpen}
+							onclick={() => (mobileOpen = !mobileOpen)}
 						>
-							{item.label}
-						</a>
-					{/each}
-					<ThemeToggle />
-					<div class="mx-2 hidden h-6 w-px bg-border sm:block"></div>
-					<div class="hidden items-center gap-2 sm:flex">
-						<span class="max-w-40 truncate text-sm text-muted-foreground">{user?.username}</span>
-						{#if user?.role === 'admin'}
-							<span class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-								Admin
-							</span>
+							{#if mobileOpen}
+								<XIcon class="size-5" />
+							{:else}
+								<MenuIcon class="size-5" />
+							{/if}
+						</Button>
+
+						{#if mobileOpen}
+							<div
+								class="absolute right-0 top-full z-50 mt-2 w-56 animate-in overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg duration-150 fade-in-0 zoom-in-95"
+							>
+								<div class="p-1.5">
+									{#each nav as item (item.href)}
+										<a
+											href={item.href}
+											class="block rounded-md px-3 py-2 text-sm transition-colors {navClass(item.href)}"
+										>
+											{item.label}
+										</a>
+									{/each}
+								</div>
+								<div class="h-px bg-border"></div>
+								<div class="flex items-center gap-2 px-3 py-2">
+									<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+										{user?.username}
+									</span>
+									{#if user?.role === 'admin'}
+										<span class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+											Admin
+										</span>
+									{/if}
+									<ThemeToggle />
+								</div>
+								<div class="h-px bg-border"></div>
+								<Button
+									variant="ghost"
+									size="sm"
+									class="w-full justify-start px-3"
+									disabled={loggingOut}
+									onclick={logout}
+								>
+									{#if loggingOut}
+										<Spinner class="size-4" />
+									{:else}
+										<LogOutIcon class="size-4" />
+									{/if}
+									Abmelden
+								</Button>
+							</div>
 						{/if}
 					</div>
-					<Button variant="ghost" size="icon" title="Abmelden" disabled={loggingOut} onclick={logout}>
-						{#if loggingOut}
-							<Spinner class="size-4" />
-						{:else}
-							<LogOutIcon class="size-4" />
-						{/if}
-					</Button>
 				</nav>
 			{:else}
 				<div class="ml-auto">

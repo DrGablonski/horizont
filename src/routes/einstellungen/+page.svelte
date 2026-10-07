@@ -184,7 +184,8 @@
 		</p>
 	</div>
 
-	<div class="flex w-fit items-center gap-1 rounded-lg bg-muted p-1">
+	<!-- Auf schmalen Screens Tabs horizontal scrollbar, statt die Seite zu verbreitern -->
+	<div class="flex max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1">
 		<button
 			type="button"
 			class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('verbindungen')}"
