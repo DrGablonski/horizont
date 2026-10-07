@@ -90,8 +90,9 @@
 		busy = true;
 		const ac = new AbortController();
 		aborter = ac;
+		const live = msgs[msgs.length - 1];
 		try {
-			await agent.chat(sessionKey, text, handlersFor(a), ac.signal);
+			await agent.chat(sessionKey, text, handlersFor(live), ac.signal);
 		} finally {
 			if (aborter === ac) aborter = null;
 			busy = false;
@@ -111,13 +112,14 @@
 		busy = true;
 		const next: UiMsg = { id: nextId(), role: 'assistant', content: '', tools: [] };
 		msgs.push(next);
+		const live = msgs[msgs.length - 1];
 		try {
 			await agent.approve(
 				sessionKey,
 				card.approvalId,
 				decision,
 				note.trim() || undefined,
-				handlersFor(next),
+				handlersFor(live),
 				ac.signal
 			);
 			card.state = decision === 'accept' ? 'accepted' : 'rejected';
