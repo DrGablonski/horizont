@@ -6,6 +6,7 @@
 	import '../app.css';
 	import { applyTheme, getStoredTheme } from '$lib/theme';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import AgentWidget from '$lib/components/AgentWidget.svelte';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import { api } from '$lib/api';
@@ -121,6 +122,7 @@
 	</main>
 
 	{#if loggedIn}
+		<AgentWidget />
 		<footer class="mx-auto w-full max-w-5xl px-4 py-6">
 			<p class="text-xs text-muted-foreground">
 				Horizont · lokal gehosteter Kalender &amp; Workflow-Assistent

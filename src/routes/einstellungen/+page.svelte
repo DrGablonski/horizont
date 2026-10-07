@@ -4,6 +4,8 @@
 	import type { AppUser, ConnectionsResponse, TestResult } from '$lib/types';
 	import UserManagement from '$lib/components/admin/UserManagement.svelte';
 	import SystemCaldavSettings from '$lib/components/admin/SystemCaldavSettings.svelte';
+	import AgentGlobalSettings from '$lib/components/admin/AgentSettings.svelte';
+	import AgentUserSettings from '$lib/components/AgentUserSettings.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
@@ -150,10 +152,10 @@
 
 	// ── Admin-Tabs (nur für die Admin-Rolle sichtbar) ──────────────────────
 	let me = $state<AppUser | null>(null);
-	let tab = $state<'verbindungen' | 'users' | 'caldav'>('verbindungen');
+	let tab = $state<'verbindungen' | 'agent' | 'agent-global' | 'users' | 'caldav'>('verbindungen');
 	const isAdmin = $derived(me?.role === 'admin');
 
-	function tabClass(t: 'verbindungen' | 'users' | 'caldav'): string {
+	function tabClass(t: 'verbindungen' | 'agent' | 'agent-global' | 'users' | 'caldav'): string {
 		return tab === t
 			? 'bg-background text-foreground shadow-sm'
 			: 'text-muted-foreground hover:text-foreground';
@@ -182,15 +184,22 @@
 		</p>
 	</div>
 
-	{#if isAdmin}
-		<div class="flex w-fit items-center gap-1 rounded-lg bg-muted p-1">
-			<button
-				type="button"
-				class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('verbindungen')}"
-				onclick={() => (tab = 'verbindungen')}
-			>
-				Verbindungen
-			</button>
+	<div class="flex w-fit items-center gap-1 rounded-lg bg-muted p-1">
+		<button
+			type="button"
+			class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('verbindungen')}"
+			onclick={() => (tab = 'verbindungen')}
+		>
+			Verbindungen
+		</button>
+		<button
+			type="button"
+			class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('agent')}"
+			onclick={() => (tab = 'agent')}
+		>
+			KI-Agent
+		</button>
+		{#if isAdmin}
 			<button
 				type="button"
 				class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('users')}"
@@ -200,13 +209,20 @@
 			</button>
 			<button
 				type="button"
+				class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('agent-global')}"
+				onclick={() => (tab = 'agent-global')}
+			>
+				KI-Agent (global)
+			</button>
+			<button
+				type="button"
 				class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('caldav')}"
 				onclick={() => (tab = 'caldav')}
 			>
 				System-CALDAV
 			</button>
-		</div>
-	{/if}
+		{/if}
+	</div>
 
 	{#if tab === 'verbindungen'}
 		<div class="max-w-2xl space-y-6">
@@ -424,6 +440,14 @@
 			</div>
 		{/if}
 	{/if}
+		</div>
+	{:else if tab === 'agent'}
+		<div class="max-w-2xl">
+			<AgentUserSettings />
+		</div>
+	{:else if tab === 'agent-global'}
+		<div class="max-w-2xl">
+			<AgentGlobalSettings />
 		</div>
 	{:else if tab === 'users'}
 		<UserManagement />
