@@ -5,7 +5,7 @@
 	import Textarea from './ui/textarea/textarea.svelte';
 	import Label from './ui/label/label.svelte';
 	import Checkbox from './ui/checkbox/checkbox.svelte';
-	import { msToLocalInput, localInputToMs, msToDateInput } from '$lib/dates';
+	import { localInputToMs, msToDateInput, msToTimeInput } from '$lib/dates';
 	import type { TaskCreateInput, TaskUpdateInput, TaskItem, CalDavCalendar, TaskDueInput } from '$lib/types';
 	import { toast } from 'svelte-sonner';
 
@@ -24,7 +24,7 @@
 
 	let dueKind: 'none' | 'date' | 'time' = 'none';
 	let dueDate = '';
-	let dueDateTime = '';
+	let dueTime = '09:00';
 
 	// Initial state für Edit
 	if (initial.due != null) {
@@ -33,7 +33,8 @@
 			dueDate = initial.due.key;
 		} else if (initial.due.kind === 'time') {
 			dueKind = 'time';
-			dueDateTime = msToLocalInput(initial.due.ms);
+			dueDate = msToDateInput(initial.due.ms);
+			dueTime = msToTimeInput(initial.due.ms);
 		}
 	}
 
@@ -56,8 +57,13 @@
 				}
 				due = { kind: 'date', key: dueDate };
 			} else if (dueKind === 'time') {
+				if (!dueDate || !dueTime) {
+					toast.error('Bitte Datum und Uhrzeit wählen.');
+					saving = false;
+					return;
+				}
 				try {
-					const ms = localInputToMs(dueDateTime);
+					const ms = localInputToMs(`${dueDate}T${dueTime}`);
 					due = { kind: 'time', ms };
 				} catch {
 					toast.error('Bitte gültiges Datum/Zeit wählen.');
@@ -140,7 +146,10 @@
 				{#if dueKind === 'date'}
 					<Input type="date" bind:value={dueDate} class="mt-2" />
 				{:else if dueKind === 'time'}
-					<Input type="datetime-local" bind:value={dueDateTime} class="mt-2" />
+					<div class="mt-2 grid grid-cols-2 gap-2">
+						<Input type="date" bind:value={dueDate} />
+						<Input type="time" bind:value={dueTime} />
+					</div>
 				{/if}
 			</div>
 

@@ -68,7 +68,7 @@
 			return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
 		})();
 		editorInitial = {
-			allDay: true,
+			allDay: false,
 			dayKey: dk,
 			endDateKey: dk,
 			calendarId: calendars[0]?.id ?? ''

@@ -121,6 +121,13 @@ export function localInputToMs(s: string): number {
 	return new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi)).getTime();
 }
 
+/** Epoch ms → "HH:MM" für <input type="time">. */
+export function msToTimeInput(ms: number): string {
+	const d = new Date(ms);
+	const p = (n: number) => String(n).padStart(2, '0');
+	return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /** Epoch ms → "YYYY-MM-DD" für <input type="date">. */
 export function msToDateInput(ms: number): string {
 	const d = new Date(ms);

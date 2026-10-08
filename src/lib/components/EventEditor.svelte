@@ -5,7 +5,7 @@
 	import Textarea from './ui/textarea/textarea.svelte';
 	import Label from './ui/label/label.svelte';
 	import Checkbox from './ui/checkbox/checkbox.svelte';
-	import { msToLocalInput, localInputToMs, msToDateInput, dateInputToMs } from '$lib/dates';
+	import { localInputToMs, msToTimeInput, dayKey as dayKeyOf } from '$lib/dates';
 	import type { EventCreateInput, EventUpdateInput, CalDavCalendar } from '$lib/types';
 	import { toast } from 'svelte-sonner';
 
@@ -16,35 +16,61 @@
 	export let initial: Partial<EventUpdateInput> & { calendarId?: string; uid?: string } = {};
 	export let onSubmit: (input: EventCreateInput | EventUpdateInput) => Promise<void> = async () => {};
 
+	const p2 = (n: number) => String(n).padStart(2, '0');
+	const now = new Date();
+	const today = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())}`;
+	const DEFAULT_DURATION_MS = 30 * 60 * 1000;
+
 	let summary = initial.summary ?? '';
 	let location = initial.location ?? '';
 	let description = initial.description ?? '';
 	let allDay = initial.allDay ?? false;
-	let dayKey = initial.dayKey ?? '';
-	let endDateKey = initial.endDateKey ?? '';
-	let dateTimeStr = '';
+	let dayKey = initial.dayKey ?? today; // Ganztägig: das Datum
+	let startDay = initial.dayKey ?? today; // Uhrzeit-Termin: Start
+	let startTime = '09:00';
+	let endDay = initial.dayKey ?? today; // Uhrzeit-Termin: Ende
+	let endTime = '09:30';
+	let endTouched = false;
 	let calendarId = initial.calendarId ?? (calendars[0]?.id ?? '');
 	let saving = false;
 
-	if (!allDay && initial.startMs != null) {
-		dateTimeStr = msToLocalInput(initial.startMs);
-	} else if (allDay && initial.dayKey) {
-		dayKey = initial.dayKey;
-		endDateKey = initial.endDateKey ?? initial.dayKey;
+	if (initial.startMs != null) {
+		startDay = dayKeyOf(initial.startMs);
+		startTime = msToTimeInput(initial.startMs);
+		if (initial.endMs != null) {
+			endDay = dayKeyOf(initial.endMs);
+			endTime = msToTimeInput(initial.endMs);
+			endTouched = true;
+		}
 	}
 
-	if (!allDay && !dateTimeStr) {
-		// Default: heute 09:00
-		const now = new Date();
-		const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 9, 0);
-		dateTimeStr = msToLocalInput(d.getTime());
+	/** Ende automatisch 30 min nach Start, solange der User es nicht selbst geändert hat. */
+	function syncEnd() {
+		if (endTouched || !startDay || !startTime) return;
+		try {
+			const ms = localInputToMs(`${startDay}T${startTime}`) + DEFAULT_DURATION_MS;
+			endDay = dayKeyOf(ms);
+			endTime = msToTimeInput(ms);
+		} catch {
+			// ungültiger Start – nichts zu synchronisieren
+		}
 	}
 
-	if (!dayKey) {
-		const now = new Date();
-		const p = (n: number) => String(n).padStart(2, '0');
-		dayKey = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
-		endDateKey = dayKey;
+	function onStartInput() {
+		syncEnd();
+	}
+
+	function onEndInput() {
+		endTouched = true;
+	}
+
+	function onAllDayToggle() {
+		if (allDay) {
+			dayKey = startDay; // beim Umschalten das Startdatum behalten
+		} else {
+			startDay = dayKey;
+			syncEnd();
+		}
 	}
 
 	async function handleSubmit() {
@@ -52,56 +78,46 @@
 			toast.error('Titel darf nicht leer sein.');
 			return;
 		}
+		let startMs: number | undefined;
+		let endMs: number | undefined;
 		if (allDay) {
 			if (!dayKey) {
-				toast.error('Bitte Startdatum wählen.');
-				return;
-			}
-			if (endDateKey && endDateKey < dayKey) {
-				toast.error('Enddatum muss nach dem Startdatum liegen.');
+				toast.error('Bitte Datum wählen.');
 				return;
 			}
 		} else {
+			if (!startDay || !startTime || !endDay || !endTime) {
+				toast.error('Bitte Start- und Endzeit wählen.');
+				return;
+			}
 			try {
-				const startMs = localInputToMs(dateTimeStr);
+				startMs = localInputToMs(`${startDay}T${startTime}`);
+				endMs = localInputToMs(`${endDay}T${endTime}`);
 			} catch {
 				toast.error('Bitte gültiges Datum/Zeit wählen.');
+				return;
+			}
+			if (endMs <= startMs) {
+				toast.error('Das Ende muss nach dem Start liegen.');
 				return;
 			}
 		}
 
 		saving = true;
 		try {
-			if (allDay) {
-				const input: EventUpdateInput & { calendarId?: string } = {
-					summary: summary.trim(),
-					location: location.trim() || undefined,
-					description: description.trim() || undefined,
-					allDay: true,
-					dayKey,
-					endDateKey: endDateKey !== dayKey ? endDateKey : undefined
-				};
-				if (mode === 'create') {
-					await onSubmit({ ...input, calendarId } as EventCreateInput);
-				} else {
-					await onSubmit(input);
-				}
+			const input: EventUpdateInput & { calendarId?: string } = {
+				summary: summary.trim(),
+				location: location.trim() || undefined,
+				description: description.trim() || undefined,
+				allDay,
+				dayKey: allDay ? dayKey : undefined,
+				startMs: allDay ? undefined : startMs,
+				endMs: allDay ? undefined : endMs
+			};
+			if (mode === 'create') {
+				await onSubmit({ ...input, calendarId } as EventCreateInput);
 			} else {
-				const startMs = localInputToMs(dateTimeStr);
-				const endMs = startMs + 30 * 60 * 1000; // default 30 min
-				const input: EventUpdateInput & { calendarId?: string } = {
-					summary: summary.trim(),
-					location: location.trim() || undefined,
-					description: description.trim() || undefined,
-					allDay: false,
-					startMs,
-					endMs
-				};
-				if (mode === 'create') {
-					await onSubmit({ ...input, calendarId } as EventCreateInput);
-				} else {
-					await onSubmit(input);
-				}
+				await onSubmit(input);
 			}
 			onClose();
 		} catch (e: any) {
@@ -137,25 +153,33 @@
 
 		<div class="space-y-3 rounded-md border p-3">
 			<div class="flex items-center gap-2">
-				<Checkbox id="ev-allday" bind:checked={allDay} />
+				<Checkbox id="ev-allday" bind:checked={allDay} onchange={onAllDayToggle} />
 				<Label for="ev-allday" class="cursor-pointer">Ganztägig</Label>
 			</div>
 
 			{#if allDay}
+				<div class="space-y-1.5">
+					<Label for="ev-start-date">Datum</Label>
+					<Input id="ev-start-date" type="date" bind:value={dayKey} />
+				</div>
+			{:else}
 				<div class="grid grid-cols-2 gap-3">
 					<div class="space-y-1.5">
 						<Label for="ev-start-date">Startdatum</Label>
-						<Input id="ev-start-date" type="date" bind:value={dayKey} />
+						<Input id="ev-start-date" type="date" bind:value={startDay} onchange={onStartInput} />
+					</div>
+					<div class="space-y-1.5">
+						<Label for="ev-start-time">Startzeit</Label>
+						<Input id="ev-start-time" type="time" bind:value={startTime} onchange={onStartInput} />
 					</div>
 					<div class="space-y-1.5">
 						<Label for="ev-end-date">Enddatum</Label>
-						<Input id="ev-end-date" type="date" bind:value={endDateKey} />
+						<Input id="ev-end-date" type="date" bind:value={endDay} onchange={onEndInput} />
 					</div>
-				</div>
-			{:else}
-				<div class="space-y-1.5">
-					<Label for="ev-datetime">Datum & Zeit</Label>
-					<Input id="ev-datetime" type="datetime-local" bind:value={dateTimeStr} />
+					<div class="space-y-1.5">
+						<Label for="ev-end-time">Endzeit</Label>
+						<Input id="ev-end-time" type="time" bind:value={endTime} onchange={onEndInput} />
+					</div>
 				</div>
 			{/if}
 		</div>
