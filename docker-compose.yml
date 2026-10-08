@@ -16,5 +16,5 @@ services:
 # Live-Daten nie durch ein leeres Neuvolume ersetzen (siehe Incident 2026-10-08).
 volumes:
   horizont-data:
-    external:
-      name: calender-app_horizont-data
+    name: calender-app_horizont-data
+    external: true
