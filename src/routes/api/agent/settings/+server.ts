@@ -1,7 +1,8 @@
 // KI-Agent: eigene (pro-User) Konfiguration.
 //
 //   GET → View der eigenen Config + Status der globalen Config
-//   PUT → eigene Config speichern (apiKey bleibt, wenn leer) oder {reset: true}
+//   PUT → eigene Config speichern (apiKey bleibt, wenn leer),
+//         {enabled: bool} nur an-/ausschalten, oder {reset: true}
 //
 // Der API-Key wird nie im Klartext zurückgegeben.
 
@@ -11,7 +12,8 @@ import {
 	getAgentGlobalView,
 	getAgentUser,
 	getAgentUserView,
-	saveAgentUser
+	saveAgentUser,
+	setAgentUserEnabled
 } from '$server/agent/configStore';
 import type { AgentProvider } from '$lib/types';
 
@@ -37,6 +39,7 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
 
 	const body = (await request.json().catch(() => null)) as {
 		reset?: boolean;
+		enabled?: boolean;
 		provider?: string;
 		baseUrl?: string;
 		model?: string;
@@ -44,7 +47,9 @@ export const PUT: RequestHandler = async ({ request, locals }) => {
 	} | null;
 	if (!body) return json({ error: 'Ungültiger JSON-Body.' }, { status: 400 });
 
-	if (body.reset === true) {
+	if (typeof body.enabled === 'boolean') {
+		setAgentUserEnabled(user.id, body.enabled);
+	} else if (body.reset === true) {
 		saveAgentUser(user.id, null);
 	} else {
 		const provider: AgentProvider = body.provider === 'ollama' ? 'ollama' : 'openai';

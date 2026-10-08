@@ -8,6 +8,7 @@
 	import Label from '$lib/components/ui/label/label.svelte';
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
+	import Checkbox from '$lib/components/ui/checkbox/checkbox.svelte';
 	import { toast } from 'svelte-sonner';
 	import BotIcon from '@lucide/svelte/icons/bot';
 	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
@@ -22,6 +23,7 @@
 	let view = $state<AgentSettingsView | null>(null);
 	let loading = $state(true);
 
+	let fEnabled = $state(true);
 	let fProvider = $state<AgentProvider>('openai');
 	let fBaseUrl = $state('');
 	let fModel = $state('');
@@ -30,15 +32,44 @@
 	let saving = $state(false);
 	let resetting = $state(false);
 	let testing = $state(false);
+	let toggling = $state(false);
 	let testResult = $state<{ ok: boolean; error?: string; reply?: string } | null>(null);
 
 	function resetForm(): void {
 		if (!view) return;
+		fEnabled = view.own.enabled;
 		const src = view.own.configured ? view.own : view.global.configured ? view.global : null;
 		fProvider = src?.provider ?? 'openai';
 		fBaseUrl = src?.baseUrl ?? '';
 		fModel = src?.model ?? '';
 		fApiKey = '';
+	}
+
+	async function toggleEnabled(next: boolean): Promise<void> {
+		if (!view || toggling) return;
+		const prev = view.own.enabled;
+		fEnabled = next;
+		view = { ...view, own: { ...view.own, enabled: next } };
+		toggling = true;
+		try {
+			const res = await fetch('/api/agent/settings', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ enabled: next })
+			});
+			const body = (await res.json().catch(() => null)) as { own?: AgentSettingsView['own']; error?: string } | null;
+			if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`);
+			if (body?.own) view = { ...view, own: body.own };
+			toast.success(next ? 'KI-Funktionen aktiviert.' : 'KI-Funktionen deaktiviert.');
+			// Widget in der App-Layout informieren, dass sich die Sichtbarkeit geändert hat.
+			window.dispatchEvent(new CustomEvent('horizont:agent-refresh'));
+		} catch (e) {
+			fEnabled = prev;
+			view = { ...view, own: { ...view.own, enabled: prev } };
+			toast.error(errMsg(e));
+		} finally {
+			toggling = false;
+		}
 	}
 
 	async function load(): Promise<void> {
@@ -156,7 +187,12 @@
 	<div class="flex items-center gap-2">
 		<BotIcon class="size-4" />
 		<h2 class="text-sm font-semibold">KI-Agent</h2>
-		{#if effective}
+		{#if view?.own.enabled === false}
+			<Badge variant="outline" class="text-[10px] text-muted-foreground">
+				<CircleXIcon class="size-3" />
+				deaktiviert
+			</Badge>
+		{:else if effective}
 			<Badge variant="secondary" class="text-[10px] text-emerald-700 dark:text-emerald-400">
 				<CheckCircleIcon class="size-3" />
 				{effective}
@@ -170,7 +206,7 @@
 	</div>
 	<p class="text-xs text-muted-foreground">
 		Frage über das Chat-Widget (unten rechts) nach Terminen, Aufgaben oder Workflows.
-		Schreibaktionen bestätigt du vorab. Nutze deine eigene Konfiguration oder die
+		Schreibaktionen bestätigst du vorab. Nutze deine eigene Konfiguration oder die
 		global vom Administrator.
 	</p>
 
@@ -181,6 +217,23 @@
 		</div>
 	{:else if view}
 		<div class="space-y-4 rounded-xl border border-border bg-card p-5">
+			<div class="flex items-start gap-2.5 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+				<Checkbox
+					id="agent-enabled"
+					bind:checked={fEnabled}
+					disabled={toggling}
+					onchange={() => toggleEnabled(fEnabled)}
+				/>
+				<div class="space-y-0.5">
+					<Label for="agent-enabled" class="text-sm">KI-Funktionen aktivieren</Label>
+					<p class="text-xs text-muted-foreground">
+						Aus = das Agent-Symbol (unten rechts) wird in der gesamten App ausgeblendet
+						und es werden keine KI-Anfragen mehr gesendet.
+					</p>
+				</div>
+			</div>
+
+			{#if fEnabled}
 			<div class="grid gap-4 sm:grid-cols-2">
 				<div class="space-y-1.5">
 					<Label for="agent-provider">Provider</Label>
@@ -261,6 +314,15 @@
 						<span>{testResult.error ?? 'Test fehlgeschlagen.'}</span>
 					{/if}
 				</div>
+			{/if}
+			{:else}
+			<div class="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+				<CircleXIcon class="mt-0.5 size-3.5 shrink-0" />
+				<span>
+					Deine KI-Funktionen sind deaktiviert – das Chat-Widget bleibt in der gesamten App ausgeblendet.
+					Deine Konfiguration wird gespeichert und nach erneuter Aktivierung wieder genutzt.
+				</span>
+			</div>
 			{/if}
 		</div>
 	{/if}

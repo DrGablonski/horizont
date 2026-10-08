@@ -2,14 +2,19 @@
 //   global  → DATA_DIR/system/agent.json   (Admin, mit Freigabe-Toggle)
 //   pro User → DATA_DIR/users/{id}/agent.json (Override durch den User selbst)
 //
+// Der User kann die KI-Funktionen zusätzlich per-User komplett deaktivieren
+// (enabled=false, Default: true) – dann bleibt das Chat-Widget für ihn
+// unsichtbar, unabhängig von der Config.
+//
 // Auflösung der effektiven Konfiguration:
+//   0. User-Flag enabled=false → null (KI komplett aus)
 //   1. eigene User-Config (wenn vollständig) → Source 'user'
 //   2. globale Config (wenn vollständig UND freigegeben) → Source 'global'
 //   3. sonst null → Chat-Widget bleibt versteckt
 //
 // API-Keys werden nur serverseitig gehalten; Views enthalten nie Klartext.
 
-import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync, rmSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { DATA_DIR } from '$server/lib/constants';
 import type { AgentConfig, AgentConfigView, AgentProvider } from '$lib/types';
@@ -105,6 +110,8 @@ export function saveAgentGlobal(input: {
 
 interface UserFile {
 	version: 1;
+	/** KI-Funktionen für diesen User komplett an/aus (Default: true). */
+	enabled: boolean;
 	config: AgentConfig | null;
 }
 
@@ -114,30 +121,41 @@ function userAgentPath(userId: string): string {
 	return join(p, 'agent.json');
 }
 
-function readUserAgent(userId: string): AgentConfig | null {
+function readUserFile(userId: string): UserFile | null {
 	const p = userAgentPath(userId);
 	if (!existsSync(p)) return null;
 	try {
 		const raw = JSON.parse(readFileSync(p, 'utf8')) as Partial<UserFile>;
-		return sanitizeConfig(raw.config);
+		return {
+			version: 1,
+			enabled: raw.enabled !== false,
+			config: sanitizeConfig(raw.config)
+		};
 	} catch {
 		return null;
 	}
 }
 
-function writeUserAgent(userId: string, config: AgentConfig | null): void {
+function writeUserFile(userId: string, data: UserFile): void {
 	const p = userAgentPath(userId);
-	if (config == null) {
-		rmSync(p, { force: true });
-		return;
-	}
 	const tmp = `${p}.tmp`;
-	writeFileSync(tmp, JSON.stringify({ version: 1, config }, null, 2), 'utf8');
+	writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
 	renameSync(tmp, p);
 }
 
 export function getAgentUser(userId: string): AgentConfig | null {
-	return readUserAgent(userId);
+	return readUserFile(userId)?.config ?? null;
+}
+
+/** Ist die KI für diesen User aktiv? (Default: true) */
+export function isAgentUserEnabled(userId: string): boolean {
+	return readUserFile(userId)?.enabled !== false;
+}
+
+/** Nur das An-/Ausschalten umlegen, Config bleibt unverändert. */
+export function setAgentUserEnabled(userId: string, enabled: boolean): void {
+	const current = readUserFile(userId) ?? { version: 1, enabled: true, config: null };
+	writeUserFile(userId, { ...current, enabled });
 }
 
 export function saveAgentUser(userId: string, config: AgentConfig | null): void {
@@ -146,7 +164,8 @@ export function saveAgentUser(userId: string, config: AgentConfig | null): void 
 		const model = (config.model ?? '').trim();
 		if (!baseUrl || !model) throw new Error('Basis-URL und Modell sind erforderlich.');
 	}
-	writeUserAgent(userId, config);
+	const current = readUserFile(userId) ?? { version: 1, enabled: true, config: null };
+	writeUserFile(userId, { ...current, config });
 }
 
 // ── Auflösung ─────────────────────────────────────────────────────────────
@@ -158,8 +177,9 @@ export interface ResolvedAgent {
 
 /** Effektive Agent-Config für einen User (null = Widget bleibt unsichtbar). */
 export function resolveAgent(userId: string): ResolvedAgent | null {
-	const own = readUserAgent(userId);
-	if (own) return { config: own, source: 'user' };
+	const file = readUserFile(userId);
+	if (file?.enabled === false) return null;
+	if (file?.config) return { config: file.config, source: 'user' };
 	const g = readGlobal();
 	if (g.enabled && g.config) return { config: g.config, source: 'global' };
 	return null;
@@ -167,12 +187,21 @@ export function resolveAgent(userId: string): ResolvedAgent | null {
 
 /** Eigene User-Config als View (für die Einstellungen). */
 export function getAgentUserView(userId: string): AgentConfigView {
-	const c = readUserAgent(userId);
+	const file = readUserFile(userId);
+	const c = file?.config ?? null;
 	if (!c) {
-		return { configured: false, provider: 'openai', baseUrl: '', model: '', hasApiKey: false };
+		return {
+			configured: false,
+			enabled: file?.enabled !== false,
+			provider: 'openai',
+			baseUrl: '',
+			model: '',
+			hasApiKey: false
+		};
 	}
 	return {
 		configured: true,
+		enabled: file?.enabled !== false,
 		provider: c.provider,
 		baseUrl: c.baseUrl,
 		model: c.model,

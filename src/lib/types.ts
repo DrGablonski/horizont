@@ -293,6 +293,8 @@ export interface AgentConfig {
 /** View ohne API-Key. */
 export interface AgentConfigView {
 	configured: boolean;
+	/** KI-Funktionen für diesen User komplett an/aus. */
+	enabled: boolean;
 	provider: AgentProvider;
 	baseUrl: string;
 	model: string;

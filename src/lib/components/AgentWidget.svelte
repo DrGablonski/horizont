@@ -144,14 +144,25 @@
 		}
 	}
 
+	async function refreshStatus(): Promise<void> {
+		try {
+			status = await agent.status();
+		} catch {
+			status = { available: false, source: null, provider: null, model: null, baseUrl: null };
+		}
+	}
+
 	onMount(() => {
-		agent
-			.status()
-			.then((s) => (status = s))
-			.catch(() => {
-				status = { available: false, source: null, provider: null, model: null, baseUrl: null };
-			});
-		return () => aborter?.abort();
+		refreshStatus();
+		// z. B. nach dem An-/Ausschalten der KI-Funktionen in den Einstellungen.
+		function onRefresh(): void {
+			refreshStatus();
+		}
+		window.addEventListener('horizont:agent-refresh', onRefresh);
+		return () => {
+			window.removeEventListener('horizont:agent-refresh', onRefresh);
+			aborter?.abort();
+		};
 	});
 
 	// Automatisch nach unten scrollen, wenn sich der Inhalt ändert.
