@@ -10,7 +10,7 @@ import type {
 	TaskCreateInput,
 	TaskUpdateInput
 } from '$lib/types';
-import { dayKey as toDayKey, msFromKey, todayKey, addDaysMs } from '$lib/dates';
+import { dayKey as toDayKey, msFromKey, todayKey, addDaysMs, localInputToMs } from '$lib/dates';
 import { listConnections } from '$server/store/connections';
 import { fetchCalendarIcs } from '$server/caldav/client';
 import { resolveAllCalendars } from '$server/caldav/multi';
@@ -142,6 +142,8 @@ export async function runReadTool(ctx: ExecContext, name: string, args: Record<s
 				allDay: e.allDay,
 				startMs: e.startMs,
 				endMs: e.endMs,
+				startLocal: `${toDayKey(e.startMs)}T${fmtTime(e.startMs)}`,
+				endLocal: `${toDayKey(e.endMs)}T${fmtTime(e.endMs)}`,
 				dayKey: toDayKey(e.startMs),
 				...(e.location ? { location: e.location } : {}),
 				...(e.description ? { description: e.description } : {})
@@ -170,7 +172,7 @@ export async function runReadTool(ctx: ExecContext, name: string, args: Record<s
 				summary: t.summary,
 				completed: t.completed,
 				...(t.dueKey ? { dueKey: t.dueKey } : {}),
-				...(t.dueMs != null ? { dueMs: t.dueMs } : {}),
+				...(t.dueMs != null ? { dueMs: t.dueMs, dueLocal: `${toDayKey(t.dueMs)}T${fmtTime(t.dueMs)}` } : {}),
 				...(t.priority != null ? { priority: t.priority } : {}),
 				...(t.description ? { description: t.description } : {})
 			}));
@@ -203,6 +205,21 @@ function asNumber(v: unknown): number | undefined {
 	return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }
 
+/** „YYYY-MM-DDTHH:MM" (lokal) → epoch ms; toleriert auch epoch-ms-Numbers. Wirft bei ungültigem Format. */
+function localToMs(v: unknown): number | undefined {
+	if (typeof v === 'number' && Number.isFinite(v)) return v;
+	if (typeof v === 'string' && v.trim() !== '') return localInputToMs(v.trim());
+	return undefined;
+}
+
+function localToMsSafe(v: unknown): number | undefined {
+	try {
+		return localToMs(v);
+	} catch {
+		return undefined;
+	}
+}
+
 function buildEventInput(args: Record<string, unknown>): EventUpdateInput {
 	const allDay = args.allDay === true;
 	return {
@@ -212,8 +229,8 @@ function buildEventInput(args: Record<string, unknown>): EventUpdateInput {
 		allDay,
 		dayKey: asString(args.dayKey),
 		endDateKey: asString(args.endDateKey),
-		startMs: asNumber(args.startMs),
-		endMs: asNumber(args.endMs)
+		startMs: localToMs(args.startLocal),
+		endMs: localToMs(args.endLocal)
 	};
 }
 
@@ -228,8 +245,8 @@ function buildTaskDue(args: Record<string, unknown>): TaskUpdateInput['due'] | u
 		return { kind: 'date', key };
 	}
 	if (d.kind === 'time') {
-		const ms = asNumber(d.ms);
-		if (ms == null) throw new Error('due.ms fehlt bei kind="time".');
+		const ms = localToMs(d.local ?? d.ms);
+		if (ms == null) throw new Error('due.local fehlt bei kind="time" (Format "YYYY-MM-DDTHH:MM").');
 		return { kind: 'time', ms };
 	}
 	throw new Error('due.kind muss "none", "date" oder "time" sein.');
@@ -424,7 +441,10 @@ function dueText(args: Record<string, unknown>): string {
 	const d = due as Record<string, unknown>;
 	if (d.kind === 'none') return 'Fällig: keine';
 	if (d.kind === 'date' && typeof d.key === 'string') return `Fällig: ${fmtDay(d.key)}`;
-	if (d.kind === 'time' && typeof d.ms === 'number') return `Fällig: ${fmtDay(d.ms, false)} ${fmtTime(d.ms)}`;
+	if (d.kind === 'time') {
+		const ms = localToMsSafe(d.local ?? d.ms);
+		if (ms != null) return `Fällig: ${fmtDay(ms, false)} ${fmtTime(ms)}`;
+	}
 	return '';
 }
 
@@ -445,8 +465,8 @@ export function approvalSummary(name: string, args: Record<string, unknown>): st
 					: '';
 				return `${name === 'create_event' ? 'Termin anlegen' : 'Termin ändern'}: „${summary}"${when ? ' · ' + when : ''}`;
 			}
-			const startMs = asNumber(args.startMs);
-			const endMs = asNumber(args.endMs);
+			const startMs = localToMsSafe(args.startLocal);
+			const endMs = localToMsSafe(args.endLocal);
 			const when = startMs != null ? `${fmtDay(startMs, false)} ${fmtTime(startMs)}${endMs != null ? '–' + fmtTime(endMs) : ''}` : '';
 			return `${name === 'create_event' ? 'Termin anlegen' : 'Termin ändern'}: „${summary}"${when ? ' · ' + when : ''}`;
 		}

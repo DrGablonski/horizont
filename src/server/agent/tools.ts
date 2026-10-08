@@ -55,7 +55,7 @@ export const AGENT_TOOLS: ToolDef[] = [
 	{
 		name: 'create_event',
 		description:
-			'Einen neuen Kalendereintrag anlegen. allDay=true → dayKey (YYYY-MM-DD, optional endDateKey für mehrere Tage). allDay=false → startMs/endMs (epoch ms, UTC; Endzeit muss nach Startzeit liegen).',
+			'Einen neuen Kalendereintrag anlegen. allDay=true → dayKey (YYYY-MM-DD, optional endDateKey für mehrere Tage). allDay=false → startLocal/endLocal als "YYYY-MM-DDTHH:MM" (lokale Zeit; Endzeit nach Start).',
 		parameters: {
 			type: 'object',
 			properties: {
@@ -66,8 +66,8 @@ export const AGENT_TOOLS: ToolDef[] = [
 				allDay: { type: 'boolean', description: 'Ganztägig?' },
 				dayKey: str('Startdatum YYYY-MM-DD (Pflicht bei allDay=true)'),
 				endDateKey: str('Enddatum YYYY-MM-DD, inklusiv (optional)'),
-				startMs: num('Startzeit epoch ms UTC (Pflicht bei allDay=false)'),
-				endMs: num('Endzeit epoch ms UTC, > startMs (Pflicht bei allDay=false)')
+				startLocal: str('Startzeit "YYYY-MM-DDTHH:MM" in lokaler Zeit, z. B. "2026-10-08T11:00" (Pflicht bei allDay=false)'),
+				endLocal: str('Endzeit "YYYY-MM-DDTHH:MM" in lokaler Zeit, nach Start (Pflicht bei allDay=false)')
 			},
 			required: ['calendarId', 'summary', 'allDay']
 		},
@@ -88,8 +88,8 @@ export const AGENT_TOOLS: ToolDef[] = [
 				allDay: { type: 'boolean', description: 'Ganztägig?' },
 				dayKey: str('Startdatum YYYY-MM-DD'),
 				endDateKey: str('Enddatum YYYY-MM-DD, inklusiv (optional)'),
-				startMs: num('Startzeit epoch ms UTC'),
-				endMs: num('Endzeit epoch ms UTC, > startMs')
+				startLocal: str('Startzeit "YYYY-MM-DDTHH:MM" in lokaler Zeit'),
+				endLocal: str('Endzeit "YYYY-MM-DDTHH:MM" in lokaler Zeit, nach Start')
 			},
 			required: ['calendarId', 'uid', 'summary', 'allDay']
 		},
@@ -110,7 +110,7 @@ export const AGENT_TOOLS: ToolDef[] = [
 	{
 		name: 'create_task',
 		description:
-			'Eine neue Aufgabe anlegen. calendarId optional (Default: erster Kalender). due: {kind:"none"} | {kind:"date", key:"YYYY-MM-DD"} | {kind:"time", ms: epoch ms}. priority 1=hoch … 9=niedrig (optional).',
+			'Eine neue Aufgabe anlegen. calendarId optional (Default: erster Kalender). due: {kind:"none"} | {kind:"date", key:"YYYY-MM-DD"} | {kind:"time", local:"YYYY-MM-DDTHH:MM" (lokale Zeit)}. priority 1=hoch … 9=niedrig (optional).',
 		parameters: {
 			type: 'object',
 			properties: {
@@ -124,7 +124,7 @@ export const AGENT_TOOLS: ToolDef[] = [
 					properties: {
 						kind: { type: 'string', enum: ['none', 'date', 'time'] },
 						key: str('Datum YYYY-MM-DD (bei kind="date")'),
-						ms: num('Zeitpunkt epoch ms (bei kind="time")')
+						local: str('Zeitpunkt "YYYY-MM-DDTHH:MM" in lokaler Zeit (bei kind="time")')
 					},
 					required: ['kind']
 				},
@@ -151,7 +151,7 @@ export const AGENT_TOOLS: ToolDef[] = [
 					properties: {
 						kind: { type: 'string', enum: ['none', 'date', 'time'] },
 						key: str('Datum YYYY-MM-DD'),
-						ms: num('Zeitpunkt epoch ms')
+						local: str('Zeitpunkt "YYYY-MM-DDTHH:MM" in lokaler Zeit')
 					},
 					required: ['kind']
 				},

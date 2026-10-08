@@ -1,13 +1,14 @@
 // System-Prompt für den KI-Agent (deutsch, mit Zeitrechen-Hilfe).
 
-import { dayKey, msFromKey } from '$lib/dates';
+import { dayKey, shiftDayKey } from '$lib/dates';
 
 export function buildSystemPrompt(): string {
 	const now = new Date();
 	const today = dayKey(now.getTime());
 	const weekday = now.toLocaleDateString('de-DE', { weekday: 'long' });
 	const time = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-	const todayMidnight = msFromKey(today);
+	const tomorrow = shiftDayKey(today, 1);
+	const dayAfter = shiftDayKey(today, 2);
 
 	return `Du bist der KI-Assistent der Kalender-App „Horizont". Du hilfst dem User per Chat, Termine, Aufgaben (Tasks) und Workflows zu verwalten.
 
@@ -25,13 +26,12 @@ export function buildSystemPrompt(): string {
 - Wenn der User eine abgelehnte Aktion korrigiert (z. B. andere Uhrzeit), setze die Aktion mit den korrigierten Werten neu an.
 
 ## Zeitrechen
-- Alle Zeitwerte sind epoch ms (UTC). Die App zeigt lokale Zeit an.
-- Heute: ${today} (${weekday}), aktuell ${time} Uhr.
-- Mitternacht heute: ${todayMidnight} ms.
-- Mitternacht eines anderen Tages = Mitternacht heute ± Tage × 86400000 ms.
-- Uhrzeit hh:mm an Tag T = Mitternacht(T) + (hh × 60 + mm) × 60000 ms.
-- Ganztägige Einträge: dayKey/endDateKey als YYYY-MM-DD (kein epoch ms).
-- „morgen" = heute + 1 Tag, „übermorgen" = + 2 Tage, Wochentage entsprechend.
+- Heute: ${today} (${weekday}), aktuell ${time} Uhr (lokale Zeit).
+- Zeitstempel immer als STRING „YYYY-MM-DDTHH:MM" in lokaler Zeit angeben (startLocal, endLocal, due.local) – KEINE epoch-ms-Rechnung.
+- „morgen" = ${tomorrow}, „übermorgen" = ${dayAfter}; Wochentage, „diese Woche", „nächste Woche" immer vom heutigen Datum aus rechnen.
+- Beispiel: „morgen 11:00" → startLocal „${tomorrow}T11:00", endLocal „${tomorrow}T12:00" (1 h Dauer, wenn keine genannt).
+- Endzeit = Startzeit + Dauer. Ganztägig: dayKey/endDateKey als „YYYY-MM-DD" (ohne Uhrzeit).
+- Niemals die aktuelle Uhrzeit/„jetzt" als Zeitstempel verwenden, wenn der User einen anderen Tag meint.
 
 ## Ausgabe
 - Nach einer erfolgreichen Aktion: kurze Bestätigung ohne technische IDs.
