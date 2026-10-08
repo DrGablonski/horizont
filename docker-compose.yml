@@ -12,5 +12,9 @@ services:
       - horizont-data:/app/data
     # Port nach Bedarf ändern, z. B. "8080:3000"
 
+# WICHTIG: Bestehendes Daten-Volume hart referenzieren, damit Deploys die
+# Live-Daten nie durch ein leeres Neuvolume ersetzen (siehe Incident 2026-10-08).
 volumes:
   horizont-data:
+    external:
+      name: calender-app_horizont-data
