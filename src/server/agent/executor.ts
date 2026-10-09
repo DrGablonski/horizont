@@ -86,112 +86,116 @@ function shortCalendar(cal: CalDavCalendar): Record<string, unknown> {
 // ── Read-Tools ────────────────────────────────────────────────────────────
 
 export async function runReadTool(ctx: ExecContext, name: string, args: Record<string, unknown>): Promise<ToolResult> {
-	switch (name) {
-		case 'list_calendars': {
-			const conns = ctx.connections;
-			if (conns.length === 0) {
+	try {
+		switch (name) {
+			case 'list_calendars': {
+				const conns = ctx.connections;
+				if (conns.length === 0) {
+					return ok({
+						calendars: [],
+						note: 'Der User hat keine CalDAV-Verbindung. Events/Tasks können nicht angelegt werden.'
+					});
+				}
+				const { items, errors } = await resolveAllCalendars(conns);
 				return ok({
-					calendars: [],
-					note: 'Der User hat keine CalDAV-Verbindung. Events/Tasks können nicht angelegt werden.'
+					calendars: publicCalendars(items).map(shortCalendar),
+					...(errors.length ? { errors } : {})
 				});
 			}
-			const { items, errors } = await resolveAllCalendars(conns);
-			return ok({
-				calendars: publicCalendars(items).map(shortCalendar),
-				...(errors.length ? { errors } : {})
-			});
-		}
-		case 'search_events': {
-			const conns = ctx.connections;
-			if (conns.length === 0) return ok({ events: [], note: 'Keine Kalender verfügbar.' });
+			case 'search_events': {
+				const conns = ctx.connections;
+				if (conns.length === 0) return ok({ events: [], note: 'Keine Kalender verfügbar.' });
 
-			const now = Date.now();
-			const todayStart = msFromKey(todayKey());
-			const fromMs = typeof args.fromMs === 'number' ? args.fromMs : addDaysMs(todayStart, -30);
-			const toMs = typeof args.toMs === 'number' ? args.toMs : addDaysMs(todayStart, 30);
-			const query = typeof args.query === 'string' ? args.query.trim().toLowerCase() : '';
-			const limit = Math.min(typeof args.limit === 'number' ? args.limit : 30, 100);
+				const now = Date.now();
+				const todayStart = msFromKey(todayKey());
+				const fromMs = typeof args.fromMs === 'number' ? args.fromMs : addDaysMs(todayStart, -30);
+				const toMs = typeof args.toMs === 'number' ? args.toMs : addDaysMs(todayStart, 30);
+				const query = typeof args.query === 'string' ? args.query.trim().toLowerCase() : '';
+				const limit = Math.min(typeof args.limit === 'number' ? args.limit : 30, 100);
 
-			const { items, errors } = await resolveAllCalendars(conns);
-			const events: ReturnType<typeof icalToEventItems> = [];
-			for (const { connection, calendar } of items) {
-				if (isWorkflowsCalendar(calendar)) continue;
-				try {
-					const icsList = await fetchCalendarIcs(connection, calendar, toIcsUtc(fromMs), toIcsUtc(toMs));
-					events.push(...icalToEventItems(icsList, calendar, fromMs, toMs));
-				} catch {
-					// einzelne Kalender überspringen
+				const { items, errors } = await resolveAllCalendars(conns);
+				const events: ReturnType<typeof icalToEventItems> = [];
+				for (const { connection, calendar } of items) {
+					if (isWorkflowsCalendar(calendar)) continue;
+					try {
+						const icsList = await fetchCalendarIcs(connection, calendar, toIcsUtc(fromMs), toIcsUtc(toMs));
+						events.push(...icalToEventItems(icsList, calendar, fromMs, toMs));
+					} catch {
+						// einzelne Kalender überspringen
+					}
 				}
+				events.sort((a, b) => a.startMs - b.startMs || a.summary.localeCompare(b.summary, 'de'));
+
+				const filtered = query
+					? events.filter(
+							(e) =>
+								e.summary.toLowerCase().includes(query) ||
+								(e.location ?? '').toLowerCase().includes(query) ||
+								(e.description ?? '').toLowerCase().includes(query)
+						)
+					: events;
+
+				const out = filtered.slice(0, limit).map((e) => ({
+					uid: e.uid,
+					calendarId: e.calendarId,
+					calendarName: e.calendarName,
+					summary: e.summary,
+					allDay: e.allDay,
+					startMs: e.startMs,
+					endMs: e.endMs,
+					startLocal: `${toDayKey(e.startMs)}T${fmtTime(e.startMs)}`,
+					endLocal: `${toDayKey(e.endMs)}T${fmtTime(e.endMs)}`,
+					dayKey: toDayKey(e.startMs),
+					...(e.location ? { location: e.location } : {}),
+					...(e.description ? { description: e.description } : {})
+				}));
+				return ok({
+					count: out.length,
+					total: filtered.length,
+					range: { fromMs, toMs },
+					events: out,
+					...(errors.length ? { errors } : {}),
+					...(!query && filtered.length > limit
+						? { note: `Nur ${limit} von ${filtered.length} Treffern gezeigt. Präzisiere Suchzeitraum oder Suchtext.` }
+						: {})
+				});
 			}
-			events.sort((a, b) => a.startMs - b.startMs || a.summary.localeCompare(b.summary, 'de'));
-
-			const filtered = query
-				? events.filter(
-						(e) =>
-							e.summary.toLowerCase().includes(query) ||
-							(e.location ?? '').toLowerCase().includes(query) ||
-							(e.description ?? '').toLowerCase().includes(query)
-					)
-				: events;
-
-			const out = filtered.slice(0, limit).map((e) => ({
-				uid: e.uid,
-				calendarId: e.calendarId,
-				calendarName: e.calendarName,
-				summary: e.summary,
-				allDay: e.allDay,
-				startMs: e.startMs,
-				endMs: e.endMs,
-				startLocal: `${toDayKey(e.startMs)}T${fmtTime(e.startMs)}`,
-				endLocal: `${toDayKey(e.endMs)}T${fmtTime(e.endMs)}`,
-				dayKey: toDayKey(e.startMs),
-				...(e.location ? { location: e.location } : {}),
-				...(e.description ? { description: e.description } : {})
-			}));
-			return ok({
-				count: out.length,
-				total: filtered.length,
-				range: { fromMs, toMs },
-				events: out,
-				...(errors.length ? { errors } : {}),
-				...(!query && filtered.length > limit
-					? { note: `Nur ${limit} von ${filtered.length} Treffern gezeigt. Präzisiere Suchzeitraum oder Suchtext.` }
-					: {})
-			});
+			case 'list_tasks': {
+				const conns = ctx.connections;
+				if (conns.length === 0) return ok({ tasks: [], note: 'Keine Kalender verfügbar.' });
+				const onlyOpen = args.onlyOpen !== false;
+				let tasks = await listAllTasks(conns);
+				if (onlyOpen) tasks = tasks.filter((t) => !t.completed);
+				const out = tasks.slice(0, 100).map((t) => ({
+					uid: t.uid,
+					calendarId: t.calendarId,
+					calendarName: t.calendarName,
+					summary: t.summary,
+					completed: t.completed,
+					...(t.dueKey ? { dueKey: t.dueKey } : {}),
+					...(t.dueMs != null ? { dueMs: t.dueMs, dueLocal: `${toDayKey(t.dueMs)}T${fmtTime(t.dueMs)}` } : {}),
+					...(t.priority != null ? { priority: t.priority } : {}),
+					...(t.description ? { description: t.description } : {})
+				}));
+				return ok({ count: out.length, tasks: out });
+			}
+			case 'list_workflows': {
+				const workflows = await listWorkflows(ctx.userId);
+				const out = workflows.map((w) => ({
+					id: w.id,
+					title: w.title,
+					notes: w.notes || undefined,
+					progress: w.progress,
+					completed: w.completedAt != null,
+					steps: w.steps.map((s) => ({ id: s.id, title: s.title, done: s.done }))
+				}));
+				return ok({ count: out.length, workflows: out });
+			}
+			default:
+				return fail(new Error(`Unbekanntes Read-Tool: ${name}`));
 		}
-		case 'list_tasks': {
-			const conns = ctx.connections;
-			if (conns.length === 0) return ok({ tasks: [], note: 'Keine Kalender verfügbar.' });
-			const onlyOpen = args.onlyOpen !== false;
-			let tasks = await listAllTasks(conns);
-			if (onlyOpen) tasks = tasks.filter((t) => !t.completed);
-			const out = tasks.slice(0, 100).map((t) => ({
-				uid: t.uid,
-				calendarId: t.calendarId,
-				calendarName: t.calendarName,
-				summary: t.summary,
-				completed: t.completed,
-				...(t.dueKey ? { dueKey: t.dueKey } : {}),
-				...(t.dueMs != null ? { dueMs: t.dueMs, dueLocal: `${toDayKey(t.dueMs)}T${fmtTime(t.dueMs)}` } : {}),
-				...(t.priority != null ? { priority: t.priority } : {}),
-				...(t.description ? { description: t.description } : {})
-			}));
-			return ok({ count: out.length, tasks: out });
-		}
-		case 'list_workflows': {
-			const workflows = await listWorkflows(ctx.userId);
-			const out = workflows.map((w) => ({
-				id: w.id,
-				title: w.title,
-				notes: w.notes || undefined,
-				progress: w.progress,
-				completed: w.completedAt != null,
-				steps: w.steps.map((s) => ({ id: s.id, title: s.title, done: s.done }))
-			}));
-			return ok({ count: out.length, workflows: out });
-		}
-		default:
-			return fail(new Error(`Unbekanntes Read-Tool: ${name}`));
+	} catch (e) {
+		return fail(e);
 	}
 }
 
