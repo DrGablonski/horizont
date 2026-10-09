@@ -41,10 +41,13 @@
 	});
 	const loggedIn = $derived(user !== null);
 
+	// „Administration“ erscheint nur für Admins – sowohl in der
+	// Desktop-Leiste als auch im mobilen Burger-Menü.
 	const nav = $derived([
 		{ href: '/', label: 'Heute' },
 		{ href: '/archiv', label: 'Archiv' },
-		{ href: '/einstellungen', label: 'Einstellungen' }
+		{ href: '/einstellungen', label: 'Einstellungen' },
+		...(user?.role === 'admin' ? [{ href: '/admin', label: 'Administration' }] : [])
 	]);
 
 	function navClass(href: string): string {

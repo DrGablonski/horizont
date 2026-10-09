@@ -1,8 +1,9 @@
 import { redirect } from '@sveltejs/kit';
+import type { PageServerLoad } from './$types';
 
-// Die Admin-Funktionen (User-Verwaltung, System-CALDAV) wurden in
-// /einstellungen verlagert (dort nur für Admins sichtbare Tabs).
-// Diese Route bleibt als Umleitung für alte Links.
-export function load(): void {
-	redirect(303, '/einstellungen');
-}
+// Administration ist nur für Admins. Nicht angemeldete Users werden
+// bereits im Server-Hook zu /login weitergeleitet; angemeldete
+// Nicht-Admins kommen zurück zur Hauptseite.
+export const load: PageServerLoad = ({ locals }) => {
+	if (locals.user?.role !== 'admin') redirect(303, '/');
+};

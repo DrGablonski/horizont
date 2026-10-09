@@ -2,7 +2,6 @@
 //  - Session-Cookie → event.locals.user
 //  - /api/*        → 401 JSON (außer /api/auth/login)
 //  - Seiten        → 303-Redirect zu /login bzw. /setup (wenn noch kein User existiert)
-//  - /admin*       → 303 /einstellungen (Admin-Funktionen leben dort als Admin-Tabs)
 
 import { redirect } from '@sveltejs/kit';
 import type { Handle } from '@sveltejs/kit';
@@ -49,13 +48,6 @@ export const handle: Handle = ({ event, resolve }) => {
 	// ── Angemeldet ─────────────────────────────────────────────────────────
 	if (path === '/login') return redirect(303, '/');
 	if (path === '/setup') return redirect(303, '/');
-
-	// /admin wurde in /einstellungen verlagert (dort für Admins zusätzliche
-	// Tabs: Users, System-CALDAV). Alte Links leiten dorthin weiter;
-	// /api/admin/* bleibt davon unberührt (wird weiter unten behandelt).
-	if (!isApi && (path === '/admin' || path.startsWith('/admin/'))) {
-		return redirect(303, '/einstellungen');
-	}
 
 	return resolve(event);
 };

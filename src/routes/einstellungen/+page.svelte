@@ -1,10 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
-	import type { AppUser, ConnectionsResponse, TestResult } from '$lib/types';
-	import UserManagement from '$lib/components/admin/UserManagement.svelte';
-	import SystemCaldavSettings from '$lib/components/admin/SystemCaldavSettings.svelte';
-	import AgentGlobalSettings from '$lib/components/admin/AgentSettings.svelte';
+	import type { ConnectionsResponse, TestResult } from '$lib/types';
 	import AgentUserSettings from '$lib/components/AgentUserSettings.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Input from '$lib/components/ui/input/input.svelte';
@@ -150,12 +147,12 @@
 		await testConnection({ url: newUrl, username: newUser, password: newPass });
 	}
 
-	// ── Admin-Tabs (nur für die Admin-Rolle sichtbar) ──────────────────────
-	let me = $state<AppUser | null>(null);
-	let tab = $state<'verbindungen' | 'agent' | 'agent-global' | 'users' | 'caldav'>('verbindungen');
-	const isAdmin = $derived(me?.role === 'admin');
+	// ── Tabs ────────────────────────────────────────────────────────────────
+	// Die Admin-Funktionen (Users, KI-Agent global, System-CALDAV) leben
+	// seitlich unter /admin; hier bleiben nur die normalen Einstellungen.
+	let tab = $state<'verbindungen' | 'agent'>('verbindungen');
 
-	function tabClass(t: 'verbindungen' | 'agent' | 'agent-global' | 'users' | 'caldav'): string {
+	function tabClass(t: 'verbindungen' | 'agent'): string {
 		return tab === t
 			? 'bg-background text-foreground shadow-sm'
 			: 'text-muted-foreground hover:text-foreground';
@@ -163,11 +160,6 @@
 
 	onMount(() => {
 		load();
-		// Rolle ermitteln, um die Admin-Tabs (Users, System-CALDAV) anzuzeigen.
-		api
-			.me()
-			.then((u) => (me = u))
-			.catch(() => {});
 	});
 </script>
 
@@ -179,8 +171,9 @@
 	<div>
 		<h1 class="text-xl font-semibold tracking-tight">Einstellungen</h1>
 		<p class="text-sm text-muted-foreground">
-			Kalenderverbindungen (CalDAV). Deine zugewiesene Verbindung wird vom
-			Administrator vorgehalten; externe Quellen wie iCloud kannst du selbst anlegen.
+			Deine persönlichen Einstellungen: Kalenderverbindungen (CalDAV) und dein
+			eigener KI-Agent. Die dir zugewiesene Verbindung wird vom Administrator
+			vorgehalten; externe Quellen wie iCloud kannst du selbst anlegen.
 		</p>
 	</div>
 
@@ -200,29 +193,6 @@
 		>
 			KI-Agent
 		</button>
-		{#if isAdmin}
-			<button
-				type="button"
-				class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('users')}"
-				onclick={() => (tab = 'users')}
-			>
-				Users
-			</button>
-			<button
-				type="button"
-				class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('agent-global')}"
-				onclick={() => (tab = 'agent-global')}
-			>
-				KI-Agent (global)
-			</button>
-			<button
-				type="button"
-				class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('caldav')}"
-				onclick={() => (tab = 'caldav')}
-			>
-				System-CALDAV
-			</button>
-		{/if}
 	</div>
 
 	{#if tab === 'verbindungen'}
@@ -446,13 +416,5 @@
 		<div class="max-w-2xl">
 			<AgentUserSettings />
 		</div>
-	{:else if tab === 'agent-global'}
-		<div class="max-w-2xl">
-			<AgentGlobalSettings />
-		</div>
-	{:else if tab === 'users'}
-		<UserManagement />
-	{:else if tab === 'caldav'}
-		<SystemCaldavSettings />
 	{/if}
 </div>
