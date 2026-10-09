@@ -118,39 +118,40 @@
 				<span class="text-lg font-semibold tracking-tight">Horizont</span>
 			</a>
 
-			{#if loggedIn}
-				<nav class="ml-auto flex items-center gap-1">
-					<!-- Desktop-Navigation -->
-					<div class="hidden items-center gap-1 sm:flex">
-						{#each nav as item (item.href)}
-							<a
-								href={item.href}
-								class="rounded-md px-3 py-1.5 text-sm transition-colors {navClass(item.href)}"
-							>
-								{item.label}
-							</a>
-						{/each}
-						<ThemeToggle />
-						<div class="mx-2 h-6 w-px bg-border"></div>
-						<div class="flex items-center gap-2">
-							<span class="max-w-40 truncate text-sm text-muted-foreground">{user?.username}</span>
-							{#if user?.role === 'admin'}
-								<span class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-									Admin
-								</span>
-							{/if}
-						</div>
-						<Button variant="ghost" size="icon" title="Abmelden" disabled={loggingOut} onclick={logout}>
-							{#if loggingOut}
-								<Spinner class="size-4" />
-							{:else}
-								<LogOutIcon class="size-4" />
-							{/if}
-						</Button>
-					</div>
+		{#if loggedIn}
+			<!-- Desktop: Nav mittig zwischen Logo und User-Bereich -->
+			<nav class="hidden flex-1 items-center justify-center gap-1 sm:flex">
+				{#each nav as item (item.href)}
+					<a
+						href={item.href}
+						class="rounded-md px-3 py-1.5 text-sm transition-colors {navClass(item.href)}"
+					>
+						{item.label}
+					</a>
+				{/each}
+			</nav>
+			<div class="hidden items-center gap-2 sm:flex">
+				<ThemeToggle />
+				<div class="mx-1 h-6 w-px bg-border"></div>
+				<div class="flex items-center gap-2">
+					<span class="max-w-40 truncate text-sm text-muted-foreground">{user?.username}</span>
+					{#if user?.role === 'admin'}
+						<span class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+							Admin
+						</span>
+					{/if}
+				</div>
+				<Button variant="ghost" size="icon" title="Abmelden" disabled={loggingOut} onclick={logout}>
+					{#if loggingOut}
+						<Spinner class="size-4" />
+					{:else}
+						<LogOutIcon class="size-4" />
+					{/if}
+				</Button>
+			</div>
 
-					<!-- Mobile: Burger-Menü -->
-					<div class="relative sm:hidden" bind:this={mobileAnchor}>
+			<!-- Mobile: Burger-Menü -->
+			<div class="relative ml-auto sm:hidden" bind:this={mobileAnchor}>
 						<Button
 							variant="ghost"
 							size="icon"
@@ -210,7 +211,6 @@
 							</div>
 						{/if}
 					</div>
-				</nav>
 			{:else}
 				<div class="ml-auto">
 					<ThemeToggle />
