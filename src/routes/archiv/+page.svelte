@@ -104,10 +104,10 @@
 			>
 				<ChevronLeftIcon class="size-4" />
 			</Button>
-			<div class="flex min-w-0 items-center gap-2">
-				<h2 class="min-w-0 truncate text-center text-base font-semibold tracking-tight sm:min-w-44">
-					{monthTitle}
-				</h2>
+			<h2 class="min-w-0 flex-1 truncate text-center text-base font-semibold tracking-tight sm:min-w-44 sm:flex-none">
+				{monthTitle}
+			</h2>
+			<div class="flex shrink-0 items-center gap-1">
 				{#if latestMonthKey() && d.monthKey !== latestMonthKey()}
 					<Button
 						variant="outline"
@@ -119,17 +119,17 @@
 						Aktuell
 					</Button>
 				{/if}
+				<Button
+					variant="ghost"
+					size="icon"
+					title="Monat weiter"
+					aria-label="Monat weiter"
+					disabled={!d.canNext || loading}
+					onclick={() => goToMonth(shiftMonthKey(d.monthKey, 1))}
+				>
+					<ChevronRightIcon class="size-4" />
+				</Button>
 			</div>
-			<Button
-				variant="ghost"
-				size="icon"
-				title="Monat weiter"
-				aria-label="Monat weiter"
-				disabled={!d.canNext || loading}
-				onclick={() => goToMonth(shiftMonthKey(d.monthKey, 1))}
-			>
-				<ChevronRightIcon class="size-4" />
-			</Button>
 		</div>
 	{/if}
 
