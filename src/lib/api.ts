@@ -2,7 +2,7 @@
 
 import type {
 	AdminUserView,
-	ArchivePage,
+	ArchiveMonth,
 	CalendarsResponse,
 	ConnectionsResponse,
 	CreateUserResult,
@@ -127,8 +127,11 @@ export const api = {
 
 	// Events
 	mainEvents: () => req<MainEventsResponse>('/api/events?scope=main'),
-	archive: (page: number) =>
-		req<ArchivePage>(`/api/events?scope=archive&page=${encodeURIComponent(page)}`),
+	// Monat = YYYY-MM; null → neuester Archiv-Monat
+	archiveMonth: (monthKey: string | null) =>
+		req<ArchiveMonth>(
+			`/api/events?scope=archive${monthKey ? `&monat=${encodeURIComponent(monthKey)}` : ''}`
+		),
 
 	// Workflows
 	workflows: () => req<Workflow[]>('/api/workflows'),

@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
-import { buildArchiveResponse, buildMainResponse } from '$server/lib/panels';
+import { buildArchiveMonthResponse, buildMainResponse } from '$server/lib/panels';
 import { listConnections } from '$server/store/connections';
 import { createEvent, NotFoundError, ValidationError } from '$server/lib/write';
 import { CalDavError } from '$server/caldav/client';
@@ -10,8 +10,9 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 	const connections = locals.user ? listConnections(locals.user.id) : [];
 	const scope = url.searchParams.get('scope') ?? 'main';
 	if (scope === 'archive') {
-		const page = Number(url.searchParams.get('page') ?? '1');
-		return json(await buildArchiveResponse(connections, page));
+		// `monat` = YYYY-MM (optional, ohne/ungültig → neuester Archiv-Monat)
+		const month = url.searchParams.get('monat');
+		return json(await buildArchiveMonthResponse(connections, month));
 	}
 	return json(await buildMainResponse(connections));
 };

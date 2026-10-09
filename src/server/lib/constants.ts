@@ -8,9 +8,8 @@ export const NOW_EXTRA_DAYS = 2;
 export const FUTURE_DAYS = 30;
 // Vergangenheit: bis heute−1, zurück 14 Tage
 export const PAST_DAYS = 14;
-// Archiv: heute−365 bis heute−15, 31 Tage pro Seite
+// Archiv: heute−365 bis heute−15 (Monatsansicht mit Navigation)
 export const ARCHIVE_TOTAL_DAYS = 365;
-export const ARCHIVE_PAGE_DAYS = 31;
 export const ARCHIVE_GAP_DAYS = 15;
 
 // Hauptansicht: eine CalDAV-Abfrage. Start = today−PAST (inklusive),

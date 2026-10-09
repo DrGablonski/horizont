@@ -52,9 +52,48 @@ export function dayKeysBetween(startMs: number, endMsExcl: number): string[] {
 	return keys;
 }
 
+// ── Monats-Helfer ─────────────────────────────────────────────────────────
+
+/** "YYYY-MM" aus einer Zeit. */
+export function monthKeyFromMs(ms: number): string {
+	const d = new Date(ms);
+	const m = String(d.getMonth() + 1).padStart(2, '0');
+	return `${d.getFullYear()}-${m}`;
+}
+
+/** Lokale Mitternacht des ersten Tages des Monats (YYYY-MM). */
+export function monthStartMs(monthKey: string): number {
+	const [y, m] = monthKey.split('-').map(Number);
+	return new Date(y, m - 1, 1).getTime();
+}
+
+/** Monats-Schlüssel um n Monate verschieben (vorwärts/rückwärts). */
+export function shiftMonthKey(monthKey: string, months: number): string {
+	const [y, m] = monthKey.split('-').map(Number);
+	return monthKeyFromMs(new Date(y, m - 1 + months, 1).getTime());
+}
+
+export function isValidMonthKey(s: string | null): s is string {
+	return !!s && /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
+}
+
 // ── Labels (Deutsch) ──────────────────────────────────────────────────────
 
 const WEEKDAYS_SHORT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+const MONTHS_FULL = [
+	'Januar',
+	'Februar',
+	'März',
+	'April',
+	'Mai',
+	'Juni',
+	'Juli',
+	'August',
+	'September',
+	'Oktober',
+	'November',
+	'Dezember'
+];
 const MONTHS_SHORT = [
 	'Jan',
 	'Feb',
@@ -83,6 +122,29 @@ export function dayLabel(key: string): string {
 	const yr = d.getFullYear();
 	const curYear = new Date().getFullYear();
 	return `${wd}, ${day}. ${mon}${yr === curYear ? '' : ` ${yr}`}`;
+}
+
+/** „September 2026" für einen Monats-Schlüssel (YYYY-MM). */
+export function monthLabel(monthKey: string): string {
+	const [y, m] = monthKey.split('-').map(Number);
+	return `${MONTHS_FULL[m - 1]} ${y}`;
+}
+
+/**
+ * Alle Tages-Schlüssel des Monatsrasters (Mo-Start, 5 oder 6 Wochen),
+ * inklusive der angrenzenden Tage des Vor-/Folgemonats.
+ */
+export function monthGridDays(monthKey: string): string[] {
+	const start = monthStartMs(monthKey);
+	const lead = (new Date(start).getDay() + 6) % 7; // 0 = Montag
+	const gridStart = addDaysMs(start, -lead);
+	const monthEnd = monthStartMs(shiftMonthKey(monthKey, 1));
+	const keys = dayKeysBetween(gridStart, monthEnd);
+	const trail = (7 - (keys.length % 7)) % 7;
+	for (let i = 0; i < trail; i++) {
+		keys.push(shiftDayKey(keys[keys.length - 1], 1));
+	}
+	return keys;
 }
 
 // ── Uhrzeit-Formatierung ─────────────────────────────────────────────────

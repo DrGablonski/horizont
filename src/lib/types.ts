@@ -167,11 +167,19 @@ export interface MainEventsResponse {
 	error?: string;
 }
 
-export interface ArchivePage {
-	page: number;
-	hasMore: boolean;
-	eventCount: number;
+export interface ArchiveMonth {
+	/** Tatsächlich gezeigter Monat (YYYY-MM), nach Klemmung in den Archivbereich. */
+	monthKey: string;
+	/** Tage mit Einträgen, decken das Monats-Raster (inkl. angrenzender Tage) ab. */
 	days: DayGroup[];
+	/** Anzahl der Einträge innerhalb des Monats. */
+	eventCount: number;
+	/** Ältester Tag des Archivs (YYYY-MM-DD). */
+	rangeStart: string;
+	/** Neuester Tag des Archivs (YYYY-MM-DD, inklusiv). */
+	rangeEnd: string;
+	canPrev: boolean;
+	canNext: boolean;
 	configured: boolean;
 	error?: string;
 }

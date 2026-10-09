@@ -1,10 +1,10 @@
 // Baut aus CalDAV-Events die drei Zeit-Panel (Vergangenheit/Jetzt/Zukunft)
-// sowie die archivierten Seiten. Events werden pro Tag per Überschneidung
-// gebucketed, damit mehrtägige/laufende Einträge auf jedem aktiven Tag
-// erscheinen.
+// sowie die archivierten Monatsansichten. Events werden pro Tag per
+// Überschneidung gebucketed, damit mehrtägige/laufende Einträge auf jedem
+// aktiven Tag erscheinen.
 
 import type {
-	ArchivePage,
+	ArchiveMonth,
 	CalDavConnection,
 	DayGroup,
 	EventItem,
@@ -17,14 +17,18 @@ import {
 	dayKey,
 	dayKeysBetween,
 	dayLabel,
+	isValidMonthKey,
 	msFromKey,
+	monthGridDays,
+	monthKeyFromMs,
+	monthStartMs,
+	shiftMonthKey,
 	startOfDayMs,
 	todayKey,
 	toIcsUtc
 } from '$lib/dates';
 import {
 	ARCHIVE_GAP_DAYS,
-	ARCHIVE_PAGE_DAYS,
 	ARCHIVE_TOTAL_DAYS,
 	MAIN_END_DAYS_AHEAD_EXCL,
 	MAIN_START_DAYS_BACK,
@@ -163,52 +167,71 @@ export async function buildMainResponse(connections: CalDavConnection[]): Promis
 	return { ...base, panels, error: error ?? undefined };
 }
 
-// ── Archiv (paginiert, neueste Seite zuerst) ──────────────────────────────
+// ── Archiv (Monatsansicht) ────────────────────────────────────────────────
 
-export interface ArchiveMeta {
-	keys: string[]; // alle Archiv-Tage, aufsteigend (ältester → neuester)
-	totalDays: number;
+export interface ArchiveWindow {
+	oldest: string; // ältester Archiv-Tag (YYYY-MM-DD)
+	newest: string; // neuester Archiv-Tag (YYYY-MM-DD, inklusiv)
 }
 
-export function archiveMeta(todayStart: number): ArchiveMeta {
-	const oldest = addDaysMs(todayStart, -ARCHIVE_TOTAL_DAYS);
-	const newestExcl = addDaysMs(todayStart, -(ARCHIVE_GAP_DAYS - 1)); // Grenze zu „Vergangenheit"
-	const keys = dayKeysBetween(oldest, newestExcl);
-	return { keys, totalDays: keys.length };
+export function archiveWindow(todayStart: number): ArchiveWindow {
+	const oldest = dayKey(addDaysMs(todayStart, -ARCHIVE_TOTAL_DAYS));
+	const newest = dayKey(addDaysMs(todayStart, -(ARCHIVE_GAP_DAYS - 1))); // Grenze zu „Vergangenheit"
+	return { oldest, newest };
 }
 
-export async function buildArchiveResponse(
+export async function buildArchiveMonthResponse(
 	connections: CalDavConnection[],
-	page: number
-): Promise<ArchivePage> {
+	requestedMonthKey: string | null
+): Promise<ArchiveMonth> {
 	const today = todayKey();
 	const todayStart = msFromKey(today);
-	const meta = archiveMeta(todayStart);
-	const pageSafe = Math.max(1, Math.trunc(page) || 1);
+	const win = archiveWindow(todayStart);
+	const latestMonth = monthKeyFromMs(msFromKey(win.newest));
 
-	const out: Omit<ArchivePage, 'days' | 'eventCount'> = {
-		page: pageSafe,
-		hasMore: false,
+	// Angefragten Monat (falls gültig) in den Archivbereich klemmen,
+	// andernfalls den neuesten Archiv-Monat zeigen.
+	let monthKey: string;
+	if (isValidMonthKey(requestedMonthKey)) {
+		monthKey = requestedMonthKey;
+		if (monthKey + '-01' > win.newest) monthKey = latestMonth;
+		else if (shiftMonthKey(monthKey, 1) + '-01' <= win.oldest)
+			monthKey = monthKeyFromMs(msFromKey(win.oldest));
+	} else {
+		monthKey = latestMonth;
+	}
+
+	const out: Omit<ArchiveMonth, 'days' | 'eventCount'> = {
+		monthKey,
+		rangeStart: win.oldest,
+		rangeEnd: win.newest,
+		canPrev: monthKey + '-01' > win.oldest, // Tag vor Monatsbeginn liegt noch im Archiv
+		canNext: shiftMonthKey(monthKey, 1) + '-01' <= win.newest,
 		configured: connections.length > 0
 	};
 
-	if (connections.length === 0 || meta.totalDays === 0) {
+	if (connections.length === 0) {
 		return { ...out, days: [], eventCount: 0 };
 	}
 
-	const startIdx = (pageSafe - 1) * ARCHIVE_PAGE_DAYS;
-	const pageKeysAsc = meta.keys.slice(startIdx, startIdx + ARCHIVE_PAGE_DAYS);
-	if (pageKeysAsc.length === 0) {
-		return { ...out, days: [], eventCount: 0 };
+	// Events für das ganze Monatsraster holen, aber nur innerhalb des
+	// Archivbereichs (außerhalb liegen Tage der Hauptansicht).
+	const grid = monthGridDays(monthKey);
+	const gridStart = msFromKey(grid[0]);
+	const gridEnd = addDaysMs(msFromKey(grid[grid.length - 1]), 1);
+	const startMs = Math.max(gridStart, msFromKey(win.oldest));
+	const endMs = Math.min(gridEnd, addDaysMs(msFromKey(win.newest), 1));
+	let events: EventItem[] = [];
+	let error: string | null = null;
+	if (startMs < endMs) {
+		const fetched = await fetchEventsInRange(connections, startMs, endMs);
+		events = fetched.events;
+		error = fetched.error;
 	}
 
-	out.hasMore = startIdx + ARCHIVE_PAGE_DAYS < meta.totalDays;
-
-	const pageStart = msFromKey(pageKeysAsc[0]);
-	const pageEnd = addDaysMs(msFromKey(pageKeysAsc[pageKeysAsc.length - 1]), 1);
-	const { events, error } = await fetchEventsInRange(connections, pageStart, pageEnd);
-
-	const groups = bucketDays(events, pageKeysAsc, today);
-	const eventCount = groups.reduce((n, g) => n + g.events.length, 0);
+	const groups = bucketDays(events, grid, today);
+	const eventCount = groups
+		.filter((g) => g.dayKey.startsWith(monthKey))
+		.reduce((n, g) => n + g.events.length, 0);
 	return { ...out, days: groups, eventCount, error: error ?? undefined };
 }
