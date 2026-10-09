@@ -26,7 +26,14 @@
 	let loading = $state(true);
 	let loadError = $state<string | null>(null);
 	let selectedDay = $state<string | null>(null);
+	let detailSection: HTMLElement | undefined = $state();
 	let seq = 0;
+
+	$effect(() => {
+		if (selectedDay && detailSection) {
+			detailSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		}
+	});
 
 	function monthFromUrl(): string | null {
 		const m = page.url.searchParams.get('monat');
@@ -98,7 +105,7 @@
 				<ChevronLeftIcon class="size-4" />
 			</Button>
 			<div class="flex min-w-0 items-center gap-2">
-				<h2 class="min-w-44 truncate text-center text-base font-semibold tracking-tight">
+				<h2 class="min-w-0 truncate text-center text-base font-semibold tracking-tight sm:min-w-44">
 					{monthTitle}
 				</h2>
 				{#if latestMonthKey() && d.monthKey !== latestMonthKey()}
@@ -167,7 +174,7 @@
 				/>
 
 				{#if selectedDay}
-					<section class="rounded-xl border border-border bg-card p-4">
+					<section bind:this={detailSection} class="rounded-xl border border-border bg-card p-4">
 						<div class="mb-3 flex items-center justify-between gap-2">
 							<h2 class="text-sm font-semibold">{dayLabel(selectedDay)}</h2>
 							<Button

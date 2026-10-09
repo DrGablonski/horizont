@@ -19,7 +19,8 @@
 		onSelectDay?: (dayKey: string) => void;
 	} = $props();
 
-	const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+	const WEEKDAYS_FULL = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+	const WEEKDAYS_SHORT = ['M', 'D', 'M', 'D', 'F', 'S', 'S'];
 	const MAX_CHIPS = 3;
 
 	let byDay = $derived(new Map(days.map((d) => [d.dayKey, d])));
@@ -40,8 +41,11 @@
 
 <div class="overflow-hidden rounded-xl border border-border bg-card">
 	<div class="grid grid-cols-7 border-b border-border bg-muted/30">
-		{#each WEEKDAYS as wd (wd)}
-			<div class="px-1 py-2 text-center text-xs font-medium text-muted-foreground">{wd}</div>
+		{#each WEEKDAYS_FULL as wd, i (wd + i)}
+			<div class="py-1.5 text-center font-medium text-muted-foreground sm:py-2">
+				<span class="text-[10px] sm:hidden">{WEEKDAYS_SHORT[i]}</span>
+				<span class="hidden text-xs sm:inline">{wd}</span>
+			</div>
 		{/each}
 	</div>
 
@@ -53,7 +57,7 @@
 					disabled={!cell.inMonth || !cell.inRange}
 					title={cell.inMonth && !cell.inRange ? 'Außerhalb des Archivbereichs' : undefined}
 					class={cn(
-						'min-h-24 border-b border-r border-border p-1 text-left align-top transition-colors sm:min-h-28',
+						'min-h-[52px] border-b border-r border-border p-0.5 text-left align-top transition-colors sm:min-h-24 sm:p-1.5 lg:min-h-28',
 						ci === 6 && 'border-r-0',
 						wi === weeks.length - 1 && 'border-b-0',
 						!cell.inMonth && 'bg-muted/10',
@@ -62,10 +66,10 @@
 					)}
 					onclick={() => cell.inMonth && cell.inRange && onSelectDay?.(cell.key)}
 				>
-					<div class="flex items-center justify-between px-0.5">
+					<div class="px-0.5">
 						<span
 							class={cn(
-								'flex size-6 items-center justify-center rounded-full text-xs tabular-nums',
+								'flex size-5 items-center justify-center rounded-full text-[11px] tabular-nums sm:size-6 sm:text-xs',
 								cell.inMonth ? 'font-medium text-foreground' : 'text-muted-foreground/40',
 								cell.inMonth && !cell.inRange && 'font-normal text-muted-foreground/50',
 								cell.active && 'bg-primary text-primary-foreground'
@@ -75,23 +79,31 @@
 						</span>
 					</div>
 
-					<div class="mt-0.5 space-y-0.5">
-						{#each cell.events.slice(0, MAX_CHIPS) as ev (ev.id)}
+					<div class="mt-0.5 space-y-px sm:mt-1 sm:space-y-0.5">
+						{#each cell.events.slice(0, MAX_CHIPS) as ev, i (ev.id)}
 							<span
-								class="hidden items-center gap-1 rounded bg-muted/80 px-1 py-0.5 text-[11px] leading-tight sm:flex"
+								class={cn(
+									'flex items-center gap-1 rounded bg-muted/80 px-1 py-0.5 text-[10px] leading-tight sm:text-[11px]',
+									i === 2 && 'hidden sm:flex'
+								)}
 							>
 								<span
 									class="h-1.5 w-1.5 shrink-0 rounded-full"
 									style="background-color: {ev.calendarColor}"
 								></span>
-								{#if !ev.allDay}
-									<span class="shrink-0 font-medium tabular-nums text-foreground/80">
-										{timeShort(ev.startMs)}
-									</span>
-								{/if}
+								<span
+									class="hidden shrink-0 font-medium tabular-nums text-foreground/80 sm:inline"
+								>
+									{timeShort(ev.startMs)}
+								</span>
 								<span class="min-w-0 truncate text-foreground/90">{ev.summary}</span>
 							</span>
 						{/each}
+						{#if cell.events.length > 2}
+							<span class="block px-1 text-[10px] text-muted-foreground sm:hidden">
+								+{cell.events.length - 2} weitere
+							</span>
+						{/if}
 						{#if cell.events.length > MAX_CHIPS}
 							<span class="hidden px-1 text-[11px] text-muted-foreground sm:block">
 								+{cell.events.length - MAX_CHIPS} weitere

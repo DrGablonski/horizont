@@ -33,8 +33,9 @@ eigene iCloud/Nextcloud-Accounts).
   - *Jetzt*: heute + 2 Tage (Heute, Morgen, Übermorgen)
   - *Zukunft*: die nächsten 30 Tage
   - Jeder Abschnitt ist zusammenklappbar und zeigt Tage + Termine.
-- **Archiv**: alle Einträge älter als zwei Wochen (bis zu 365 Tage zurück),
-  chronologisch mit Pagination (31 Tage pro Seite).
+- **Archiv**: alle Einträge älter als zwei Wochen (bis zu 365 Tage zurück) als
+  Monatsgrid (Mo–So, wie Apple/Google Calendar); Tap auf einen Tag zeigt die
+  Tagesdetails, per `?monat=YYYY-MM` ist der Monat teilbar.
 - **Workflows**: benutzerdefinierte, sequenzielle Aufgaben-Checklisten.
   - Fortschrittsanzeige, Aktiver-Schritt-Betonung, „Als Nächstes"-Vorschau.
   - **Fokus-Modus** (`/fokus/<id>`): ablenkungsfreie Vollansicht mit nur dem
