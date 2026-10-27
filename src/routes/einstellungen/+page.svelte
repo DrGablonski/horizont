@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
 	import type { ConnectionsResponse, TestResult } from '$lib/types';
-	import AgentUserSettings from '$lib/components/AgentUserSettings.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
@@ -147,16 +146,8 @@
 		await testConnection({ url: newUrl, username: newUser, password: newPass });
 	}
 
-	// ── Tabs ────────────────────────────────────────────────────────────────
-	// Die Admin-Funktionen (Users, KI-Agent global, System-CALDAV) leben
-	// seitlich unter /admin; hier bleiben nur die normalen Einstellungen.
-	let tab = $state<'verbindungen' | 'agent'>('verbindungen');
-
-	function tabClass(t: 'verbindungen' | 'agent'): string {
-		return tab === t
-			? 'bg-background text-foreground shadow-sm'
-			: 'text-muted-foreground hover:text-foreground';
-	}
+	// Die Admin-Funktionen (Users, System-CALDAV) leben seitlich unter /admin;
+	// hier bleiben nur die normalen Einstellungen.
 
 	onMount(() => {
 		load();
@@ -171,32 +162,13 @@
 	<div>
 		<h1 class="text-xl font-semibold tracking-tight">Einstellungen</h1>
 		<p class="text-sm text-muted-foreground">
-			Deine persönlichen Einstellungen: Kalenderverbindungen (CalDAV) und dein
-			eigener KI-Agent. Die dir zugewiesene Verbindung wird vom Administrator
-			vorgehalten; externe Quellen wie iCloud kannst du selbst anlegen.
+			Deine persönlichen Einstellungen: Kalenderverbindungen (CalDAV). Die dir
+			zugewiesene Verbindung wird vom Administrator vorgehalten; externe Quellen
+			wie iCloud kannst du selbst anlegen.
 		</p>
 	</div>
 
-	<!-- Auf schmalen Screens Tabs horizontal scrollbar, statt die Seite zu verbreitern -->
-	<div class="flex max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1">
-		<button
-			type="button"
-			class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('verbindungen')}"
-			onclick={() => (tab = 'verbindungen')}
-		>
-			Verbindungen
-		</button>
-		<button
-			type="button"
-			class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('agent')}"
-			onclick={() => (tab = 'agent')}
-		>
-			KI-Agent
-		</button>
-	</div>
-
-	{#if tab === 'verbindungen'}
-		<div class="max-w-2xl space-y-6">
+	<div class="max-w-2xl space-y-6">
 	{#if loading && !data}
 		<div class="flex items-center gap-2 rounded-xl border border-dashed border-border p-8 text-sm text-muted-foreground">
 			<Spinner class="size-4" />
@@ -411,10 +383,5 @@
 			</div>
 		{/if}
 	{/if}
-		</div>
-	{:else if tab === 'agent'}
-		<div class="max-w-2xl">
-			<AgentUserSettings />
-		</div>
-	{/if}
+	</div>
 </div>

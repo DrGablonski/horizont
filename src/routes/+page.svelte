@@ -50,12 +50,6 @@
 
 	onMount(() => {
 		load();
-		// Der KI-Agent kann Termine/Aufgaben ändern – dann im Hintergrund aktualisieren.
-		const onAgentChanged = () => {
-			void load();
-		};
-		window.addEventListener('horizont:agent-changed', onAgentChanged);
-		return () => window.removeEventListener('horizont:agent-changed', onAgentChanged);
 	});
 
 	// ── Event CRUD Handler ─────────────────────────────────────────────────

@@ -1,15 +1,13 @@
 <script lang="ts">
-	// Admin-Einstellungen: User-Verwaltung, globale KI-Agent-Config und
-	// System-CALDAV. Zugriff nur für die Admin-Rolle – serverseitig wird
-	// das in +page.server.ts abgefangen, die API-Endpunkte prüfen die Rolle
-	// zusätzlich.
+	// Admin-Einstellungen: User-Verwaltung und System-CALDAV. Zugriff nur für
+	// die Admin-Rolle – serverseitig wird das in +page.server.ts abgefangen,
+	// die API-Endpunkte prüfen die Rolle zusätzlich.
 	import UserManagement from '$lib/components/admin/UserManagement.svelte';
 	import SystemCaldavSettings from '$lib/components/admin/SystemCaldavSettings.svelte';
-	import AgentGlobalSettings from '$lib/components/admin/AgentSettings.svelte';
 
-	let tab = $state<'users' | 'agent-global' | 'caldav'>('users');
+	let tab = $state<'users' | 'caldav'>('users');
 
-	function tabClass(t: 'users' | 'agent-global' | 'caldav'): string {
+	function tabClass(t: 'users' | 'caldav'): string {
 		return tab === t
 			? 'bg-background text-foreground shadow-sm'
 			: 'text-muted-foreground hover:text-foreground';
@@ -24,8 +22,7 @@
 	<div>
 		<h1 class="text-xl font-semibold tracking-tight">Administration</h1>
 		<p class="text-sm text-muted-foreground">
-			Verwaltung für Administratoren: Users, globale KI-Agent-Konfiguration und
-			das System-CALDAV.
+			Verwaltung für Administratoren: Users und das System-CALDAV.
 		</p>
 	</div>
 
@@ -40,13 +37,6 @@
 		</button>
 		<button
 			type="button"
-			class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('agent-global')}"
-			onclick={() => (tab = 'agent-global')}
-		>
-			KI-Agent (global)
-		</button>
-		<button
-			type="button"
 			class="rounded-md px-3 py-1.5 text-sm transition-colors {tabClass('caldav')}"
 			onclick={() => (tab = 'caldav')}
 		>
@@ -56,10 +46,6 @@
 
 	{#if tab === 'users'}
 		<UserManagement />
-	{:else if tab === 'agent-global'}
-		<div class="max-w-2xl">
-			<AgentGlobalSettings />
-		</div>
 	{:else if tab === 'caldav'}
 		<div class="max-w-2xl">
 			<SystemCaldavSettings />
