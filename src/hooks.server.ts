@@ -7,6 +7,10 @@ import { redirect } from '@sveltejs/kit';
 import type { Handle } from '@sveltejs/kit';
 import { SESSION_COOKIE, getSessionUser } from '$server/auth/sessionStore';
 import { hasUsers } from '$server/auth/userStore';
+import { removeLegacyAgentFiles } from '$server/lib/legacyCleanup';
+
+// Beim Start: verwaiste Agent-Config-Dateien entfernen (Funktion entfernt).
+removeLegacyAgentFiles();
 
 function notLoggedIn(): Response {
 	return new Response(JSON.stringify({ error: 'Nicht angemeldet.' }), {
