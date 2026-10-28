@@ -233,7 +233,7 @@ export interface TaskItem {
 	completed: boolean;
 	dueKey?: string; // YYYY-MM-DD (date-only)
 	dueMs?: number; // epoch ms (date-time)
-	priority?: number; // 1=high, 5=normal, 9=low
+	priority?: number; // 1=high, 5=medium, 9=low
 }
 
 export interface TasksResponse {

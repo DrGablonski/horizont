@@ -100,7 +100,7 @@
 	function priorityLabel(p: number | undefined): string {
 		if (p == null) return '';
 		if (p <= 2) return 'Hoch';
-		if (p <= 5) return 'Normal';
+		if (p <= 5) return 'Mittel';
 		return 'Niedrig';
 	}
 

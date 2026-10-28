@@ -38,7 +38,7 @@
 		}
 	}
 
-	let priority: string = initial.priority != null ? String(initial.priority) : '';
+	let priority: string = initial.priority != null ? String(initial.priority) : '9';
 
 	async function handleSubmit() {
 		if (!summary.trim()) {
@@ -74,12 +74,7 @@
 				due = { kind: 'none' };
 			}
 
-			let pri: number | null | undefined;
-			if (priority) {
-				pri = Number(priority);
-			} else if (mode === 'edit') {
-				pri = null; // remove
-			}
+			const pri: number = Number(priority);
 
 			const base = {
 				summary: summary.trim(),
@@ -156,10 +151,9 @@
 			<div class="space-y-1.5">
 				<Label for="task-priority">Priorität</Label>
 				<select id="task-priority" class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" bind:value={priority}>
-					<option value="">Keine</option>
-					<option value="1">Hoch</option>
-					<option value="5">Normal</option>
 					<option value="9">Niedrig</option>
+					<option value="5">Mittel</option>
+					<option value="1">Hoch</option>
 				</select>
 			</div>
 		</div>
