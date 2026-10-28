@@ -1,10 +1,11 @@
 services:
   horizont:
     build: .
+    image: horizont
     container_name: horizont
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "8917:3000"
     environment:
       - TZ=Europe/Berlin
       - DATA_DIR=/app/data
@@ -14,7 +15,8 @@ services:
 
 # WICHTIG: Bestehendes Daten-Volume hart referenzieren, damit Deploys die
 # Live-Daten nie durch ein leeres Neuvolume ersetzen (siehe Incident 2026-10-08).
+# Passt zum Volume des Live-Containers (Project "horizont", Volume "horizont-data").
 volumes:
   horizont-data:
-    name: calender-app_horizont-data
+    name: horizont_horizont-data
     external: true
