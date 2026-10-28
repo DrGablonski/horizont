@@ -85,7 +85,24 @@ Voraussetzungen: Docker + Docker Compose.
 docker compose up -d --build
 ```
 
-Die App läuft danach unter <http://localhost:3000>.
+Die App läuft danach unter <http://localhost:8917>.
+
+### Deployment mit Dockge (Server 192.168.1.104)
+
+Auf dem Server liegt das Repo als Git-Clone in `/root/horizont`. Dockge
+verwaltet den Stack über einen Symlink: `/opt/stacks/horizont -> /root/horizont`
+(Dockge folgt Symlinks beim Scannen des Stack-Verzeichnisses).
+
+**Update nach Code-Änderungen** (Dockge selbst hat keinen Build-Button):
+
+```bash
+cd /root/horizont
+git pull
+docker build -t horizont .
+```
+
+Danach in Dockge für den Stack `horizont` auf **Deploy** klicken – das
+erzeugt den Container mit dem neuen Image neu.
 
 - **Erstes Starten**: <http://localhost:3000/setup> ist öffentlich (nur solange
   kein User existiert) und legt den Admin an. Bestehende Daten aus einer
