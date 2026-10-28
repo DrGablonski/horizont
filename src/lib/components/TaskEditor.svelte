@@ -152,7 +152,7 @@
 				<Label for="task-priority">Priorität</Label>
 				<select id="task-priority" class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" bind:value={priority}>
 					<option value="9">Niedrig</option>
-					<option value="5">Mittel</option>
+					<option value="5">Schule</option>
 					<option value="1">Hoch</option>
 				</select>
 			</div>
