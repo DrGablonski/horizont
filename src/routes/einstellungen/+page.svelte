@@ -457,12 +457,7 @@
 			</div>
 
 			<div class="mt-4 grid gap-4 sm:grid-cols-2">
-				<div class="space-y-1.5">
-					<Label for="notify-time">Uhrzeit</Label>
-					<Input id="notify-time" bind:value={nTime} type="time" />
-				</div>
-
-				<div class="space-y-1.5">
+				<div class="space-y-1.5 sm:col-span-2">
 					<Label for="notify-import">Komplette Webhook-URL importieren</Label>
 					<div class="flex gap-2">
 						<Input
@@ -476,6 +471,11 @@
 							Aufteilen
 						</Button>
 					</div>
+				</div>
+
+				<div class="space-y-1.5">
+					<Label for="notify-time">Uhrzeit</Label>
+					<Input id="notify-time" bind:value={nTime} type="time" />
 				</div>
 
 				<div class="space-y-1.5 sm:col-span-2">
