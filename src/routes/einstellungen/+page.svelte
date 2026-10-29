@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
-	import type { ConnectionsResponse, TestResult } from '$lib/types';
+	import type { ConnectionsResponse, NotifyConfigView, NotifyTestResult, TestResult } from '$lib/types';
 	import Button from '$lib/components/ui/button/button.svelte';
+	import Checkbox from '$lib/components/ui/checkbox/checkbox.svelte';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Label from '$lib/components/ui/label/label.svelte';
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
 	import Separator from '$lib/components/ui/separator/separator.svelte';
 	import { toast } from 'svelte-sonner';
+	import BellIcon from '@lucide/svelte/icons/bell';
 	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
 	import CircleXIcon from '@lucide/svelte/icons/circle-x';
 	import PlugZapIcon from '@lucide/svelte/icons/plug-zap';
@@ -146,11 +148,75 @@
 		await testConnection({ url: newUrl, username: newUser, password: newPass });
 	}
 
+	// ── Benachrichtigung (Webhook, z. B. T3 Code) ────────────────────────────
+	let notify = $state<NotifyConfigView | null>(null);
+	let nEnabled = $state(false);
+	let nTime = $state('15:00');
+	let nUrl = $state('');
+	let nSaving = $state(false);
+	let nTesting = $state(false);
+	let nTestResult = $state<NotifyTestResult | null>(null);
+
+	async function loadNotify(): Promise<void> {
+		try {
+			const v = await api.notify();
+			notify = v;
+			nEnabled = v.enabled;
+			nTime = v.time;
+			nUrl = '';
+		} catch (e) {
+			toast.error(errMsg(e));
+		}
+	}
+
+	async function saveNotifyCfg(): Promise<void> {
+		if (!nTime.trim()) {
+			toast.error('Bitte eine Uhrzeit angeben.');
+			return;
+		}
+		nSaving = true;
+		nTestResult = null;
+		try {
+			const v = await api.saveNotify({
+				enabled: nEnabled,
+				time: nTime,
+				webhookUrl: nUrl.trim() || undefined
+			});
+			notify = v;
+			nUrl = '';
+			toast.success('Benachrichtigung gespeichert.');
+		} catch (e) {
+			toast.error(errMsg(e));
+		} finally {
+			nSaving = false;
+		}
+	}
+
+	async function testNotify(): Promise<void> {
+		if (!nUrl.trim() && !notify?.hasWebhookUrl) {
+			toast.error('Bitte zuerst eine Webhook-URL angeben.');
+			return;
+		}
+		nTesting = true;
+		nTestResult = null;
+		try {
+			const r = await api.testNotify(nUrl.trim() ? { webhookUrl: nUrl } : undefined);
+			nTestResult = r;
+			if (r.ok) toast.success(`Webhook angenommen${r.outcome ? ` (${r.outcome})` : ''}.`);
+			else toast.error('Webhook-Test fehlgeschlagen.');
+		} catch (e) {
+			toast.error(errMsg(e));
+		} finally {
+			nTesting = false;
+		}
+	}
+
 	// Die Admin-Funktionen (Users, System-CALDAV) leben seitlich unter /admin;
 	// hier bleiben nur die normalen Einstellungen.
 
 	onMount(() => {
 		load();
+		loadNotify();
 	});
 </script>
 
@@ -162,9 +228,9 @@
 	<div>
 		<h1 class="text-xl font-semibold tracking-tight">Einstellungen</h1>
 		<p class="text-sm text-muted-foreground">
-			Deine persönlichen Einstellungen: Kalenderverbindungen (CalDAV). Die dir
-			zugewiesene Verbindung wird vom Administrator vorgehalten; externe Quellen
-			wie iCloud kannst du selbst anlegen.
+			Deine persönlichen Einstellungen: Kalenderverbindungen (CalDAV) und die
+			tägliche Webhook-Benachrichtigung. Die dir zugewiesene Verbindung wird vom
+			Administrator vorgehalten; externe Quellen wie iCloud kannst du selbst anlegen.
 		</p>
 	</div>
 
@@ -338,6 +404,114 @@
 				</div>
 			{/if}
 		</div>
+
+		<Separator />
+
+		<!-- Benachrichtigung: offene Schul-Tasks per Webhook -->
+		<div class="rounded-xl border border-border bg-card p-5">
+			<div class="flex items-start justify-between gap-3">
+				<div>
+					<div class="flex items-center gap-2">
+						<BellIcon class="size-4" />
+						<span class="text-sm font-medium">Benachrichtigung (Webhook)</span>
+					</div>
+					<p class="mt-1 text-xs text-muted-foreground">
+						Jeden Tag um die angegebene Uhrzeit werden alle offenen Aufgaben mit
+						Priorität „Schule" per POST an die Webhook-URL gesendet — z. B. an T3 Code.
+					</p>
+				</div>
+				<Checkbox
+					bind:checked={nEnabled}
+					id="notify-enabled"
+					aria-label="Benachrichtigung aktivieren"
+				/>
+			</div>
+
+			<div class="mt-4 grid gap-4 sm:grid-cols-2">
+				<div class="space-y-1.5">
+					<Label for="notify-time">Uhrzeit</Label>
+					<Input id="notify-time" bind:value={nTime} type="time" />
+				</div>
+				<div class="space-y-1.5 sm:col-span-2">
+					<Label for="notify-url">Webhook-URL</Label>
+					<Input
+						id="notify-url"
+						bind:value={nUrl}
+						placeholder="http://172.17.0.1:3773/api/hooks/…"
+						autocomplete="off"
+						spellcheck={false}
+					/>
+					<p class="text-xs text-muted-foreground">
+						{#if notify?.hasWebhookUrl}
+							Gespeichert: <span class="font-mono">{notify.webhookUrlMasked}</span> — Feld leer
+							lassen, um sie zu behalten.
+						{:else}
+							In T3 Code: Einstellungen → Geplante Aufgaben → Webhook-Aufgabe anlegen →
+							URL kopieren. Noch keine URL gespeichert.
+						{/if}
+					</p>
+				</div>
+			</div>
+
+			<div class="mt-4 flex flex-wrap items-center gap-2">
+				<Button size="sm" disabled={nSaving || !nTime.trim()} onclick={saveNotifyCfg}>
+					{#if nSaving}<Spinner class="size-3.5" />{/if}
+					<span>Speichern</span>
+				</Button>
+				<Button size="sm" variant="outline" disabled={nTesting} onclick={testNotify}>
+					{#if nTesting}<Spinner class="size-3.5" />{:else}<PlugZapIcon class="size-3.5" />{/if}
+					<span>Testnachricht senden</span>
+				</Button>
+			</div>
+
+			{#if notify?.lastRun}
+				<p class="mt-3 text-xs text-muted-foreground">
+					Letzter Lauf: {notify.lastRun.date}
+					{#if notify.lastRun.status === 'ok'}
+						· gesendet
+					{:else if notify.lastRun.status === 'skipped'}
+						· übersprungen{notify.lastRun.error ? ` (${notify.lastRun.error})` : ''}
+					{:else if notify.lastRun.error}
+						· Fehler: {notify.lastRun.error}
+					{/if}
+				</p>
+			{/if}
+		</div>
+
+		<!-- Webhook-Testergebnis -->
+		{#if nTestResult}
+			<div
+				class={
+					'space-y-2 rounded-xl border p-5 ' +
+					(nTestResult.ok
+						? 'border-emerald-500/30 bg-emerald-500/5'
+						: 'border-destructive/40 bg-destructive/5')
+				}
+			>
+				<div class="flex items-center gap-2">
+					{#if nTestResult.ok}
+						<CheckCircleIcon class="size-4 text-emerald-600 dark:text-emerald-400" />
+						<span class="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+							Webhook angenommen
+						</span>
+					{:else}
+						<CircleXIcon class="size-4 text-destructive" />
+						<span class="text-sm font-medium text-destructive">Webhook-Test fehlgeschlagen</span>
+					{/if}
+				</div>
+				{#if nTestResult.ok}
+					<p class="text-sm text-muted-foreground">
+						HTTP {nTestResult.status ?? '—'}
+						{#if nTestResult.outcome}
+							· Ergebnis: {nTestResult.outcome}
+						{/if}
+						— die Nachricht sollte jetzt in T3 Code angekommen sein.
+					</p>
+				{:else if nTestResult.error}
+					<p class="text-sm text-destructive">{nTestResult.error}</p>
+				{/if}
+			</div>
+		{/if}
 
 		<!-- Testergebnis -->
 		{#if testResult}

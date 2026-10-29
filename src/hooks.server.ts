@@ -8,9 +8,13 @@ import type { Handle } from '@sveltejs/kit';
 import { SESSION_COOKIE, getSessionUser } from '$server/auth/sessionStore';
 import { hasUsers } from '$server/auth/userStore';
 import { removeLegacyAgentFiles } from '$server/lib/legacyCleanup';
+import { startNotifyJob } from '$server/jobs/notify';
 
 // Beim Start: verwaiste Agent-Config-Dateien entfernen (Funktion entfernt).
 removeLegacyAgentFiles();
+
+// Täglicher Benachrichtigungs-Job (offene Schul-Tasks per Webhook).
+startNotifyJob();
 
 function notLoggedIn(): Response {
 	return new Response(JSON.stringify({ error: 'Nicht angemeldet.' }), {

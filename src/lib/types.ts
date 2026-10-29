@@ -260,6 +260,47 @@ export interface TaskCreateInput extends TaskUpdateInput {
 	calendarId: string;
 }
 
+// ── Notify (Tägliche-Schul-Tasks-Benachrichtigung per Webhook) ────────────
+
+/** Per-User-Webhook-Config (serverseitig; wird nicht an den Client gesendet). */
+export interface NotifyConfig {
+	enabled: boolean;
+	time: string; // lokale Uhrzeit HH:MM, z. B. "15:00"
+	webhookUrl: string; // T3-Code-Webhook-URL (enthält Token)
+}
+
+/** Letzter Lauf des Notify-Jobs. */
+export interface NotifyLastRun {
+	date: string; // YYYY-MM-DD (lokal)
+	status: 'ok' | 'skipped' | 'error';
+	error?: string;
+	at?: number;
+}
+
+/** View für den Client (ohne die rohe URL). */
+export interface NotifyConfigView {
+	enabled: boolean;
+	time: string;
+	hasWebhookUrl: boolean;
+	webhookUrlMasked: string | null;
+	lastRun: NotifyLastRun | null;
+}
+
+export interface NotifySaveInput {
+	enabled: boolean;
+	time: string;
+	/** Leer/felhlend: gespeicherte URL beibehalten. */
+	webhookUrl?: string;
+}
+
+export interface NotifyTestResult {
+	ok: boolean;
+	status?: number;
+	/** x-t3-hook-outcome von T3 Code, z. B. "accepted". */
+	outcome?: string;
+	error?: string;
+}
+
 // ── Event-Write ───────────────────────────────────────────────────────────
 
 export interface EventUpdateInput {

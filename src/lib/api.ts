@@ -16,6 +16,9 @@ import type {
 	SetupResult,
 	SystemCaldavConfigView,
 	SystemCaldavSaveResult,
+	NotifyConfigView,
+	NotifySaveInput,
+	NotifyTestResult,
 	TasksResponse,
 	TaskCreateInput,
 	TaskItem,
@@ -191,5 +194,12 @@ export const api = {
 	deleteTask: (calendarId: string, uid: string) =>
 		req<{ ok: true }>(`/api/tasks/${encodeURIComponent(calendarId)}/${encodeURIComponent(uid)}`, {
 			method: 'DELETE'
-		})
+		}),
+
+	// Benachrichtigung (Webhook, z. B. T3 Code)
+	notify: () => req<NotifyConfigView>('/api/notify'),
+	saveNotify: (input: NotifySaveInput) =>
+		req<NotifyConfigView>('/api/notify', { method: 'POST', body: JSON.stringify(input) }),
+	testNotify: (input?: { webhookUrl?: string }) =>
+		req<NotifyTestResult>('/api/notify/test', { method: 'POST', body: JSON.stringify(input ?? {}) })
 };
