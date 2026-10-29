@@ -1,6 +1,6 @@
 // Per-User-Webhook-Config (Tägliche-Schul-Tasks-Benachrichtigung):
-//   GET  → View (ohne die rohe URL; Token bleibt serverseitig)
-//   POST → speichern (leere webhookUrl = gespeicherte beibehalten)
+//   GET  → View (ohne den rohen Token)
+//   POST → speichern (leere Felder = gespeicherte Werte beibehalten)
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
@@ -23,7 +23,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		saveNotify(locals.user.id, {
 			enabled: body.enabled,
 			time: body.time,
-			webhookUrl: typeof body.webhookUrl === 'string' ? body.webhookUrl : undefined
+			url: typeof body.url === 'string' ? body.url : undefined,
+			token: typeof body.token === 'string' ? body.token : undefined,
+			prompt: typeof body.prompt === 'string' ? body.prompt : undefined
 		});
 		return json(getNotifyView(locals.user.id));
 	} catch (e) {

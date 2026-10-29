@@ -13,7 +13,7 @@
 
 import { listUsers } from '$server/auth/userStore';
 import { listConnections } from '$server/store/connections';
-import { getNotify, getRun, setRun } from '$server/store/notify';
+import { DEFAULT_NOTIFY_PROMPT, getNotify, getRun, setRun, webhookUrlOf } from '$server/store/notify';
 import { listAllTasks } from '$server/lib/write';
 import type { NotifyConfig, TaskItem } from '$lib/types';
 
@@ -65,7 +65,7 @@ async function tick(): Promise<void> {
 		for (const user of listUsers()) {
 			if (user.disabled) continue;
 			const cfg = getNotify(user.id);
-			if (!cfg || !cfg.enabled || !cfg.webhookUrl) continue;
+			if (!cfg || !cfg.enabled || !cfg.url || !cfg.token) continue;
 			if (now < dueAt(cfg.time, now)) continue; // noch zu früh
 			const run = getRun(user.id);
 			if (run?.date === today) {
@@ -99,8 +99,8 @@ async function runForUser(userId: string, cfg: NotifyConfig, now: Date, today: s
 			setRun(userId, { date: today, status: 'skipped', error: 'Keine offenen Schul-Tasks' });
 			return;
 		}
-		const body = formatNotifyMessage(open, now);
-		const res = await postNotify(cfg.webhookUrl, body, today);
+		const text = composeMessage(cfg.prompt || DEFAULT_NOTIFY_PROMPT, open, now);
+		const res = await postNotify(webhookUrlOf(cfg), text, today);
 		if (!res.ok) throw new Error(`Webhook hat ${res.status} geantwortet`);
 		setRun(userId, { date: today, status: 'ok' });
 	} catch (e) {
@@ -127,15 +127,27 @@ function dueMsLabel(ms: number): string {
 	return `${dateKey(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
-/** Klartext-Nachricht im Format, das T3 Code per {{body}} rendert. */
-export function formatNotifyMessage(tasks: TaskItem[], now: Date): string {
+/** Nummerierte Task-Liste (ersetzt {{body}} im Prompt-Template). */
+export function formatTaskList(tasks: TaskItem[]): string {
 	const sorted = [...tasks].sort((a, b) => taskDueMs(a) - taskDueMs(b));
-	const lines = sorted.map((t, i) => {
-		const due = t.dueKey ?? (t.dueMs != null ? dueMsLabel(t.dueMs) : undefined);
-		return `${i + 1}. ${t.summary}${due ? ` — Fällig: ${due}` : ''}`;
-	});
-	const stamp = `${dateKey(now)}, ${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
-	return `Offene Schul-Tasks — Stand ${stamp} (${tasks.length} offen):\n\n${lines.join('\n')}`;
+	return sorted
+		.map((t, i) => {
+			const due = t.dueKey ?? (t.dueMs != null ? dueMsLabel(t.dueMs) : undefined);
+			return `${i + 1}. ${t.summary}${due ? ` — Fällig: ${due}` : ''}`;
+		})
+		.join('\n');
+}
+
+/** Ersetzt die Platzhalter im Template: {{body}} = Liste, {{stand}} = Zeitstempel. */
+export function renderPrompt(template: string, body: string, stand: string): string {
+	return template.replaceAll('{{body}}', body).replaceAll('{{stand}}', stand);
+}
+
+/** Fertige Nachricht aus Template + Tasks (Job und Test-Endpunkt). */
+export function composeMessage(template: string, tasks: TaskItem[], now: Date): string {
+	const body = formatTaskList(tasks);
+	const stand = `${dateKey(now)}, ${pad2(now.getHours())}:${pad2(now.getMinutes())} (${tasks.length} offen)`;
+	return renderPrompt(template, body, stand);
 }
 
 export async function postNotify(url: string, body: string, runDate: string): Promise<Response> {

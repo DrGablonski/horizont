@@ -200,6 +200,6 @@ export const api = {
 	notify: () => req<NotifyConfigView>('/api/notify'),
 	saveNotify: (input: NotifySaveInput) =>
 		req<NotifyConfigView>('/api/notify', { method: 'POST', body: JSON.stringify(input) }),
-	testNotify: (input?: { webhookUrl?: string }) =>
+	testNotify: (input?: { url?: string; token?: string; prompt?: string }) =>
 		req<NotifyTestResult>('/api/notify/test', { method: 'POST', body: JSON.stringify(input ?? {}) })
 };

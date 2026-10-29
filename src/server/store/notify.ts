@@ -12,6 +12,26 @@ import type { NotifyConfig, NotifyConfigView, NotifyLastRun } from '$lib/types';
 
 const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 const DEFAULT_TIME = '15:00';
+/** Standard-Template: {{body}} = Task-Liste, {{stand}} = Datum/Uhrzeit + Anzahl. */
+export const DEFAULT_NOTIFY_PROMPT = 'Offene Schul-Tasks — Stand {{stand}}:\n\n{{body}}';
+const MAX_PROMPT_LEN = 4000;
+const MAX_TOKEN_LEN = 512;
+
+/** Vollständige Webhook-URL aus Basis-URL + Token zusammensetzen. */
+export function webhookUrlOf(cfg: Pick<NotifyConfig, 'url' | 'token'>): string {
+	return `${cfg.url.replace(/\/+$/, '')}/${cfg.token}`;
+}
+
+/**
+ * Vollständige Webhook-URL (z. B. kopiert aus der T3-UI) in Basis-URL und
+ * Token aufteilen — der Token ist das letzte Pfadsegment.
+ */
+export function splitWebhookUrl(full: string): { url: string; token: string } | null {
+	const t = full.trim().replace(/\/+$/, '');
+	const i = t.lastIndexOf('/');
+	if (i <= 0) return null;
+	return { url: t.slice(0, i), token: t.slice(i + 1) };
+}
 
 // ── Config ─────────────────────────────────────────────────────────────────
 
@@ -21,7 +41,11 @@ function notifyPath(userId: string): string {
 	return join(p, 'notify.json');
 }
 
-/** Config ohne Webhook-URL ist ungültig für den Job; leer = nicht gesetzt. */
+/**
+ * Liest die Config und normalisiert sie auf das aktuelle Format.
+ * Alte Configs mit einer einzigen `webhookUrl` werden dabei in
+ * `url` + `token` aufgeteilt (Token = letztes Pfadsegment).
+ */
 export function getNotify(userId: string): NotifyConfig | null {
 	const p = notifyPath(userId);
 	if (!existsSync(p)) return null;
@@ -29,77 +53,102 @@ export function getNotify(userId: string): NotifyConfig | null {
 		const raw = JSON.parse(readFileSync(p, 'utf8')) as { config?: unknown };
 		const c = raw?.config;
 		if (c == null || typeof c !== 'object') return null;
-		const cfg = c as Partial<NotifyConfig>;
+		const cfg = c as Partial<NotifyConfig> & { webhookUrl?: unknown };
 		if (typeof cfg.enabled !== 'boolean' || typeof cfg.time !== 'string') return null;
+
+		let url = typeof cfg.url === 'string' ? cfg.url : '';
+		let token = typeof cfg.token === 'string' ? cfg.token : '';
+		if (!url && !token && typeof cfg.webhookUrl === 'string' && cfg.webhookUrl.trim() !== '') {
+			const split = splitWebhookUrl(cfg.webhookUrl);
+			if (split) {
+				url = split.url;
+				token = split.token;
+			}
+		}
 		return {
 			enabled: cfg.enabled,
 			time: cfg.time,
-			webhookUrl: typeof cfg.webhookUrl === 'string' ? cfg.webhookUrl : ''
+			url,
+			token,
+			prompt: typeof cfg.prompt === 'string' && cfg.prompt !== '' ? cfg.prompt : DEFAULT_NOTIFY_PROMPT
 		};
 	} catch {
 		return null;
 	}
 }
 
+function validateUrl(u: string): string {
+	let parsed: URL;
+	try {
+		parsed = new URL(u);
+	} catch {
+		throw new Error('Ungültige Webhook-URL.');
+	}
+	if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+		throw new Error('Webhook-URL muss eine http(s)-URL sein.');
+	}
+	return u;
+}
+
 export function saveNotify(
 	userId: string,
-	input: { enabled: boolean; time: string; webhookUrl?: string }
+	input: { enabled: boolean; time: string; url?: string; token?: string; prompt?: string }
 ): NotifyConfig {
 	const rawTime = (input.time ?? '').trim();
 	if (!TIME_RE.test(rawTime)) throw new Error('Ungültige Uhrzeit (Format: HH:MM, z. B. 15:00).');
 	const [h, m] = rawTime.split(':');
 	const time = `${h.padStart(2, '0')}:${m}`;
 
-	const current = getNotify(userId) ?? { enabled: false, time: DEFAULT_TIME, webhookUrl: '' };
-	let webhookUrl = current.webhookUrl;
-	if (input.webhookUrl !== undefined) {
-		const u = input.webhookUrl.trim().replace(/\/+$/, '');
-		if (u !== '') {
-			// Leere Eingabe → gespeicherte URL beibehalten (wie bei Passwörtern).
-			let parsed: URL;
-			try {
-				parsed = new URL(u);
-			} catch {
-				throw new Error('Ungültige Webhook-URL.');
-			}
-			if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-				throw new Error('Webhook-URL muss eine http(s)-URL sein.');
-			}
-			webhookUrl = u;
-		}
+	const current =
+		getNotify(userId) ??
+		{ enabled: false, time: DEFAULT_TIME, url: '', token: '', prompt: DEFAULT_NOTIFY_PROMPT };
+
+	// Leere Eingaben → gespeicherten Wert beibehalten (wie bei Passwörtern).
+	let url = current.url;
+	if (typeof input.url === 'string' && input.url.trim() !== '') {
+		url = validateUrl(input.url.trim()).replace(/\/+$/, '');
 	}
 
-	const config: NotifyConfig = { enabled: Boolean(input.enabled), time, webhookUrl };
+	let token = current.token;
+	if (typeof input.token === 'string' && input.token.trim() !== '') {
+		const t = input.token.trim();
+		if (t.length > MAX_TOKEN_LEN) throw new Error('Token ist zu lang.');
+		token = t;
+	}
+
+	let prompt = current.prompt;
+	if (typeof input.prompt === 'string' && input.prompt.trim() !== '') {
+		if (input.prompt.length > MAX_PROMPT_LEN) throw new Error('Prompt ist zu lang.');
+		prompt = input.prompt;
+	}
+
+	const config: NotifyConfig = { enabled: Boolean(input.enabled), time, url, token, prompt };
 	const p = notifyPath(userId);
 	const tmp = `${p}.tmp`;
-	writeFileSync(tmp, JSON.stringify({ version: 1, config }, null, 2), 'utf8');
+	writeFileSync(tmp, JSON.stringify({ version: 2, config }, null, 2), 'utf8');
 	renameSync(tmp, p);
 	return config;
-}
-
-/** Maskiert das letzte Pfadsegment (den Token) der Webhook-URL. */
-export function maskWebhookUrl(raw: string): string {
-	try {
-		const u = new URL(raw);
-		const segs = u.pathname.split('/').filter(Boolean);
-		if (segs.length > 0) segs[segs.length - 1] = '••••';
-		return `${u.protocol}//${u.host}${segs.length > 0 ? '/' + segs.join('/') : ''}`;
-	} catch {
-		return raw.slice(0, 40) + '…';
-	}
 }
 
 export function getNotifyView(userId: string): NotifyConfigView {
 	const c = getNotify(userId);
 	const lastRun = getRun(userId);
 	if (!c) {
-		return { enabled: false, time: DEFAULT_TIME, hasWebhookUrl: false, webhookUrlMasked: null, lastRun };
+		return {
+			enabled: false,
+			time: DEFAULT_TIME,
+			url: null,
+			hasToken: false,
+			prompt: DEFAULT_NOTIFY_PROMPT,
+			lastRun
+		};
 	}
 	return {
 		enabled: c.enabled,
 		time: c.time,
-		hasWebhookUrl: Boolean(c.webhookUrl),
-		webhookUrlMasked: c.webhookUrl ? maskWebhookUrl(c.webhookUrl) : null,
+		url: c.url || null,
+		hasToken: Boolean(c.token),
+		prompt: c.prompt,
 		lastRun
 	};
 }

@@ -1,24 +1,38 @@
-// POST /api/notify/test — Webhook testen (Formularwert oder gespeicherte URL).
+// POST /api/notify/test — Webhook testen.
 // Sendet eine Beispiel-Nachricht; T3 Code antwortet mit 202 und
 // dem Header x-t3-hook-outcome (z. B. „accepted").
+// Die Formularwerte (url/token/prompt) werden getestet; leere Werte
+// fallen auf die gespeicherte Config zurück.
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
-import { getNotify } from '$server/store/notify';
-import { dateKey, formatNotifyMessage, postNotify } from '$server/jobs/notify';
+import { DEFAULT_NOTIFY_PROMPT, getNotify, webhookUrlOf } from '$server/store/notify';
+import { composeMessage, dateKey, postNotify } from '$server/jobs/notify';
 import type { TaskItem } from '$lib/types';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!locals.user) return json({ error: 'Nicht angemeldet.' }, { status: 401 });
 
-	const body = (await request.json().catch(() => null)) as { webhookUrl?: string } | null;
-	const saved = getNotify(locals.user.id)?.webhookUrl ?? '';
-	const url =
-		typeof body?.webhookUrl === 'string' && body.webhookUrl.trim() !== ''
-			? body.webhookUrl.trim()
-			: saved;
-	if (!url) {
-		return json({ ok: false, error: 'Keine Webhook-URL angegeben.' }, { status: 400 });
+	const body = (await request.json().catch(() => null)) as {
+		url?: string;
+		token?: string;
+		prompt?: string;
+	} | null;
+
+	const saved = getNotify(locals.user.id);
+	let url =
+		typeof body?.url === 'string' && body.url.trim() !== '' ? body.url.trim() : saved?.url ?? '';
+	let token =
+		typeof body?.token === 'string' && body.token.trim() !== ''
+			? body.token.trim()
+			: saved?.token ?? '';
+	const prompt =
+		typeof body?.prompt === 'string' && body.prompt.trim() !== ''
+			? body.prompt
+			: saved?.prompt || DEFAULT_NOTIFY_PROMPT;
+
+	if (!url || !token) {
+		return json({ ok: false, error: 'Bitte Webhook-URL und Token angeben.' }, { status: 400 });
 	}
 
 	const now = new Date();
@@ -31,10 +45,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		summary: 'Testnachricht von Horizont (Einstellungen → Benachrichtigung)',
 		completed: false
 	};
-	const text = formatNotifyMessage([sample], now);
+	const text = composeMessage(prompt, [sample], now);
 
 	try {
-		const res = await postNotify(url, text, dateKey(now));
+		const res = await postNotify(webhookUrlOf({ url, token }), text, dateKey(now));
 		const outcome = res.headers.get('x-t3-hook-outcome') ?? undefined;
 		if (res.ok) {
 			return json({ ok: true, status: res.status, outcome });

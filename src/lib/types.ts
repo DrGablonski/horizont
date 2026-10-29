@@ -266,7 +266,9 @@ export interface TaskCreateInput extends TaskUpdateInput {
 export interface NotifyConfig {
 	enabled: boolean;
 	time: string; // lokale Uhrzeit HH:MM, z. B. "15:00"
-	webhookUrl: string; // T3-Code-Webhook-URL (enthält Token)
+	url: string; // Webhook-URL bis zur Task-ID (ohne Token), z. B. http://…/api/hooks/scheduled-task%3A…
+	token: string; // Webhook-Token (letztes Pfadsegment der vollständigen URL)
+	prompt: string; // Nachrichten-Template: {{body}} = Task-Liste, {{stand}} = Datum/Uhrzeit + Anzahl
 }
 
 /** Letzter Lauf des Notify-Jobs. */
@@ -277,20 +279,24 @@ export interface NotifyLastRun {
 	at?: number;
 }
 
-/** View für den Client (ohne die rohe URL). */
+/** View für den Client (ohne den rohen Token). */
 export interface NotifyConfigView {
 	enabled: boolean;
 	time: string;
-	hasWebhookUrl: boolean;
-	webhookUrlMasked: string | null;
+	/** Gespeicherte Basis-URL (nicht sensibel, für das Formular zur Bearbeitung). */
+	url: string | null;
+	hasToken: boolean;
+	prompt: string;
 	lastRun: NotifyLastRun | null;
 }
 
 export interface NotifySaveInput {
 	enabled: boolean;
 	time: string;
-	/** Leer/felhlend: gespeicherte URL beibehalten. */
-	webhookUrl?: string;
+	/** Leer/fehlend: gespeicherten Wert beibehalten. */
+	url?: string;
+	token?: string;
+	prompt?: string;
 }
 
 export interface NotifyTestResult {

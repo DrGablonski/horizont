@@ -9,6 +9,7 @@
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
 	import Separator from '$lib/components/ui/separator/separator.svelte';
+	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 	import { toast } from 'svelte-sonner';
 	import BellIcon from '@lucide/svelte/icons/bell';
 	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
@@ -149,10 +150,16 @@
 	}
 
 	// ── Benachrichtigung (Webhook, z. B. T3 Code) ────────────────────────────
+	const PROMPT_HINT =
+		'{{body}} = Liste der offenen Schul-Tasks · {{stand}} = Datum, Uhrzeit und Anzahl.';
+
 	let notify = $state<NotifyConfigView | null>(null);
 	let nEnabled = $state(false);
 	let nTime = $state('15:00');
 	let nUrl = $state('');
+	let nToken = $state('');
+	let nPrompt = $state('');
+	let nImportUrl = $state('');
 	let nSaving = $state(false);
 	let nTesting = $state(false);
 	let nTestResult = $state<NotifyTestResult | null>(null);
@@ -163,10 +170,26 @@
 			notify = v;
 			nEnabled = v.enabled;
 			nTime = v.time;
-			nUrl = '';
+			nUrl = v.url ?? '';
+			nToken = '';
+			nPrompt = v.prompt;
 		} catch (e) {
 			toast.error(errMsg(e));
 		}
+	}
+
+	/** Komplette Webhook-URL aus der T3-UI einfügen → in URL + Token aufteilen. */
+	function importWebhookUrl(): void {
+		const t = nImportUrl.trim().replace(/\/+$/, '');
+		const i = t.lastIndexOf('/');
+		if (i <= 0) {
+			toast.error('Bitte die vollständige Webhook-URL einfügen.');
+			return;
+		}
+		nUrl = t.slice(0, i);
+		nToken = t.slice(i + 1);
+		nImportUrl = '';
+		toast.success('URL und Token eingetragen — prüfen und speichern.');
 	}
 
 	async function saveNotifyCfg(): Promise<void> {
@@ -180,10 +203,12 @@
 			const v = await api.saveNotify({
 				enabled: nEnabled,
 				time: nTime,
-				webhookUrl: nUrl.trim() || undefined
+				url: nUrl.trim(),
+				token: nToken.trim(),
+				prompt: nPrompt
 			});
 			notify = v;
-			nUrl = '';
+			nToken = '';
 			toast.success('Benachrichtigung gespeichert.');
 		} catch (e) {
 			toast.error(errMsg(e));
@@ -193,14 +218,18 @@
 	}
 
 	async function testNotify(): Promise<void> {
-		if (!nUrl.trim() && !notify?.hasWebhookUrl) {
+		if (!nUrl.trim() && !notify?.url) {
 			toast.error('Bitte zuerst eine Webhook-URL angeben.');
+			return;
+		}
+		if (!nToken.trim() && !notify?.hasToken) {
+			toast.error('Bitte zuerst einen Token angeben.');
 			return;
 		}
 		nTesting = true;
 		nTestResult = null;
 		try {
-			const r = await api.testNotify(nUrl.trim() ? { webhookUrl: nUrl } : undefined);
+			const r = await api.testNotify({ url: nUrl.trim(), token: nToken.trim(), prompt: nPrompt });
 			nTestResult = r;
 			if (r.ok) toast.success(`Webhook angenommen${r.outcome ? ` (${r.outcome})` : ''}.`);
 			else toast.error('Webhook-Test fehlgeschlagen.');
@@ -417,7 +446,7 @@
 					</div>
 					<p class="mt-1 text-xs text-muted-foreground">
 						Jeden Tag um die angegebene Uhrzeit werden alle offenen Aufgaben mit
-						Priorität „Schule" per POST an die Webhook-URL gesendet — z. B. an T3 Code.
+						Priorität „Schule" per POST an die Webhook-Adresse gesendet — z. B. an T3 Code.
 					</p>
 				</div>
 				<Checkbox
@@ -432,24 +461,71 @@
 					<Label for="notify-time">Uhrzeit</Label>
 					<Input id="notify-time" bind:value={nTime} type="time" />
 				</div>
+
+				<div class="space-y-1.5">
+					<Label for="notify-import">Komplette Webhook-URL importieren</Label>
+					<div class="flex gap-2">
+						<Input
+							id="notify-import"
+							bind:value={nImportUrl}
+							placeholder="Aus T3 Code kopieren und hier einfügen"
+							autocomplete="off"
+							spellcheck={false}
+						/>
+						<Button size="sm" variant="outline" onclick={importWebhookUrl}>
+							Aufteilen
+						</Button>
+					</div>
+				</div>
+
 				<div class="space-y-1.5 sm:col-span-2">
-					<Label for="notify-url">Webhook-URL</Label>
+					<Label for="notify-url">Webhook-URL (ohne Token)</Label>
 					<Input
 						id="notify-url"
 						bind:value={nUrl}
-						placeholder="http://172.17.0.1:3773/api/hooks/…"
+						placeholder="http://192.168.1.146:3773/api/hooks/scheduled-task%3A…"
 						autocomplete="off"
 						spellcheck={false}
+						class="font-mono text-xs"
 					/>
 					<p class="text-xs text-muted-foreground">
-						{#if notify?.hasWebhookUrl}
-							Gespeichert: <span class="font-mono">{notify.webhookUrlMasked}</span> — Feld leer
-							lassen, um sie zu behalten.
+						Alles bis direkt vor dem Token — am einfachsten per „Aufteilen" oben.
+					</p>
+				</div>
+
+				<div class="space-y-1.5 sm:col-span-2">
+					<Label for="notify-token">Token</Label>
+					<Input
+						id="notify-token"
+						bind:value={nToken}
+						placeholder={
+							notify?.hasToken
+								? 'Gespeichert — leer lassen, um ihn zu behalten'
+								: 'Letztes Segment der Webhook-URL'
+						}
+						autocomplete="off"
+						spellcheck={false}
+						class="font-mono text-xs"
+					/>
+					<p class="text-xs text-muted-foreground">
+						{#if notify?.hasToken}
+							Ein Token ist gespeichert. Neues Eingeben ersetzt ihn.
 						{:else}
-							In T3 Code: Einstellungen → Geplante Aufgaben → Webhook-Aufgabe anlegen →
-							URL kopieren. Noch keine URL gespeichert.
+							Noch kein Token gespeichert.
 						{/if}
 					</p>
+				</div>
+
+				<div class="space-y-1.5 sm:col-span-2">
+					<Label for="notify-prompt">Nachricht (Template)</Label>
+					<Textarea
+						id="notify-prompt"
+						bind:value={nPrompt}
+						rows={3}
+						spellcheck={false}
+						class="font-mono text-xs"
+					/>
+					<p class="text-xs text-muted-foreground">{PROMPT_HINT}</p>
 				</div>
 			</div>
 
