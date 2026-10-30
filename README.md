@@ -180,6 +180,45 @@ und T3 kann daraufhin über diese API Tasks abhaken oder Termine anlegen.
 
 ---
 
+## MCP-Server (für OpenCode & Co.)
+
+[`mcp-server/`](mcp-server/) ist ein kleiner MCP-Server (Node.js, stdio), der die
+`/api`-Endpunkte mit deinem per-User API-Token adressiert und als Tools
+exponiert — z. B. für OpenCode (→ `horizont_*`-Tools):
+
+| Tool | Wirkung |
+| --- | --- |
+| `check_connection` | URL + Token prüfen (zeigt User, CalDAV-Status) |
+| `calendars` | Kalender auflisten (`calendarId`-Quelle) |
+| `events` | Termine lesen (`main` oder `archive&monat=YYYY-MM`) |
+| `create_event` / `update_event` / `delete_event` | Termine anlegen / ändern (Voll-Update) / löschen |
+| `tasks` / `create_task` / `update_task` / `complete_task` / `delete_task` | Aufgaben lesen / anlegen / ändern / abhaken / löschen |
+| `workflows` … `reset_workflow` | Checklisten-Workflows (inkl. Einzelschritte) |
+
+### Einbindung in OpenCode
+
+```sh
+cd mcp-server && bun install        # einmalig
+opencode mcp add horizont --global \
+  --env HORIZONT_URL=http://HOST:8917 \
+  -- node /pfad/zu/horizont/mcp-server/index.mjs
+```
+
+Danach tauchen die Tools als `horizont_calendars`, `horizont_create_event` usw. auf.
+
+**Token** — der Server liest in dieser Reihenfolge:
+1. Umgebungsvariable `HORIZONT_TOKEN`
+2. Datei `~/.config/horizont/token` (eine Zeile, `chmod 600`)
+
+Token erzeugen: Horizont → **Einstellungen → „API-Token (für T3 Code & Co.)“ → Erzeugen**
+(einmalig im Klartext angezeigt). Bei Token-Ersetzung einfach die Datei neu befüllen.
+
+`HORIZONT_TOKEN_FILE` kann den Dateipfad überschreiben; `HORIZONT_URL`
+defaultet auf `http://localhost:8917`. Test: `bun run smoke` in `mcp-server/`
+(läuft gegen eine Mock-API).
+
+---
+
 ## System-CALDAV + caldav-admin-Sidecar
 
 Radicale hat keine Admin-API. Der **`caldav-admin`**-Sidecar (Python 3, nur
