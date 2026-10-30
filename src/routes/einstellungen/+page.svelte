@@ -18,7 +18,6 @@
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 	import { toast } from 'svelte-sonner';
 	import BellIcon from '@lucide/svelte/icons/bell';
-	import BracesIcon from '@lucide/svelte/icons/braces';
 	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import CircleXIcon from '@lucide/svelte/icons/circle-x';
@@ -254,18 +253,6 @@
 	let tGenerating = $state(false);
 	let tRevoking = $state(false);
 
-	const TOKEN_EXAMPLES = `# Tasks auflisten
-curl -H "Authorization: Bearer <token>" http://HOST/api/tasks
-
-# Task abhaken (calendarId + uid aus der Liste oben)
-curl -X PATCH -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \\
-  -d '{"completed": true}' http://HOST/api/tasks/<calendarId>/<uid>
-
-# Termin anlegen (calendarId zuerst über /api/calendars holen)
-curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \\
-  -d '{"calendarId": "...", "summary": "Mathe-Klausur", "allDay": true, "dayKey": "2026-11-10"}' \\
-  http://HOST/api/events`;
-
 	async function loadApiToken(): Promise<void> {
 		try {
 			apiTokenView = await api.apiToken();
@@ -309,31 +296,6 @@ curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/js
 			() => toast.success('Token kopiert.'),
 			() => toast.error('Kopieren fehlgeschlagen.')
 		);
-	}
-
-	// OpenAPI-Spec wird in-App angezeigt (kein neues Fenster — in
-	// Home-Screen/Stand-alone-Modus ist ein _blank-Fenster nicht erreichbar).
-	let openApiSpec = $state('');
-	let openApiLoading = $state(false);
-	let openApiError = $state('');
-
-	async function toggleOpenApi(): Promise<void> {
-		if (openApiSpec) {
-			openApiSpec = '';
-			return;
-		}
-		openApiLoading = true;
-		openApiError = '';
-		try {
-			const res = await fetch('/api/openapi.json');
-			if (!res.ok) throw new Error('Die Spezifikation konnte nicht geladen werden.');
-			const spec = await res.json();
-			openApiSpec = JSON.stringify(spec, null, 2);
-		} catch (e) {
-			openApiError = errMsg(e);
-		} finally {
-			openApiLoading = false;
-		}
 	}
 
 	// Die Admin-Funktionen (Users, System-CALDAV) leben seitlich unter /admin;
@@ -695,8 +657,8 @@ curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/js
 				<span class="text-sm font-medium">API-Token (für T3 Code & Co.)</span>
 			</div>
 			<p class="mt-1 text-xs text-muted-foreground">
-				Mit dem Token können externe Tools — z. B. T3 Code — deine Termine und
-				Tasks über die API lesen und bearbeiten (Header <code class="font-mono">Authorization: Bearer &lt;token&gt;</code>).
+				Mit dem Token greift der MCP-Server (z. B. in T3 Code / OpenCode) auf
+				deine Termine und Tasks zu (Header <code class="font-mono">Authorization: Bearer &lt;token&gt;</code>).
 			</p>
 
 			{#if apiTokenView}
@@ -737,28 +699,6 @@ curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/js
 				{/if}
 			</div>
 
-			<details class="mt-3">
-				<summary class="cursor-pointer text-xs text-muted-foreground">
-					Beispielaufrufe & maschinendokumentation
-				</summary>
-				<pre class="mt-2 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs leading-relaxed">{TOKEN_EXAMPLES}</pre>
-				<div class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-					<span>Vollständige OpenAPI-Spezifikation:</span>
-					<Button size="xs" variant="outline" disabled={openApiLoading} onclick={toggleOpenApi}>
-						{#if openApiLoading}
-							<Spinner class="size-3" />
-						{:else}
-							<BracesIcon class="size-3" />
-						{/if}
-						{openApiSpec ? 'Ausblenden' : 'Anzeigen'}
-					</Button>
-				</div>
-				{#if openApiError}
-					<p class="mt-1 text-xs text-destructive">{openApiError}</p>
-				{:else if openApiSpec}
-					<pre class="mt-2 max-h-80 overflow-auto rounded-lg bg-muted p-3 font-mono text-xs leading-relaxed break-all">{openApiSpec}</pre>
-				{/if}
-			</details>
 		</div>
 
 		<!-- Testergebnis -->

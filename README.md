@@ -136,47 +136,20 @@ Der letzte aktive Admin kann nicht gelöscht, deaktiviert oder herabgestuft werd
 
 ---
 
-## API für externe Tools (z. B. T3 Code)
+## API-Token (Basis der externen Integration)
 
-Jeder User kann in den **Einstellungen → „API-Token (für T3 Code & Co.)“** einen
-persönlichen Token erzeugen. Der Token wird einmalig im Klartext angezeigt und
-serverseitig nur scrypt-gehasht gespeichert (SHA-256-Digest als Lookup-Key).
-Er gilt für **alle** `/api/*`-Endpunkte und ist per User isoliert — er gibt
-Zugriff auf genau die Datenwelt dieses Users (eigene CalDAV-Verbindungen,
-Workflows). Ablehnen/Ersetzen jederzeit in derselben Sektion; bei
-User-Löschung fällt der Token automatisch weg.
+Externe Tools greifen **nur über den MCP-Server** (nächste Sektion) auf
+Horizont zu. Dafür erzeugt jeder User in
+**Einstellungen → „API-Token (für T3 Code & Co.)“** einen persönlichen Token.
+Der Token wird einmalig im Klartext angezeigt und serverseitig nur
+scrypt-gehasht gespeichert (SHA-256-Digest als Lookup-Key). Er ist per User
+isoliert — er gibt Zugriff auf genau die Datenwelt dieses Users (eigene
+CalDAV-Verbindungen, Workflows). Ablehnen/Ersetzen jederzeit in derselben
+Sektion; bei User-Löschung fällt der Token automatisch weg.
 
-Aufruf:
-
-```bash
-curl -H "Authorization: Bearer <token>" http://HOST/api/tasks
-```
-
-**Wichtigste Endpunkte** (Vollständiges Verzeichnis: [`/api/openapi.json`](src/routes/api/openapi.json/+server.ts)):
-
-| Endpunkt | Methode | Wirkung |
-| --- | --- | --- |
-| `/api/calendars` | GET | Alle Kalender des Users (für `calendarId`) |
-| `/api/events` | GET | Termine — `?scope=main` (Vergangenheit/Jetzt/Zukunft) oder `?scope=archive&monat=YYYY-MM` |
-| `/api/events` | POST | Termin anlegen (`{calendarId, summary, allDay, dayKey/startMs, …}`) |
-| `/api/events/{calendarId}/{uid}` | PATCH | Termin bearbeiten (vollständiges Update) |
-| `/api/events/{calendarId}/{uid}` | DELETE | Termin löschen |
-| `/api/tasks` | GET / POST | Tasks auflisten / anlegen |
-| `/api/tasks/{calendarId}/{uid}` | PATCH | Task bearbeiten, z. B. `{"completed": true}` abhaken |
-| `/api/tasks/{calendarId}/{uid}` | DELETE | Task löschen |
-| `/api/workflows…` | GET/POST/PATCH/DELETE | Workflows (Checklisten) inkl. Schritte |
-
-Beispiel: „Mathe-Klausur am 10.11. vormittags“ anlegen:
-
-```bash
-curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
-  -d '{"calendarId":"<id>","summary":"Mathe-Klausur","allDay":false,"startMs":1794219000000,"endMs":1794226200000}' \
-  http://HOST/api/events
-```
-
-So lässt sich z. B. die **Tägliche-Schul-Tasks-Benachrichtigung** (Webhook)
-mit T3 Code koppeln: Horizont POSTet um 15:00 die offenen Schul-Tasks an T3,
-und T3 kann daraufhin über diese API Tasks abhaken oder Termine anlegen.
+Interner Aufruf des MCP-Servers: `Authorization: Bearer <token>` gegen die
+`/api`-Endpunkte — die Endpunkte selbst sind internes Implementierungsdetail,
+kein öffentliches Interface.
 
 ---
 
@@ -216,6 +189,11 @@ Token erzeugen: Horizont → **Einstellungen → „API-Token (für T3 Code & Co
 `HORIZONT_TOKEN_FILE` kann den Dateipfad überschreiben; `HORIZONT_URL`
 defaultet auf `http://localhost:8917`. Test: `bun run smoke` in `mcp-server/`
 (läuft gegen eine Mock-API).
+
+Daneben lässt sich die **Tägliche-Schul-Tasks-Benachrichtigung** (Webhook,
+Einstellungen) koppeln: Horizont POSTet um 15:00 die offenen Schul-Tasks an
+T3 Code; daraufhin kann T3 über den MCP-Server Tasks abhaken oder Termine
+anlegen.
 
 ---
 

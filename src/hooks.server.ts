@@ -1,7 +1,7 @@
 // Zentrales Auth-Gate:
 //  - Session-Cookie        → event.locals.user
 //  - API-Token (Bearer)    → event.locals.user (nur /api/*, für externe Tools)
-//  - /api/*                → 401 JSON (außer /api/auth/* und der OpenAPI-Spec)
+//  - /api/*                → 401 JSON (außer /api/auth/*)
 //  - Seiten                 → 303-Redirect zu /login bzw. /setup (wenn noch kein User existiert)
 
 import { redirect } from '@sveltejs/kit';
@@ -53,8 +53,6 @@ export const handle: Handle = ({ event, resolve }) => {
 
 	const isApi = path.startsWith('/api/');
 	const isAuthApi = path === '/api/auth/login' || path === '/api/auth/setup';
-	// Öffentliche Spezifikation — enthält keine sensiblen Daten.
-	const isOpenApi = path === '/api/openapi.json';
 	const isPublicPage = path === '/login' || path === '/setup';
 
 	const cookieToken = event.cookies.get(SESSION_COOKIE);
@@ -72,9 +70,8 @@ export const handle: Handle = ({ event, resolve }) => {
 	// ── Nicht angemeldet ───────────────────────────────────────────────────
 	if (user == null) {
 		if (isApi) {
-			// Login/Setup und die OpenAPI-Spec sind die öffentlichen Endpunkte.
+			// Login/Setup sind die öffentlichen Endpunkte.
 			if (isAuthApi && event.request.method === 'POST') return resolve(event);
-			if (isOpenApi && event.request.method === 'GET') return resolve(event);
 			return notLoggedIn();
 		}
 		// Seiten: Setup ist nur öffentlich, solange es gar keinen User gibt.
