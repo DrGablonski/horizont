@@ -18,6 +18,7 @@
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 	import { toast } from 'svelte-sonner';
 	import BellIcon from '@lucide/svelte/icons/bell';
+	import BracesIcon from '@lucide/svelte/icons/braces';
 	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import CircleXIcon from '@lucide/svelte/icons/circle-x';
@@ -308,6 +309,31 @@ curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/js
 			() => toast.success('Token kopiert.'),
 			() => toast.error('Kopieren fehlgeschlagen.')
 		);
+	}
+
+	// OpenAPI-Spec wird in-App angezeigt (kein neues Fenster — in
+	// Home-Screen/Stand-alone-Modus ist ein _blank-Fenster nicht erreichbar).
+	let openApiSpec = $state('');
+	let openApiLoading = $state(false);
+	let openApiError = $state('');
+
+	async function toggleOpenApi(): Promise<void> {
+		if (openApiSpec) {
+			openApiSpec = '';
+			return;
+		}
+		openApiLoading = true;
+		openApiError = '';
+		try {
+			const res = await fetch('/api/openapi.json');
+			if (!res.ok) throw new Error('Die Spezifikation konnte nicht geladen werden.');
+			const spec = await res.json();
+			openApiSpec = JSON.stringify(spec, null, 2);
+		} catch (e) {
+			openApiError = errMsg(e);
+		} finally {
+			openApiLoading = false;
+		}
 	}
 
 	// Die Admin-Funktionen (Users, System-CALDAV) leben seitlich unter /admin;
@@ -716,10 +742,22 @@ curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/js
 					Beispielaufrufe & maschinendokumentation
 				</summary>
 				<pre class="mt-2 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs leading-relaxed">{TOKEN_EXAMPLES}</pre>
-				<p class="mt-1 text-xs text-muted-foreground">
-					Vollständige OpenAPI-Spezifikation:
-					<a class="underline" href="/api/openapi.json" target="_blank" rel="noreferrer">/api/openapi.json</a>
-				</p>
+				<div class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+					<span>Vollständige OpenAPI-Spezifikation:</span>
+					<Button size="xs" variant="outline" disabled={openApiLoading} onclick={toggleOpenApi}>
+						{#if openApiLoading}
+							<Spinner class="size-3" />
+						{:else}
+							<BracesIcon class="size-3" />
+						{/if}
+						{openApiSpec ? 'Ausblenden' : 'Anzeigen'}
+					</Button>
+				</div>
+				{#if openApiError}
+					<p class="mt-1 text-xs text-destructive">{openApiError}</p>
+				{:else if openApiSpec}
+					<pre class="mt-2 max-h-80 overflow-auto rounded-lg bg-muted p-3 font-mono text-xs leading-relaxed break-all">{openApiSpec}</pre>
+				{/if}
 			</details>
 		</div>
 
