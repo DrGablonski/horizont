@@ -193,7 +193,7 @@
 								id="setup-caldav-base"
 								bind:value={cBaseUrl}
 								type="url"
-								placeholder="http://192.168.1.135:5232"
+								placeholder="http://RADICALE:5232"
 							/>
 						</div>
 						<div class="space-y-1.5">
@@ -202,7 +202,7 @@
 								id="setup-caldav-api"
 								bind:value={cAdminApiUrl}
 								type="url"
-								placeholder="http://192.168.1.135:5233"
+								placeholder="http://RADICALE:5233"
 							/>
 						</div>
 						<div class="space-y-1.5 sm:col-span-2">

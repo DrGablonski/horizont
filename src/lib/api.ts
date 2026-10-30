@@ -2,6 +2,8 @@
 
 import type {
 	AdminUserView,
+	ApiTokenGenerated,
+	ApiTokenView,
 	ArchiveMonth,
 	CalendarsResponse,
 	ConnectionsResponse,
@@ -195,6 +197,11 @@ export const api = {
 		req<{ ok: true }>(`/api/tasks/${encodeURIComponent(calendarId)}/${encodeURIComponent(uid)}`, {
 			method: 'DELETE'
 		}),
+
+	// API-Token (Maschinen-Auth für /api/*, z. B. für T3 Code)
+	apiToken: () => req<ApiTokenView>('/api/token'),
+	generateApiToken: () => req<ApiTokenGenerated>('/api/token', { method: 'POST' }),
+	revokeApiToken: () => req<{ ok: true }>('/api/token', { method: 'DELETE' }),
 
 	// Benachrichtigung (Webhook, z. B. T3 Code)
 	notify: () => req<NotifyConfigView>('/api/notify'),

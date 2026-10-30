@@ -22,7 +22,16 @@ export function rateLimited(ip: string): boolean {
 
 export function clientIp(request: Request): string {
 	const fwd = request.headers.get('x-forwarded-for');
-	if (fwd) return fwd.split(',')[0].trim();
+	if (fwd) {
+		// Letzter Eintrag: vom (letzten) Reverse-Proxy selbst hinzugefügt und
+		// damit nicht vom Client fälschbar. Der erste Eintrag wäre Client-
+		// gesteuert und würde das Rate-Limit per Header-Rotation umgehen.
+		const parts = fwd
+			.split(',')
+			.map((p) => p.trim())
+			.filter(Boolean);
+		if (parts.length > 0) return parts[parts.length - 1];
+	}
 	return 'local';
 }
 
@@ -50,10 +59,12 @@ export function sessionCookieOptions(event: RequestEvent) {
 
 function requestIsSecure(event: RequestEvent): boolean {
 	// Hinter einem TLS-terminierenden Proxy ist der Header maßgeblich.
-	const fwd = (event.request.headers.get('x-forwarded-proto') ?? '')
-		.split(',')[0]
-		.trim()
-		.toLowerCase();
+	// Letzter Eintrag: vom Proxy gesetzt, nicht Client-fälschbar.
+	const parts = (event.request.headers.get('x-forwarded-proto') ?? '')
+		.split(',')
+		.map((p) => p.trim().toLowerCase())
+		.filter(Boolean);
+	const fwd = parts.length > 0 ? parts[parts.length - 1] : '';
 	if (fwd === 'https') return true;
 	if (fwd === 'http') return false;
 
@@ -70,10 +81,65 @@ export function jsonErr(e: unknown): { error: string } {
 	return { error: e instanceof Error ? e.message : 'Unbekannter Fehler' };
 }
 
+// Alle JSON-Payloads in der App sind klein; alles darüber ist unnötig und
+// schützt sonst vor Memory-Attacken über überdimensionierte Bodies
+// (relevant v. a. für die öffentlichen Endpunkte /api/auth/login + /setup).
+const MAX_BODY_BYTES = 64 * 1024;
+// Überdimensionierte Bodies werden nicht gespeichert, sondern bis zu dieser
+// Grenze einfach verworfen (Drain), damit die 400-Antwort noch ankommt.
+// Darüber wird die Verbindung abgebrochen (nur noch Pathologisches).
+const DRAIN_CAP_BYTES = 8 * 1024 * 1024;
+
 export async function readJsonBody<T>(request: Request): Promise<T | null> {
 	try {
-		return (await request.json()) as T;
+		const text = await readBodyLimited(request, MAX_BODY_BYTES);
+		return JSON.parse(text) as T;
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Liest den Request-Body streamend. Payloads über `limit` werden verworfen
+ * (Drain bis `DRAIN_CAP_BYTES`), damit die Fehlerantwort sauber ankommt
+ * statt eines Connection-Resets; erst jenseits des Cap wird abgebrochen.
+ */
+async function readBodyLimited(request: Request, limit: number): Promise<string> {
+	const len = Number(request.headers.get('content-length') ?? '');
+	if (Number.isFinite(len) && len > DRAIN_CAP_BYTES) throw new Error('Body zu groß');
+	if (!request.body) return '';
+	const reader = request.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let size = 0;
+	let keeping = true;
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (value && value.byteLength > 0) {
+				size += value.byteLength;
+				if (keeping) {
+					if (size > limit) {
+						keeping = false; // Payload zu groß: Rest nur noch drainen
+					} else {
+						chunks.push(value);
+					}
+				}
+				if (size > DRAIN_CAP_BYTES) {
+					await reader.cancel();
+					throw new Error('Body zu groß');
+				}
+			}
+		}
+	} finally {
+		reader.releaseLock();
+	}
+	if (!keeping) throw new Error('Body zu groß');
+	const out = new Uint8Array(size);
+	let off = 0;
+	for (const c of chunks) {
+		out.set(c, off);
+		off += c.byteLength;
+	}
+	return new TextDecoder().decode(out);
 }

@@ -125,11 +125,11 @@
 		<div class="grid gap-4 sm:grid-cols-2">
 			<div class="space-y-1.5">
 				<Label for="s-base">Basis-URL (Radicale)</Label>
-				<Input id="s-base" bind:value={sBaseUrl} type="url" placeholder="http://192.168.1.135:5232" />
+				<Input id="s-base" bind:value={sBaseUrl} type="url" placeholder="http://RADICALE:5232" />
 			</div>
 			<div class="space-y-1.5">
 				<Label for="s-api">Admin-API (Sidecar)</Label>
-				<Input id="s-api" bind:value={sAdminApiUrl} type="url" placeholder="http://192.168.1.135:5233" />
+				<Input id="s-api" bind:value={sAdminApiUrl} type="url" placeholder="http://RADICALE:5233" />
 			</div>
 			<div class="space-y-1.5 sm:col-span-2">
 				<Label for="s-token">Admin-Token {sysCaldav?.hasToken ? '(gesetzt – leer lassen zum Beibehalten)' : ''}</Label>

@@ -15,6 +15,7 @@ import { listUsers } from '$server/auth/userStore';
 import { listConnections } from '$server/store/connections';
 import { DEFAULT_NOTIFY_PROMPT, getNotify, getRun, setRun, webhookUrlOf } from '$server/store/notify';
 import { listAllTasks } from '$server/lib/write';
+import { guardedFetch } from '$server/lib/urlGuard';
 import type { NotifyConfig, TaskItem } from '$lib/types';
 
 const TICK_MS = 60_000;
@@ -153,7 +154,9 @@ export function composeMessage(template: string, tasks: TaskItem[], now: Date): 
 export async function postNotify(url: string, body: string, runDate: string): Promise<Response> {
 	// x-run-date: erlaubt in T3 Code Dedupe per replayKey {{headers.x-run-date}}
 	// (zweite Sendung am selben Tag wird dort als „duplicate" erkannt).
-	return fetch(url, {
+	// guardedFetch: SSRF-Schutz (nur http(s), keine internen/gesperrten Ziele,
+	// Redirect-Zwischenstufen werden ebenfalls geprüft).
+	return guardedFetch(url, 'Webhook-URL', {
 		method: 'POST',
 		headers: {
 			'content-type': 'text/plain; charset=utf-8',

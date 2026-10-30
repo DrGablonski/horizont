@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
-	import type { ConnectionsResponse, NotifyConfigView, NotifyTestResult, TestResult } from '$lib/types';
+	import type {
+		ApiTokenView,
+		ConnectionsResponse,
+		NotifyConfigView,
+		NotifyTestResult,
+		TestResult
+	} from '$lib/types';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Checkbox from '$lib/components/ui/checkbox/checkbox.svelte';
 	import Input from '$lib/components/ui/input/input.svelte';
@@ -13,6 +19,7 @@
 	import { toast } from 'svelte-sonner';
 	import BellIcon from '@lucide/svelte/icons/bell';
 	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
+	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import CircleXIcon from '@lucide/svelte/icons/circle-x';
 	import PlugZapIcon from '@lucide/svelte/icons/plug-zap';
 	import PlusIcon from '@lucide/svelte/icons/plus';
@@ -240,12 +247,76 @@
 		}
 	}
 
+	// ── API-Token (Maschinen-Auth, z. B. für T3 Code) ────────────────────────
+	let apiTokenView = $state<ApiTokenView | null>(null);
+	let newToken = $state('');
+	let tGenerating = $state(false);
+	let tRevoking = $state(false);
+
+	const TOKEN_EXAMPLES = `# Tasks auflisten
+curl -H "Authorization: Bearer <token>" http://HOST/api/tasks
+
+# Task abhaken (calendarId + uid aus der Liste oben)
+curl -X PATCH -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \\
+  -d '{"completed": true}' http://HOST/api/tasks/<calendarId>/<uid>
+
+# Termin anlegen (calendarId zuerst über /api/calendars holen)
+curl -X POST -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \\
+  -d '{"calendarId": "...", "summary": "Mathe-Klausur", "allDay": true, "dayKey": "2026-11-10"}' \\
+  http://HOST/api/events`;
+
+	async function loadApiToken(): Promise<void> {
+		try {
+			apiTokenView = await api.apiToken();
+		} catch (e) {
+			toast.error(errMsg(e));
+		}
+	}
+
+	async function createToken(): Promise<void> {
+		if (apiTokenView?.hasToken && !confirm('Den aktuellen Token ersetzen? Er ist danach ungültig.')) return;
+		tGenerating = true;
+		try {
+			const r = await api.generateApiToken();
+			newToken = r.token;
+			await loadApiToken();
+		} catch (e) {
+			toast.error(errMsg(e));
+		} finally {
+			tGenerating = false;
+		}
+	}
+
+	async function revokeToken(): Promise<void> {
+		if (!confirm('API-Token ablehnen? Externe Tools verlieren sofort den Zugriff.')) return;
+		tRevoking = true;
+		try {
+			await api.revokeApiToken();
+			newToken = '';
+			await loadApiToken();
+			toast.success('Token abgelehnt.');
+		} catch (e) {
+			toast.error(errMsg(e));
+		} finally {
+			tRevoking = false;
+		}
+	}
+
+	function copyToken(): void {
+		if (!newToken) return;
+		navigator.clipboard.writeText(newToken).then(
+			() => toast.success('Token kopiert.'),
+			() => toast.error('Kopieren fehlgeschlagen.')
+		);
+	}
+
 	// Die Admin-Funktionen (Users, System-CALDAV) leben seitlich unter /admin;
 	// hier bleiben nur die normalen Einstellungen.
 
 	onMount(() => {
 		load();
 		loadNotify();
+		loadApiToken();
 	});
 </script>
 
@@ -483,7 +554,7 @@
 					<Input
 						id="notify-url"
 						bind:value={nUrl}
-						placeholder="http://192.168.1.146:3773/api/hooks/scheduled-task%3A…"
+						placeholder="http://T3-CODE-HOST:PORT/api/hooks/scheduled-task%3A…"
 						autocomplete="off"
 						spellcheck={false}
 						class="font-mono text-xs"
@@ -588,6 +659,69 @@
 				{/if}
 			</div>
 		{/if}
+
+		<Separator />
+
+		<!-- API-Token: externe Tools (z. B. T3 Code) lesen & bearbeiten -->
+		<div class="rounded-xl border border-border bg-card p-5">
+			<div class="flex items-center gap-2">
+				<KeyRoundIcon class="size-4" />
+				<span class="text-sm font-medium">API-Token (für T3 Code & Co.)</span>
+			</div>
+			<p class="mt-1 text-xs text-muted-foreground">
+				Mit dem Token können externe Tools — z. B. T3 Code — deine Termine und
+				Tasks über die API lesen und bearbeiten (Header <code class="font-mono">Authorization: Bearer &lt;token&gt;</code>).
+			</p>
+
+			{#if apiTokenView}
+				{#if apiTokenView.hasToken}
+					<p class="mt-3 text-xs text-muted-foreground">
+						Token erstellt am {new Date(apiTokenView.createdAt as number).toLocaleDateString('de-DE')}
+						{#if apiTokenView.lastUsedAt}
+							· zuletzt genutzt {new Date(apiTokenView.lastUsedAt).toLocaleDateString('de-DE')}
+						{/if}
+					</p>
+				{:else}
+					<p class="mt-3 text-xs text-muted-foreground">Noch kein Token erstellt.</p>
+				{/if}
+			{/if}
+
+			{#if newToken}
+				<div class="mt-3 space-y-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+					<p class="text-xs text-muted-foreground">
+						Neuer Token — <strong>wird nur einmal angezeigt</strong>, jetzt kopieren:
+					</p>
+					<div class="flex gap-2">
+						<code class="min-w-0 flex-1 break-all rounded bg-background p-2 font-mono text-xs">{newToken}</code>
+						<Button size="sm" variant="outline" onclick={copyToken}>Kopieren</Button>
+					</div>
+				</div>
+			{/if}
+
+			<div class="mt-4 flex flex-wrap items-center gap-2">
+				<Button size="sm" disabled={tGenerating} onclick={createToken}>
+					{#if tGenerating}<Spinner class="size-3.5" />{:else}<KeyRoundIcon class="size-3.5" />{/if}
+					<span>{apiTokenView?.hasToken ? 'Neuen Token erzeugen' : 'Token erzeugen'}</span>
+				</Button>
+				{#if apiTokenView?.hasToken}
+					<Button size="sm" variant="outline" disabled={tRevoking} onclick={revokeToken}>
+						{#if tRevoking}<Spinner class="size-3.5" />{:else}<TrashIcon class="size-3.5" />{/if}
+						<span>Token ablehnen</span>
+					</Button>
+				{/if}
+			</div>
+
+			<details class="mt-3">
+				<summary class="cursor-pointer text-xs text-muted-foreground">
+					Beispielaufrufe & maschinendokumentation
+				</summary>
+				<pre class="mt-2 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs leading-relaxed">{TOKEN_EXAMPLES}</pre>
+				<p class="mt-1 text-xs text-muted-foreground">
+					Vollständige OpenAPI-Spezifikation:
+					<a class="underline" href="/api/openapi.json" target="_blank" rel="noreferrer">/api/openapi.json</a>
+				</p>
+			</details>
+		</div>
 
 		<!-- Testergebnis -->
 		{#if testResult}

@@ -7,6 +7,7 @@ import { XMLParser } from 'fast-xml-parser';
 import Ical from 'ical.js';
 import type { CalDavCalendar, CalDavSettings } from '$lib/types';
 import { DAV_TIMEOUT_MS, WORKFLOWS_CALENDAR } from '$server/lib/constants';
+import { guardedFetch } from '$server/lib/urlGuard';
 
 // ── Fehler-Typ ────────────────────────────────────────────────────────────
 
@@ -119,7 +120,9 @@ async function davRequest(
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), DAV_TIMEOUT_MS);
 	try {
-		const res = await fetch(url, {
+		// guardedFetch: SSRF-Schutz (nur http(s), keine internen/gesperrten
+		// Ziele, Redirect-Zwischenstufen werden ebenfalls geprüft).
+		const res = await guardedFetch(url, 'CalDAV-Server', {
 			method,
 			headers: {
 				Authorization: `Basic ${token}`,

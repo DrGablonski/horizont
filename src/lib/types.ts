@@ -77,9 +77,9 @@ export interface ConnectionsResponse {
 
 /** System-CALDAV (Admin-Konfiguration für User-Anlage/-Löschung). */
 export interface SystemCaldavConfig {
-	/** Basis-URL des Radicale-Servers, z. B. http://192.168.1.135:5232 */
+	/** Basis-URL des Radicale-Servers, z. B. http://RADICALE:5232 */
 	baseUrl: string;
-	/** Admin-API (caldav-admin-Sidecar), z. B. http://192.168.1.135:5233 */
+	/** Admin-API (caldav-admin-Sidecar), z. B. http://RADICALE:5233 */
 	adminApiUrl: string;
 	adminToken: string;
 }
@@ -305,6 +305,20 @@ export interface NotifyTestResult {
 	/** x-t3-hook-outcome von T3 Code, z. B. "accepted". */
 	outcome?: string;
 	error?: string;
+}
+
+// ── API-Token (Maschinen-Auth für /api/*, z. B. T3 Code) ──────────────────
+
+export interface ApiTokenView {
+	hasToken: boolean;
+	createdAt: number | null;
+	lastUsedAt: number | null;
+}
+
+/** Antwort auf POST /api/token — der Klartext-Token wird nur einmal geliefert. */
+export interface ApiTokenGenerated {
+	token: string;
+	createdAt: number;
 }
 
 // ── Event-Write ───────────────────────────────────────────────────────────
