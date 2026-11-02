@@ -1,7 +1,7 @@
 // Täglicher Benachrichtigungs-Job (Webhook, z. B. an T3 Code):
 // Um die konfigurierte Uhrzeit (pro User, Default 15:00) werden alle
-// offenen Tasks mit den eingestellten Prioritäten (Standard: „Schule",
-// priority 5) als Klartext an die konfigurierte Webhook-URL POSTet.
+// offenen Tasks mit den eingestellten Kategorien (Standard: „Schule")
+// als Klartext an die konfigurierte Webhook-URL POSTet.
 //
 // In-Prozess-Timer (exakt eine Instanz pro Deployment, siehe
 // docker-compose.yml): Alle 60 s wird geprüft, ob bei einem User die
@@ -16,7 +16,7 @@ import { listConnections } from '$server/store/connections';
 import { DEFAULT_NOTIFY_PROMPT, getNotify, getRun, setRun, webhookUrlOf } from '$server/store/notify';
 import { listAllTasks } from '$server/lib/write';
 import { guardedFetch } from '$server/lib/urlGuard';
-import { priorityBucket } from '$lib/priorities';
+import { categoryNameOf } from '$lib/categories';
 import type { NotifyConfig, TaskItem } from '$lib/types';
 
 const TICK_MS = 60_000;
@@ -94,7 +94,10 @@ async function runForUser(userId: string, cfg: NotifyConfig, now: Date, today: s
 		}
 		const tasks = await listAllTasks(connections);
 		const open = tasks.filter(
-			(t) => !t.completed && t.priority != null && cfg.priorities.includes(priorityBucket(t.priority))
+			(t) => {
+				const cat = categoryNameOf(t);
+				return !t.completed && cat != null && cfg.categories.includes(cat);
+			}
 		);
 		if (open.length === 0) {
 			// Keine offenen Tasks mit den gewählten Prioritäten → keine Nachricht (keinerlei Spam).

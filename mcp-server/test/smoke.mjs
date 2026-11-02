@@ -61,11 +61,19 @@ const mock = http.createServer((req, res) => {
         ],
       }));
     }
+    if (req.method === "GET" && p === "/api/categories") {
+      return res.end(JSON.stringify({
+        categories: [
+          { name: "Schule", color: "#2563eb" },
+          { name: "Hoch", color: "#dc2626" },
+        ],
+      }));
+    }
     if (req.method === "GET" && p === "/api/tasks") {
       return res.end(JSON.stringify({
         configured: true,
         tasks: [
-          { id: "t1", uid: "task-1", calendarId: "cal-schule", calendarName: "Schule", calendarColor: "#dc2626", summary: "Mathe lernen", completed: false, dueKey: "2026-11-10", priority: 5 },
+          { id: "t1", uid: "task-1", calendarId: "cal-schule", calendarName: "Schule", calendarColor: "#dc2626", summary: "Mathe lernen", completed: false, dueKey: "2026-11-10", category: "Schule" },
           { id: "t2", uid: "task-2", calendarId: "cal-schule", calendarName: "Schule", calendarColor: "#dc2626", summary: "Erledigt", completed: true },
         ],
       }));
@@ -76,7 +84,7 @@ const mock = http.createServer((req, res) => {
     }
     if (req.method === "POST" && p === "/api/tasks") {
       res.statusCode = 201;
-      return res.end(JSON.stringify({ id: "t3", uid: "task-3", calendarId: parsed.calendarId, calendarName: "Schule", summary: parsed.summary, completed: false, dueKey: parsed.due?.key, priority: parsed.priority }));
+      return res.end(JSON.stringify({ id: "t3", uid: "task-3", calendarId: parsed.calendarId, calendarName: "Schule", summary: parsed.summary, completed: false, dueKey: parsed.due?.key, category: parsed.category }));
     }
     const stepMatch = p.match(/^\/api\/workflows\/([^/]+)\/steps$/);
     if (req.method === "POST" && stepMatch) {
@@ -241,11 +249,14 @@ try {
 
   const ct = toolText((await mcp.request("tools/call", {
     name: "create_task",
-    arguments: { calendarId: "cal-schule", summary: "Übung", dueDate: "2026-11-10", priority: 5 },
+    arguments: { calendarId: "cal-schule", summary: "Übung", dueDate: "2026-11-10", category: "Schule" },
   })).result);
   check("create_task", ct?.uid === "task-3" && ct?.dueKey === "2026-11-10");
   const taskReq = requests.find((r) => r.url === "/api/tasks" && r.method === "POST");
-  check("create_task due-Mapping", taskReq?.body?.due?.kind === "date" && taskReq.body.due.key === "2026-11-10" && taskReq.body.priority === 5, JSON.stringify(taskReq?.body));
+  check("create_task due-Mapping", taskReq?.body?.due?.kind === "date" && taskReq.body.due.key === "2026-11-10" && taskReq.body.category === "Schule", JSON.stringify(taskReq?.body));
+
+  const catRes = toolText((await mcp.request("tools/call", { name: "categories", arguments: {} })).result);
+  check("categories", Array.isArray(catRes?.categories) && catRes.categories.some((c) => c.name === "Schule"), JSON.stringify(catRes));
 
   const wfs = toolText((await mcp.request("tools/call", { name: "workflows", arguments: {} })).result);
   check("workflows", Array.isArray(wfs) && wfs[0].progress === 0.5 && wfs[0].nextStep?.title === "Einschlagen", JSON.stringify(wfs));

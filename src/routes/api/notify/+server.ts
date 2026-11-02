@@ -5,7 +5,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { getNotifyView, saveNotify } from '$server/store/notify';
-import { PRIORITY_BUCKETS, type PriorityBucket } from '$lib/priorities';
+import { normalizeCategoryName } from '$lib/categories';
 import type { NotifySaveInput } from '$lib/types';
 
 export const GET: RequestHandler = ({ locals }) => {
@@ -20,13 +20,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!body || typeof body.enabled !== 'boolean' || typeof body.time !== 'string') {
 		return json({ error: 'Ungültige Eingaben.' }, { status: 400 });
 	}
-	// priorities: Array mit nur gültigen Buckets (1/5/9); fehlend = gespeichert behalten.
-	let priorities: PriorityBucket[] | undefined;
-	if (body.priorities !== undefined) {
-		if (!Array.isArray(body.priorities)) return json({ error: 'Ungültige Prioritäten.' }, { status: 400 });
-		priorities = body.priorities.filter((p): p is PriorityBucket =>
-			(PRIORITY_BUCKETS as readonly unknown[]).includes(p)
-		);
+	// categories: Array gültiger Kategoriennamen; fehlend = gespeichert behalten.
+	let categories: string[] | undefined;
+	if (body.categories !== undefined) {
+		if (!Array.isArray(body.categories)) return json({ error: 'Ungültige Kategorien.' }, { status: 400 });
+		categories = body.categories.map((c) => normalizeCategoryName(c) ?? '').filter((c) => c !== '');
 	}
 	try {
 		saveNotify(locals.user.id, {
@@ -35,7 +33,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			url: typeof body.url === 'string' ? body.url : undefined,
 			token: typeof body.token === 'string' ? body.token : undefined,
 			prompt: typeof body.prompt === 'string' ? body.prompt : undefined,
-			priorities
+			categories
 		});
 		return json(getNotifyView(locals.user.id));
 	} catch (e) {

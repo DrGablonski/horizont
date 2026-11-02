@@ -167,6 +167,17 @@ export function icalToTaskItems(ics: string, calendar: CalDavCalendar): TaskItem
 			}
 		}
 
+		let category: string | undefined;
+		const catVal = v.getFirstPropertyValue?.('categories');
+		const catList = Array.isArray(catVal) ? catVal : [catVal];
+		for (const c of catList) {
+			const s = str(c);
+			if (s) {
+				category = s;
+				break; // ein Task → eine Kategorie (erste gewinnt)
+			}
+		}
+
 		let priority: number | undefined;
 		const priVal = v.getFirstPropertyValue?.('priority');
 		if (priVal != null) {
@@ -185,6 +196,7 @@ export function icalToTaskItems(ics: string, calendar: CalDavCalendar): TaskItem
 			completed,
 			dueKey,
 			dueMs,
+			category,
 			priority
 		});
 	}

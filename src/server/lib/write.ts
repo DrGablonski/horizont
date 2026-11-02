@@ -13,6 +13,7 @@ import type {
 	TaskUpdateInput
 } from '$lib/types';
 import { msFromKey } from '$lib/dates';
+import { normalizeCategoryName } from '$lib/categories';
 import {
 	listCalendarObjects,
 	findObjectByUid,
@@ -86,9 +87,9 @@ function validateTaskPatch(input: TaskUpdateInput): void {
 			throw new ValidationError('Ungültige Zeit.');
 		}
 	}
-	if (input.priority != null && input.priority !== null) {
-		if (!Number.isInteger(input.priority) || input.priority < 1 || input.priority > 9) {
-			throw new ValidationError('Priorität muss eine ganze Zahl zwischen 1 und 9 sein.');
+	if (input.category != null && input.category !== null) {
+		if (normalizeCategoryName(input.category) == null) {
+			throw new ValidationError('Ungültiger Kategoriename (1–40 Zeichen, ohne Komma/Semikolon).');
 		}
 	}
 }
@@ -197,7 +198,7 @@ function buildTaskItemFromInput(
 		description?: string;
 		completed?: boolean;
 		due?: { kind: 'none' } | { kind: 'date'; key: string } | { kind: 'time'; ms: number };
-		priority?: number | null;
+		category?: string | null;
 	}
 ): TaskItem {
 	let dueKey: string | undefined;
@@ -223,7 +224,7 @@ function buildTaskItemFromInput(
 		completed: input.completed ?? false,
 		dueKey,
 		dueMs,
-		priority: input.priority ?? undefined
+		category: input.category ?? undefined
 	};
 }
 

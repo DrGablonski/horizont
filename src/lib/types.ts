@@ -1,7 +1,5 @@
 // Gemeinsame Typen (Client + Server)
 
-import type { PriorityBucket } from './priorities';
-
 // ── Auth ──────────────────────────────────────────────────────────────────
 
 export type UserRole = 'admin' | 'user';
@@ -224,6 +222,12 @@ export interface UpdateStepInput {
 
 // ── Tasks ─────────────────────────────────────────────────────────────────
 
+/** Kategorie-Definition (Name + Farbe), verwaltet pro User. */
+export interface TaskCategory {
+	name: string; // eindeutig (case-insensitive), 1–40 Zeichen
+	color: string; // #rrggbb
+}
+
 export interface TaskItem {
 	id: string;
 	uid: string;
@@ -235,7 +239,9 @@ export interface TaskItem {
 	completed: boolean;
 	dueKey?: string; // YYYY-MM-DD (date-only)
 	dueMs?: number; // epoch ms (date-time)
-	priority?: number; // 1=hoch, 5=schule, 9=niedrig
+	category?: string; // Kategoriename (CalDAV CATEGORIES)
+	/** Alt: CalDAV-Priorität (1=hoch … 9=niedrig); nur lesend, durch Kategorien ersetzt. */
+	priority?: number;
 }
 
 export interface TasksResponse {
@@ -254,7 +260,8 @@ export interface TaskUpdateInput {
 	description?: string;
 	completed?: boolean;
 	due?: TaskDueInput;
-	priority?: number | null;
+	/** Kategoriename; null = Kategorie entfernen. */
+	category?: string | null;
 }
 
 export interface TaskCreateInput extends TaskUpdateInput {
@@ -271,8 +278,8 @@ export interface NotifyConfig {
 	url: string; // Webhook-URL bis zur Task-ID (ohne Token), z. B. http://…/api/hooks/scheduled-task%3A…
 	token: string; // Webhook-Token (letztes Pfadsegment der vollständigen URL)
 	prompt: string; // Nachrichten-Template: {{body}} = Task-Liste, {{stand}} = Datum/Uhrzeit + Anzahl
-	/** Prioritäts-Buckets, die gesendet werden (1=Hoch, 5=Schule, 9=Niedrig). */
-	priorities: PriorityBucket[];
+	/** Kategoriennamen, die gesendet werden. */
+	categories: string[];
 }
 
 /** Letzter Lauf des Notify-Jobs. */
@@ -291,7 +298,7 @@ export interface NotifyConfigView {
 	url: string | null;
 	hasToken: boolean;
 	prompt: string;
-	priorities: PriorityBucket[];
+	categories: string[];
 	lastRun: NotifyLastRun | null;
 }
 
@@ -302,8 +309,8 @@ export interface NotifySaveInput {
 	url?: string;
 	token?: string;
 	prompt?: string;
-	/** Prioritäts-Buckets, die gesendet werden (fehlend: gespeicherte behalten). */
-	priorities?: PriorityBucket[];
+	/** Kategoriennamen, die gesendet werden (fehlend: gespeicherte behalten). */
+	categories?: string[];
 }
 
 export interface NotifyTestResult {

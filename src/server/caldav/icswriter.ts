@@ -182,7 +182,7 @@ interface TaskFields {
 	description?: string;
 	completed?: boolean;
 	due?: { kind: 'none' } | { kind: 'date'; key: string } | { kind: 'time'; ms: number };
-	priority?: number | null;
+	category?: string | null;
 }
 
 function applyTaskFields(comp: any, input: TaskFields): void {
@@ -205,10 +205,10 @@ function applyTaskFields(comp: any, input: TaskFields): void {
 		}
 	}
 
-	if (input.priority != null && input.priority !== null && input.priority !== undefined) {
-		comp.updatePropertyWithValue('priority', input.priority);
-	} else if (comp.hasProperty('priority')) {
-		comp.removeProperty('priority');
+	if (input.category != null) {
+		comp.updatePropertyWithValue('categories', input.category);
+	} else if (comp.hasProperty('categories')) {
+		comp.removeProperty('categories');
 	}
 }
 
@@ -230,7 +230,7 @@ interface TaskPatch {
 	description?: string;
 	completed?: boolean;
 	due?: { kind: 'none' } | { kind: 'date'; key: string } | { kind: 'time'; ms: number };
-	priority?: number | null;
+	category?: string | null;
 }
 
 export function updateTaskIcs(existingIcs: string, uid: string, patch: TaskPatch): { uid: string; ics: string } {
@@ -273,12 +273,15 @@ export function updateTaskIcs(existingIcs: string, uid: string, patch: TaskPatch
 		}
 	}
 
-	if (patch.priority !== undefined) {
-		if (patch.priority === null) {
-			if (vtodo.hasProperty('priority')) vtodo.removeProperty('priority');
+	if (patch.category !== undefined) {
+		if (patch.category == null) {
+			if (vtodo.hasProperty('categories')) vtodo.removeProperty('categories');
 		} else {
-			vtodo.updatePropertyWithValue('priority', patch.priority);
+			vtodo.updatePropertyWithValue('categories', patch.category);
 		}
+		// Kategorie explizit gesetzt/entfernt → alte PRIORITY entfernen,
+		// damit sie nicht als Fallback-Kategorie mitredet.
+		if (vtodo.hasProperty('priority')) vtodo.removeProperty('priority');
 	}
 
 	return { uid, ics: serialize(vcal) };

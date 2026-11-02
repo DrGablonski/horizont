@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
-	import type { TaskItem, CalDavCalendar, TaskCreateInput, TaskUpdateInput } from '$lib/types';
+	import type { TaskItem, CalDavCalendar, TaskCreateInput, TaskUpdateInput, TaskCategory } from '$lib/types';
+	import { categoryNameOf } from '$lib/categories';
 	import Button from './ui/button/button.svelte';
 	import Checkbox from './ui/checkbox/checkbox.svelte';
-	import Badge from './ui/badge/badge.svelte';
 	import Spinner from './ui/spinner/spinner.svelte';
 	import TaskEditor from './TaskEditor.svelte';
 	import { toast } from 'svelte-sonner';
@@ -13,6 +13,7 @@
 
 	let tasks: TaskItem[] = [];
 	let calendars: CalDavCalendar[] = [];
+	let categories: TaskCategory[] = [];
 	let loading = true;
 	let editorOpen = false;
 	let editorMode: 'create' | 'edit' = 'create';
@@ -21,9 +22,10 @@
 	async function load() {
 		loading = true;
 		try {
-			const [tasksRes, calRes] = await Promise.all([api.tasks(), api.calendars()]);
+			const [tasksRes, calRes, catRes] = await Promise.all([api.tasks(), api.calendars(), api.categories()]);
 			tasks = tasksRes.tasks;
 			calendars = calRes.calendars;
+			categories = catRes.categories;
 		} catch (e: any) {
 			toast.error(e.message ?? 'Aufgaben konnten nicht geladen werden.');
 		} finally {
@@ -51,7 +53,7 @@
 				: task.dueMs != null
 					? { kind: 'time' as const, ms: task.dueMs }
 					: { kind: 'none' as const },
-			priority: task.priority ?? null,
+			category: categoryNameOf(task) ?? null,
 			calendarId: task.calendarId
 		};
 		editorOpen = true;
@@ -97,11 +99,8 @@
 		}
 	}
 
-	function priorityLabel(p: number | undefined): string {
-		if (p == null) return '';
-		if (p <= 2) return 'Hoch';
-		if (p >= 8) return 'Niedrig';
-		return 'Schule';
+	function categoryColor(name: string): string {
+		return categories.find((c) => c.name.toLowerCase() === name.toLowerCase())?.color ?? '#64748b';
 	}
 
 	function dueDisplay(t: TaskItem): string {
@@ -148,10 +147,14 @@
 					>
 						{task.summary}
 					</button>
-					{#if task.priority != null}
-						<Badge class="shrink-0 text-xs" variant="secondary">
-							{priorityLabel(task.priority)}
-						</Badge>
+					{#if categoryNameOf(task)}
+						{@const cat = categoryNameOf(task)!}
+						<span
+							class="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-xs text-foreground"
+						>
+							<span class="size-2 rounded-full" style="background:{categoryColor(cat)}"></span>
+							{cat}
+						</span>
 					{/if}
 					{#if dueDisplay(task)}
 						<span class="shrink-0 text-xs text-muted-foreground">{dueDisplay(task)}</span>
@@ -176,6 +179,7 @@
 		mode={editorMode}
 		open={editorOpen}
 		calendars={calendars}
+		categories={categories}
 		initial={editorInitial}
 		onSubmit={handleEditorSubmit}
 		onClose={() => (editorOpen = false)}

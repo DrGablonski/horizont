@@ -22,6 +22,7 @@ import type {
 	NotifySaveInput,
 	NotifyTestResult,
 	TasksResponse,
+	TaskCategory,
 	TaskCreateInput,
 	TaskItem,
 	TaskUpdateInput,
@@ -196,6 +197,14 @@ export const api = {
 	deleteTask: (calendarId: string, uid: string) =>
 		req<{ ok: true }>(`/api/tasks/${encodeURIComponent(calendarId)}/${encodeURIComponent(uid)}`, {
 			method: 'DELETE'
+		}),
+
+	// Task-Kategorien (Name + Farbe)
+	categories: () => req<{ categories: TaskCategory[] }>('/api/categories'),
+	saveCategories: (categories: TaskCategory[]) =>
+		req<{ categories: TaskCategory[] }>('/api/categories', {
+			method: 'POST',
+			body: JSON.stringify({ categories })
 		}),
 
 	// API-Token (Maschinen-Auth für /api/*, z. B. für T3 Code)

@@ -6,13 +6,14 @@
 	import Label from './ui/label/label.svelte';
 	import Checkbox from './ui/checkbox/checkbox.svelte';
 	import { localInputToMs, msToDateInput, msToTimeInput } from '$lib/dates';
-	import type { TaskCreateInput, TaskUpdateInput, TaskItem, CalDavCalendar, TaskDueInput } from '$lib/types';
+	import type { TaskCategory, TaskCreateInput, TaskUpdateInput, TaskItem, CalDavCalendar, TaskDueInput } from '$lib/types';
 	import { toast } from 'svelte-sonner';
 
 	export let mode: 'create' | 'edit' = 'create';
 	export let open = false;
 	export let onClose = () => {};
 	export let calendars: CalDavCalendar[] = [];
+	export let categories: TaskCategory[] = [];
 	export let initial: Partial<TaskUpdateInput> & { calendarId?: string; uid?: string } = {};
 	export let onSubmit: (input: TaskCreateInput | TaskUpdateInput) => Promise<void> = async () => {};
 
@@ -38,7 +39,13 @@
 		}
 	}
 
-	let priority: string = initial.priority != null ? String(initial.priority) : '9';
+	// Kategorien: '' = keine; unbekannte Kategorie des Tasks wird erhalten,
+	// außer sie wird explizit geändert (dann in die Liste einfügen).
+	let category: string = initial.category ?? '';
+	const initialCategory = initial.category ?? '';
+	if (initialCategory && !categories.some((c) => c.name === initialCategory)) {
+		categories = [...categories, { name: initialCategory, color: '#64748b' }];
+	}
 
 	async function handleSubmit() {
 		if (!summary.trim()) {
@@ -74,14 +81,12 @@
 				due = { kind: 'none' };
 			}
 
-			const pri: number = Number(priority);
-
 			const base = {
 				summary: summary.trim(),
 				description: description.trim() || undefined,
 				completed,
 				due,
-				priority: pri
+				category: category.trim() !== '' ? category.trim() : null
 			};
 
 			if (mode === 'create') {
@@ -149,12 +154,19 @@
 			</div>
 
 			<div class="space-y-1.5">
-				<Label for="task-priority">Priorität</Label>
-				<select id="task-priority" class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" bind:value={priority}>
-					<option value="9">Niedrig</option>
-					<option value="5">Schule</option>
-					<option value="1">Hoch</option>
+				<Label for="task-category">Kategorie</Label>
+				<select id="task-category" class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" bind:value={category}>
+					<option value="">— ohne —</option>
+					{#each categories as c (c.name)}
+						<option value={c.name}>{c.name}</option>
+					{/each}
 				</select>
+				{#if category && categories.find((c) => c.name === category)}
+					<div class="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground">
+						<span class="inline-block size-2.5 rounded-full" style="background:{categories.find((c) => c.name === category)?.color}"></span>
+						{category}
+					</div>
+				{/if}
 			</div>
 		</div>
 

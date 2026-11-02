@@ -192,9 +192,10 @@ defaultet auf `http://localhost:8917`. Test: `bun run smoke` in `mcp-server/`
 
 Daneben lässt sich die **Tägliche-Tasks-Benachrichtigung** (Webhook,
 Einstellungen) koppeln: Horizont POSTet um die eingestellte Uhrzeit die
-offenen Aufgaben mit den gewählten Prioritäten (Standard: „Schule"; einstellbar:
-Hoch/Schule/Niedrig) an T3 Code; daraufhin kann T3 über den MCP-Server Tasks
-abhaken oder Termine anlegen.
+offenen Aufgaben mit den gewählten **Kategorien** (verwaltbar in den
+Einstellungen, Name + Farbe; gespeichert im CalDAV-Feld `CATEGORIES`;
+Standard: „Schule") an T3 Code; daraufhin kann T3 über den MCP-Server
+Tasks abhaken oder Termine anlegen.
 
 ---
 

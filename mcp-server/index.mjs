@@ -124,7 +124,8 @@ function compactTask(t) {
   if (t.description) o.description = t.description;
   if (t.dueKey) o.due = t.dueKey;
   if (t.dueMs) o.due = localISO(t.dueMs);
-  if (t.priority != null) o.priority = t.priority;
+  if (t.category) o.category = t.category;
+  else if (t.priority != null) o.priority = t.priority; // Altbestand (Kategorie-Fallback)
   return o;
 }
 
@@ -360,6 +361,21 @@ makeTool(
 // ── Tasks ──────────────────────────────────────────────────────────────────
 
 makeTool(
+  "categories",
+  {
+    title: "Task-Kategorien auflisten",
+    description:
+      "Vom User verwaltete Aufgaben-Kategorien (Name + Farbe) auflisten — Namen für create_task/update_task.",
+    inputSchema: {},
+  },
+  async () => {
+    const data = await api("GET", "/api/categories");
+    if (data.error) throw new ApiError(502, data.error);
+    return { categories: data.categories ?? [] };
+  }
+);
+
+makeTool(
   "tasks",
   {
     title: "Tasks auflisten",
@@ -389,8 +405,8 @@ makeTool(
       description: z.string().optional(),
       dueDate: z.string().optional().describe("Fälligkeitsdatum ohne Uhrzeit, YYYY-MM-DD."),
       dueMs: z.number().optional().describe("Fälligkeit mit Uhrzeit, Unix epoch ms."),
-      priority: z.union([z.literal(1), z.literal(5), z.literal(9)]).optional()
-        .describe("1 = hoch, 5 = Schule, 9 = niedrig."),
+      category: z.string().optional()
+        .describe("Kategoriename (vorher über das Tool categories holen), z. B. \"Schule\"."),
     },
   },
   async (a) => {
@@ -398,7 +414,7 @@ makeTool(
     if (a.description !== undefined) body.description = a.description;
     if (a.dueDate) body.due = { kind: "date", key: a.dueDate };
     else if (a.dueMs) body.due = { kind: "time", ms: a.dueMs };
-    if (a.priority !== undefined) body.priority = a.priority;
+    if (a.category !== undefined) body.category = a.category;
     return api("POST", "/api/tasks", body);
   }
 );
@@ -408,7 +424,7 @@ makeTool(
   {
     title: "Task bearbeiten",
     description:
-      "Aufgabe ändern: Titel/Beschreibung, abhaken (completed), Fälligkeit (dueDate/dueMs oder removeDue=true entfernen), Priorität (clearPriority=true entfernen).",
+      "Aufgabe ändern: Titel/Beschreibung, abhaken (completed), Fälligkeit (dueDate/dueMs oder removeDue=true entfernen), Kategorie (clearCategory=true entfernen).",
     inputSchema: {
       calendarId: z.string(),
       uid: z.string().describe("iCal-UID des Tasks (aus tasks)."),
@@ -418,8 +434,8 @@ makeTool(
       dueDate: z.string().optional().describe("Neues Fälligkeitsdatum ohne Uhrzeit, YYYY-MM-DD."),
       dueMs: z.number().optional().describe("Neue Fälligkeit mit Uhrzeit, Unix epoch ms."),
       removeDue: z.boolean().optional().describe("true = Fälligkeitsdatum entfernen."),
-      priority: z.union([z.literal(1), z.literal(5), z.literal(9)]).optional(),
-      clearPriority: z.boolean().optional().describe("true = Priorität entfernen."),
+      category: z.string().optional().describe("Neue Kategorie (Namen aus categories)."),
+      clearCategory: z.boolean().optional().describe("true = Kategorie entfernen."),
     },
   },
   async (a) => {
@@ -430,8 +446,8 @@ makeTool(
     if (a.removeDue) body.due = { kind: "none" };
     else if (a.dueDate) body.due = { kind: "date", key: a.dueDate };
     else if (a.dueMs) body.due = { kind: "time", ms: a.dueMs };
-    if (a.clearPriority) body.priority = null;
-    else if (a.priority !== undefined) body.priority = a.priority;
+    if (a.clearCategory) body.category = null;
+    else if (a.category !== undefined) body.category = a.category;
     return api(
       "PATCH",
       `/api/tasks/${encodeURIComponent(a.calendarId)}/${encodeURIComponent(a.uid)}`,

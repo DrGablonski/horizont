@@ -6,9 +6,10 @@
 		ConnectionsResponse,
 		NotifyConfigView,
 		NotifyTestResult,
+		TaskCategory,
 		TestResult
 	} from '$lib/types';
-	import { PRIORITY_BUCKETS, priorityBucketLabel, type PriorityBucket } from '$lib/priorities';
+	import { DEFAULT_TASK_CATEGORIES, normalizeCategoryName } from '$lib/categories';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Checkbox from '$lib/components/ui/checkbox/checkbox.svelte';
 	import Input from '$lib/components/ui/input/input.svelte';
@@ -19,6 +20,7 @@
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 	import { toast } from 'svelte-sonner';
 	import BellIcon from '@lucide/svelte/icons/bell';
+	import TagsIcon from '@lucide/svelte/icons/tags';
 	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import CircleXIcon from '@lucide/svelte/icons/circle-x';
@@ -157,9 +159,83 @@
 		await testConnection({ url: newUrl, username: newUser, password: newPass });
 	}
 
+	// ── Task-Kategorien (Name + Farbe) ───────────────────────────────────────
+	let cats = $state<TaskCategory[]>([]);
+	let catSaving = $state(false);
+	let newCatName = $state('');
+	let newCatColor = $state('#2563eb');
+
+	async function loadCategories(): Promise<void> {
+		try {
+			const r = await api.categories();
+			cats = r.categories;
+		} catch (e) {
+			toast.error(errMsg(e));
+		}
+	}
+
+	async function saveCats(next: TaskCategory[]): Promise<boolean> {
+		catSaving = true;
+		try {
+			const r = await api.saveCategories(next);
+			cats = r.categories;
+			return true;
+		} catch (e) {
+			toast.error(errMsg(e));
+			return false;
+		} finally {
+			catSaving = false;
+		}
+	}
+
+	async function addCategory(): Promise<void> {
+		const name = normalizeCategoryName(newCatName);
+		if (!name) {
+			toast.error('Ungültiger Kategoriename (1–40 Zeichen, ohne Komma/Semikolon).');
+			return;
+		}
+		if (cats.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+			toast.error('Diese Kategorie gibt es schon.');
+			return;
+		}
+		if (await saveCats([...cats, { name, color: newCatColor }])) {
+			newCatName = '';
+			toast.success('Kategorie angelegt.');
+		}
+	}
+
+	async function renameCategory(oldName: string, newNameRaw: string): Promise<void> {
+		const name = normalizeCategoryName(newNameRaw);
+		if (!name || name === oldName) return;
+		if (cats.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+			toast.error('Diese Kategorie gibt es schon.');
+			return;
+		}
+		if (await saveCats(cats.map((c) => (c.name === oldName ? { ...c, name } : c)))) {
+			toast.success('Kategorie umbenannt.');
+		}
+	}
+
+	async function setCatColor(name: string, color: string): Promise<void> {
+		await saveCats(cats.map((c) => (c.name === name ? { ...c, color } : c)));
+	}
+
+	async function removeCategory(name: string): Promise<void> {
+		if (!confirm(`Kategorie "${name}" wirklich löschen?\nBestehende Aufgaben behalten ihren Kategorienamen (ohne Farbe).`)) return;
+		if (await saveCats(cats.filter((c) => c.name !== name))) {
+			toast.success('Kategorie gelöscht.');
+		}
+	}
+
+	async function resetCategories(): Promise<void> {
+		if (await saveCats(DEFAULT_TASK_CATEGORIES.map((c) => ({ ...c })))) {
+			toast.success('Standard-Kategorien wiederhergestellt.');
+		}
+	}
+
 	// ── Benachrichtigung (Webhook, z. B. T3 Code) ────────────────────────────
 	const PROMPT_HINT =
-		'{{body}} = Liste der offenen Tasks (gewählte Prioritäten) · {{stand}} = Datum, Uhrzeit und Anzahl.';
+		'{{body}} = Liste der offenen Tasks (gewählte Kategorien) · {{stand}} = Datum, Uhrzeit und Anzahl.';
 
 	let notify = $state<NotifyConfigView | null>(null);
 	let nEnabled = $state(false);
@@ -167,15 +243,26 @@
 	let nUrl = $state('');
 	let nToken = $state('');
 	let nPrompt = $state('');
-	let nPriorities = $state<PriorityBucket[]>([5]);
+	let nCategories = $state<string[]>([]);
 	let nImportUrl = $state('');
 	let nSaving = $state(false);
 	let nTesting = $state(false);
 	let nTestResult = $state<NotifyTestResult | null>(null);
 
-	function togglePriority(b: PriorityBucket): void {
-		if (nPriorities.includes(b)) nPriorities = nPriorities.filter((p) => p !== b);
-		else nPriorities = [...nPriorities, b].sort((x, y) => x - y);
+	function toggleNotifyCategory(name: string): void {
+		if (nCategories.includes(name)) nCategories = nCategories.filter((c) => c !== name);
+		else nCategories = [...nCategories, name];
+	}
+
+	/** Kategorien für die Webhook-Auswahl: verwaltete + bereits gespeicherte. */
+	function notifyCatOptions(): string[] {
+		const names = [...cats.map((c) => c.name)];
+		for (const n of nCategories) if (!names.includes(n)) names.push(n);
+		return names;
+	}
+
+	function notifyCatColor(name: string): string {
+		return cats.find((c) => c.name === name)?.color ?? '#64748b';
 	}
 
 	async function loadNotify(): Promise<void> {
@@ -187,7 +274,7 @@
 			nUrl = v.url ?? '';
 			nToken = '';
 			nPrompt = v.prompt;
-			nPriorities = v.priorities;
+			nCategories = v.categories;
 		} catch (e) {
 			toast.error(errMsg(e));
 		}
@@ -212,8 +299,8 @@
 			toast.error('Bitte eine Uhrzeit angeben.');
 			return;
 		}
-		if (nEnabled && nPriorities.length === 0) {
-			toast.error('Bitte mindestens eine Priorität auswählen.');
+		if (nEnabled && nCategories.length === 0) {
+			toast.error('Bitte mindestens eine Kategorie auswählen.');
 			return;
 		}
 		nSaving = true;
@@ -225,7 +312,7 @@
 				url: nUrl.trim(),
 				token: nToken.trim(),
 				prompt: nPrompt,
-				priorities: nPriorities
+				categories: nCategories
 			});
 			notify = v;
 			nToken = '';
@@ -316,6 +403,7 @@
 
 	onMount(() => {
 		load();
+		loadCategories();
 		loadNotify();
 		loadApiToken();
 	});
@@ -508,7 +596,82 @@
 
 		<Separator />
 
-		<!-- Benachrichtigung: offene Schul-Tasks per Webhook -->
+		<!-- Task-Kategorien (Name + Farbe) -->
+		<div class="rounded-xl border border-border bg-card p-5">
+			<div class="flex items-center justify-between gap-3">
+				<div>
+					<div class="flex items-center gap-2">
+						<TagsIcon class="size-4" />
+						<span class="text-sm font-medium">Aufgaben-Kategorien</span>
+					</div>
+					<p class="mt-1 text-xs text-muted-foreground">
+						Kategorien für Aufgaben (Name + Farbe). Aufgaben speichern die Kategorie im
+						CalDAV-Feld „CATEGORIES" — sichtbar auch in anderen Kalender-Apps.
+					</p>
+				</div>
+				<Button size="sm" variant="ghost" disabled={catSaving} onclick={resetCategories}>
+					Standard herstellen
+				</Button>
+			</div>
+
+			<div class="mt-4 space-y-2">
+				{#each cats as c (c.name)}
+					<div class="flex items-center gap-2">
+						<input
+							type="color"
+							value={c.color}
+							onchange={(e) => setCatColor(c.name, (e.target as HTMLInputElement).value)}
+							class="h-8 w-10 cursor-pointer rounded border border-input bg-background p-0.5"
+							aria-label={`Farbe für ${c.name}`}
+							title="Farbe ändern"
+						/>
+						<Input
+							value={c.name}
+							onchange={(e) => renameCategory(c.name, (e.target as HTMLInputElement).value)}
+							class="h-8 max-w-56 text-sm"
+							maxlength={40}
+							aria-label={`Name von ${c.name}`}
+						/>
+						<Button
+							size="sm"
+							variant="ghost"
+							class="text-muted-foreground hover:text-destructive"
+							disabled={catSaving}
+							onclick={() => removeCategory(c.name)}
+							title="Kategorie löschen"
+						>
+							<TrashIcon class="size-3.5" />
+						</Button>
+					</div>
+				{:else}
+					<p class="text-sm text-muted-foreground">Keine Kategorien —lege unten eine an.</p>
+				{/each}
+			</div>
+
+			<div class="mt-4 flex flex-wrap items-center gap-2">
+				<input
+					type="color"
+					bind:value={newCatColor}
+					class="h-9 w-11 cursor-pointer rounded border border-input bg-background p-0.5"
+					aria-label="Farbe der neuen Kategorie"
+				/>
+				<Input
+					bind:value={newCatName}
+					placeholder="Neue Kategorie (z. B. Garten)"
+					class="h-9 max-w-56 text-sm"
+					maxlength={40}
+					onkeydown={(e) => e.key === 'Enter' && addCategory()}
+				/>
+				<Button size="sm" disabled={catSaving || !newCatName.trim()} onclick={addCategory}>
+					{#if catSaving}<Spinner class="size-3.5" />{:else}<PlusIcon class="size-3.5" />{/if}
+					<span>Hinzufügen</span>
+				</Button>
+			</div>
+		</div>
+
+		<Separator />
+
+		<!-- Benachrichtigung: offene Tasks per Webhook -->
 		<div class="rounded-xl border border-border bg-card p-5">
 			<div class="flex items-start justify-between gap-3">
 				<div>
@@ -518,7 +681,7 @@
 					</div>
 					<p class="mt-1 text-xs text-muted-foreground">
 						Jeden Tag um die angegebene Uhrzeit werden alle offenen Aufgaben mit den
-						unten gewählten Prioritäten per POST an die Webhook-Adresse gesendet — z. B. an T3 Code.
+						unten gewählten Kategorien per POST an die Webhook-Adresse gesendet — z. B. an T3 Code.
 					</p>
 				</div>
 				<Checkbox
@@ -551,24 +714,25 @@
 				</div>
 
 				<div class="space-y-1.5">
-					<Label>Prioritäten</Label>
+					<Label>Kategorien</Label>
 					<div class="flex flex-wrap gap-x-4 gap-y-2 pt-1">
-						{#each PRIORITY_BUCKETS as b (b)}
+						{#each notifyCatOptions() as name (name)}
 							<div class="flex items-center gap-2">
 								<Checkbox
-									id={`notify-pri-${b}`}
-									checked={nPriorities.includes(b)}
-									onCheckedChange={() => togglePriority(b)}
-									aria-label={`Priorität ${priorityBucketLabel(b)}`}
+									id={`notify-cat-${name}`}
+									checked={nCategories.includes(name)}
+									onCheckedChange={() => toggleNotifyCategory(name)}
+									aria-label={`Kategorie ${name}`}
 								/>
-								<Label for={`notify-pri-${b}`} class="cursor-pointer">
-									{priorityBucketLabel(b)}
+								<Label for={`notify-cat-${name}`} class="flex cursor-pointer items-center gap-1.5">
+									<span class="size-2 rounded-full" style="background:{notifyCatColor(name)}"></span>
+									{name}
 								</Label>
 							</div>
 						{/each}
 					</div>
 					<p class="text-xs text-muted-foreground">
-						Nur offene Aufgaben mit diesen Prioritäten werden gesendet.
+						Nur offene Aufgaben mit diesen Kategorien werden gesendet. Kategorien verwaltest du oben.
 					</p>
 				</div>
 

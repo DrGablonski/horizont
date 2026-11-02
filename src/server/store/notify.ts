@@ -1,7 +1,7 @@
 // Per-User-Webhook-Config (Tägliche-Tasks-Benachrichtigung):
 // Um die konfigurierte Uhrzeit werden alle offenen Tasks mit den
-// eingestellten Prioritäten (Standard: „Schule", priority 5) als POST an
-// die Webhook-URL (z. B. T3 Code) gesendet.
+// eingestellten Kategorien (Standard: „Schule") als POST an die
+// Webhook-URL (z. B. T3 Code) gesendet.
 //
 // Persistenz: DATA_DIR/users/{userId}/notify.json (atomares Schreiben).
 // Lauf-Status: DATA_DIR/system/notify-runs.json (letzter Lauf pro User).
@@ -9,15 +9,15 @@
 import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { DATA_DIR } from '$server/lib/constants';
-import { PRIORITY_BUCKETS, type PriorityBucket } from '$lib/priorities';
+import { normalizeCategoryName, priorityToCategoryName } from '$lib/categories';
 import type { NotifyConfig, NotifyConfigView, NotifyLastRun } from '$lib/types';
 
 const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 const DEFAULT_TIME = '15:00';
 /** Standard-Template: {{body}} = Task-Liste, {{stand}} = Datum/Uhrzeit + Anzahl. */
 export const DEFAULT_NOTIFY_PROMPT = 'Offene Schul-Tasks — Stand {{stand}}:\n\n{{body}}';
-/** Standard: nur Priorität „Schule" (wie vor der Konfigurierbarkeit). */
-const DEFAULT_PRIORITIES: PriorityBucket[] = [5];
+/** Standard: nur Kategorie „Schule" (wie früher Priorität 5). */
+const DEFAULT_NOTIFY_CATEGORIES = ['Schule'];
 const MAX_PROMPT_LEN = 4000;
 const MAX_TOKEN_LEN = 512;
 
@@ -49,16 +49,37 @@ function notifyPath(userId: string): string {
  * Liest die Config und normalisiert sie auf das aktuelle Format.
  * Alte Configs mit einer einzigen `webhookUrl` werden dabei in
  * `url` + `token` aufgeteilt (Token = letztes Pfadsegment); fehlende
- * `priorities` fallen auf Standard „Schule" (5) zurück.
+ * `categories` werden aus alten `priorities` migriert oder fallen auf
+ * Standard „Schule" zurück.
  */
-/** Prioritäts-Buckets normalisieren: nur gültige Werte, sortiert, dedupliziert. */
-function normalizePriorities(v: unknown): PriorityBucket[] {
-	if (!Array.isArray(v)) return [...DEFAULT_PRIORITIES];
-	const valid = v.filter((p): p is PriorityBucket =>
-		PRIORITY_BUCKETS.includes(p as PriorityBucket)
-	);
-	const unique = [...new Set(valid)].sort((a, b) => a - b);
-	return unique.length > 0 ? unique : [...DEFAULT_PRIORITIES];
+/** Kategoriennamen normalisieren: gültige Namen, dedupliziert (case-insensitive). */
+function normalizeNotifyCategories(v: unknown): string[] | null {
+	if (!Array.isArray(v)) return null;
+	const out: string[] = [];
+	const seen = new Set<string>();
+	for (const item of v) {
+		const name = normalizeCategoryName(item);
+		if (!name) continue;
+		const key = name.toLowerCase();
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(name);
+	}
+	return out;
+}
+
+/** Alte Configs: Prioritäts-Buckets → Kategorienamen (1→Hoch, 5→Schule, 9→Niedrig). */
+function migratePriorities(v: unknown): string[] | null {
+	if (!Array.isArray(v)) return null;
+	const out: string[] = [];
+	for (const p of v) {
+		const n = Number(p);
+		if (n >= 1 && n <= 9) {
+			const name = priorityToCategoryName(n);
+			if (!out.includes(name)) out.push(name);
+		}
+	}
+	return out.length > 0 ? out : null;
 }
 
 export function getNotify(userId: string): NotifyConfig | null {
@@ -68,7 +89,7 @@ export function getNotify(userId: string): NotifyConfig | null {
 		const raw = JSON.parse(readFileSync(p, 'utf8')) as { config?: unknown };
 		const c = raw?.config;
 		if (c == null || typeof c !== 'object') return null;
-		const cfg = c as Partial<NotifyConfig> & { webhookUrl?: unknown };
+		const cfg = c as Partial<NotifyConfig> & { webhookUrl?: unknown; priorities?: unknown };
 		if (typeof cfg.enabled !== 'boolean' || typeof cfg.time !== 'string') return null;
 
 		let url = typeof cfg.url === 'string' ? cfg.url : '';
@@ -86,7 +107,10 @@ export function getNotify(userId: string): NotifyConfig | null {
 			url,
 			token,
 			prompt: typeof cfg.prompt === 'string' && cfg.prompt !== '' ? cfg.prompt : DEFAULT_NOTIFY_PROMPT,
-			priorities: normalizePriorities(cfg.priorities)
+			categories:
+				normalizeNotifyCategories(cfg.categories) ??
+				migratePriorities(cfg.priorities) ??
+				[...DEFAULT_NOTIFY_CATEGORIES]
 		};
 	} catch {
 		return null;
@@ -114,7 +138,7 @@ export function saveNotify(
 		url?: string;
 		token?: string;
 		prompt?: string;
-		priorities?: PriorityBucket[];
+		categories?: string[];
 	}
 ): NotifyConfig {
 	const rawTime = (input.time ?? '').trim();
@@ -130,7 +154,7 @@ export function saveNotify(
 			url: '',
 			token: '',
 			prompt: DEFAULT_NOTIFY_PROMPT,
-			priorities: [...DEFAULT_PRIORITIES]
+			categories: [...DEFAULT_NOTIFY_CATEGORIES]
 		};
 
 	// Leere Eingaben → gespeicherten Wert beibehalten (wie bei Passwörtern).
@@ -152,17 +176,15 @@ export function saveNotify(
 		prompt = input.prompt;
 	}
 
-	// Prioritäten: fehlend → gespeichert behalten; sonst validieren (mindestens eine).
-	let priorities = current.priorities;
-	if (Array.isArray(input.priorities)) {
-		const valid = input.priorities.filter((p): p is PriorityBucket =>
-			PRIORITY_BUCKETS.includes(p as PriorityBucket)
-		);
-		if (valid.length === 0) throw new Error('Bitte mindestens eine Priorität auswählen.');
-		priorities = [...new Set(valid)].sort((a, b) => a - b);
+	// Kategorien: fehlend → gespeichert behalten; sonst validieren (mindestens einer).
+	let categories = current.categories;
+	if (Array.isArray(input.categories)) {
+		const valid = normalizeNotifyCategories(input.categories) ?? [];
+		if (valid.length === 0) throw new Error('Bitte mindestens eine Kategorie auswählen.');
+		categories = valid;
 	}
 
-	const config: NotifyConfig = { enabled: Boolean(input.enabled), time, url, token, prompt, priorities };
+	const config: NotifyConfig = { enabled: Boolean(input.enabled), time, url, token, prompt, categories };
 	const p = notifyPath(userId);
 	const tmp = `${p}.tmp`;
 	writeFileSync(tmp, JSON.stringify({ version: 2, config }, null, 2), 'utf8');
@@ -180,7 +202,7 @@ export function getNotifyView(userId: string): NotifyConfigView {
 			url: null,
 			hasToken: false,
 			prompt: DEFAULT_NOTIFY_PROMPT,
-			priorities: [...DEFAULT_PRIORITIES],
+			categories: [...DEFAULT_NOTIFY_CATEGORIES],
 			lastRun
 		};
 	}
@@ -190,7 +212,7 @@ export function getNotifyView(userId: string): NotifyConfigView {
 		url: c.url || null,
 		hasToken: Boolean(c.token),
 		prompt: c.prompt,
-		priorities: c.priorities,
+		categories: c.categories,
 		lastRun
 	};
 }
