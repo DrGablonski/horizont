@@ -190,10 +190,11 @@ Token erzeugen: Horizont → **Einstellungen → „API-Token (für T3 Code & Co
 defaultet auf `http://localhost:8917`. Test: `bun run smoke` in `mcp-server/`
 (läuft gegen eine Mock-API).
 
-Daneben lässt sich die **Tägliche-Schul-Tasks-Benachrichtigung** (Webhook,
-Einstellungen) koppeln: Horizont POSTet um 15:00 die offenen Schul-Tasks an
-T3 Code; daraufhin kann T3 über den MCP-Server Tasks abhaken oder Termine
-anlegen.
+Daneben lässt sich die **Tägliche-Tasks-Benachrichtigung** (Webhook,
+Einstellungen) koppeln: Horizont POSTet um die eingestellte Uhrzeit die
+offenen Aufgaben mit den gewählten Prioritäten (Standard: „Schule"; einstellbar:
+Hoch/Schule/Niedrig) an T3 Code; daraufhin kann T3 über den MCP-Server Tasks
+abhaken oder Termine anlegen.
 
 ---
 

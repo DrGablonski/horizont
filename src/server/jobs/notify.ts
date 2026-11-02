@@ -1,7 +1,7 @@
 // Täglicher Benachrichtigungs-Job (Webhook, z. B. an T3 Code):
 // Um die konfigurierte Uhrzeit (pro User, Default 15:00) werden alle
-// offenen Tasks mit Priorität „Schule" (priority 5) als Klartext an die
-// konfigurierte Webhook-URL POSTet.
+// offenen Tasks mit den eingestellten Prioritäten (Standard: „Schule",
+// priority 5) als Klartext an die konfigurierte Webhook-URL POSTet.
 //
 // In-Prozess-Timer (exakt eine Instanz pro Deployment, siehe
 // docker-compose.yml): Alle 60 s wird geprüft, ob bei einem User die
@@ -16,13 +16,12 @@ import { listConnections } from '$server/store/connections';
 import { DEFAULT_NOTIFY_PROMPT, getNotify, getRun, setRun, webhookUrlOf } from '$server/store/notify';
 import { listAllTasks } from '$server/lib/write';
 import { guardedFetch } from '$server/lib/urlGuard';
+import { priorityBucket } from '$lib/priorities';
 import type { NotifyConfig, TaskItem } from '$lib/types';
 
 const TICK_MS = 60_000;
 const POST_TIMEOUT_MS = 15_000;
 const ERROR_RETRY_MS = 10 * 60_000;
-// Priorität „Schule" (siehe TaskEditor: 9=Niedrig, 5=Schule, 1=Hoch).
-const SCHOOL_PRIORITY = 5;
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
@@ -94,10 +93,12 @@ async function runForUser(userId: string, cfg: NotifyConfig, now: Date, today: s
 			return;
 		}
 		const tasks = await listAllTasks(connections);
-		const open = tasks.filter((t) => !t.completed && t.priority === SCHOOL_PRIORITY);
+		const open = tasks.filter(
+			(t) => !t.completed && t.priority != null && cfg.priorities.includes(priorityBucket(t.priority))
+		);
 		if (open.length === 0) {
-			// Keine offenen Schul-Tasks → keine Nachricht (keinerlei Spam).
-			setRun(userId, { date: today, status: 'skipped', error: 'Keine offenen Schul-Tasks' });
+			// Keine offenen Tasks mit den gewählten Prioritäten → keine Nachricht (keinerlei Spam).
+			setRun(userId, { date: today, status: 'skipped', error: 'Keine offenen Tasks (gewählte Prioritäten)' });
 			return;
 		}
 		const text = composeMessage(cfg.prompt || DEFAULT_NOTIFY_PROMPT, open, now);

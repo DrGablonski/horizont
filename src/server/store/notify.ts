@@ -1,6 +1,7 @@
-// Per-User-Webhook-Config (Tägliche-Schul-Tasks-Benachrichtigung):
-// Um die konfigurierte Uhrzeit werden alle offenen Tasks mit Priorität
-// „Schule" (priority 5) als POST an die Webhook-URL (z. B. T3 Code) gesendet.
+// Per-User-Webhook-Config (Tägliche-Tasks-Benachrichtigung):
+// Um die konfigurierte Uhrzeit werden alle offenen Tasks mit den
+// eingestellten Prioritäten (Standard: „Schule", priority 5) als POST an
+// die Webhook-URL (z. B. T3 Code) gesendet.
 //
 // Persistenz: DATA_DIR/users/{userId}/notify.json (atomares Schreiben).
 // Lauf-Status: DATA_DIR/system/notify-runs.json (letzter Lauf pro User).
@@ -8,12 +9,15 @@
 import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { DATA_DIR } from '$server/lib/constants';
+import { PRIORITY_BUCKETS, type PriorityBucket } from '$lib/priorities';
 import type { NotifyConfig, NotifyConfigView, NotifyLastRun } from '$lib/types';
 
 const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 const DEFAULT_TIME = '15:00';
 /** Standard-Template: {{body}} = Task-Liste, {{stand}} = Datum/Uhrzeit + Anzahl. */
 export const DEFAULT_NOTIFY_PROMPT = 'Offene Schul-Tasks — Stand {{stand}}:\n\n{{body}}';
+/** Standard: nur Priorität „Schule" (wie vor der Konfigurierbarkeit). */
+const DEFAULT_PRIORITIES: PriorityBucket[] = [5];
 const MAX_PROMPT_LEN = 4000;
 const MAX_TOKEN_LEN = 512;
 
@@ -44,8 +48,19 @@ function notifyPath(userId: string): string {
 /**
  * Liest die Config und normalisiert sie auf das aktuelle Format.
  * Alte Configs mit einer einzigen `webhookUrl` werden dabei in
- * `url` + `token` aufgeteilt (Token = letztes Pfadsegment).
+ * `url` + `token` aufgeteilt (Token = letztes Pfadsegment); fehlende
+ * `priorities` fallen auf Standard „Schule" (5) zurück.
  */
+/** Prioritäts-Buckets normalisieren: nur gültige Werte, sortiert, dedupliziert. */
+function normalizePriorities(v: unknown): PriorityBucket[] {
+	if (!Array.isArray(v)) return [...DEFAULT_PRIORITIES];
+	const valid = v.filter((p): p is PriorityBucket =>
+		PRIORITY_BUCKETS.includes(p as PriorityBucket)
+	);
+	const unique = [...new Set(valid)].sort((a, b) => a - b);
+	return unique.length > 0 ? unique : [...DEFAULT_PRIORITIES];
+}
+
 export function getNotify(userId: string): NotifyConfig | null {
 	const p = notifyPath(userId);
 	if (!existsSync(p)) return null;
@@ -70,7 +85,8 @@ export function getNotify(userId: string): NotifyConfig | null {
 			time: cfg.time,
 			url,
 			token,
-			prompt: typeof cfg.prompt === 'string' && cfg.prompt !== '' ? cfg.prompt : DEFAULT_NOTIFY_PROMPT
+			prompt: typeof cfg.prompt === 'string' && cfg.prompt !== '' ? cfg.prompt : DEFAULT_NOTIFY_PROMPT,
+			priorities: normalizePriorities(cfg.priorities)
 		};
 	} catch {
 		return null;
@@ -92,7 +108,14 @@ function validateUrl(u: string): string {
 
 export function saveNotify(
 	userId: string,
-	input: { enabled: boolean; time: string; url?: string; token?: string; prompt?: string }
+	input: {
+		enabled: boolean;
+		time: string;
+		url?: string;
+		token?: string;
+		prompt?: string;
+		priorities?: PriorityBucket[];
+	}
 ): NotifyConfig {
 	const rawTime = (input.time ?? '').trim();
 	if (!TIME_RE.test(rawTime)) throw new Error('Ungültige Uhrzeit (Format: HH:MM, z. B. 15:00).');
@@ -101,7 +124,14 @@ export function saveNotify(
 
 	const current =
 		getNotify(userId) ??
-		{ enabled: false, time: DEFAULT_TIME, url: '', token: '', prompt: DEFAULT_NOTIFY_PROMPT };
+		{
+			enabled: false,
+			time: DEFAULT_TIME,
+			url: '',
+			token: '',
+			prompt: DEFAULT_NOTIFY_PROMPT,
+			priorities: [...DEFAULT_PRIORITIES]
+		};
 
 	// Leere Eingaben → gespeicherten Wert beibehalten (wie bei Passwörtern).
 	let url = current.url;
@@ -122,7 +152,17 @@ export function saveNotify(
 		prompt = input.prompt;
 	}
 
-	const config: NotifyConfig = { enabled: Boolean(input.enabled), time, url, token, prompt };
+	// Prioritäten: fehlend → gespeichert behalten; sonst validieren (mindestens eine).
+	let priorities = current.priorities;
+	if (Array.isArray(input.priorities)) {
+		const valid = input.priorities.filter((p): p is PriorityBucket =>
+			PRIORITY_BUCKETS.includes(p as PriorityBucket)
+		);
+		if (valid.length === 0) throw new Error('Bitte mindestens eine Priorität auswählen.');
+		priorities = [...new Set(valid)].sort((a, b) => a - b);
+	}
+
+	const config: NotifyConfig = { enabled: Boolean(input.enabled), time, url, token, prompt, priorities };
 	const p = notifyPath(userId);
 	const tmp = `${p}.tmp`;
 	writeFileSync(tmp, JSON.stringify({ version: 2, config }, null, 2), 'utf8');
@@ -140,6 +180,7 @@ export function getNotifyView(userId: string): NotifyConfigView {
 			url: null,
 			hasToken: false,
 			prompt: DEFAULT_NOTIFY_PROMPT,
+			priorities: [...DEFAULT_PRIORITIES],
 			lastRun
 		};
 	}
@@ -149,6 +190,7 @@ export function getNotifyView(userId: string): NotifyConfigView {
 		url: c.url || null,
 		hasToken: Boolean(c.token),
 		prompt: c.prompt,
+		priorities: c.priorities,
 		lastRun
 	};
 }

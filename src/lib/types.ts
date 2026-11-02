@@ -1,5 +1,7 @@
 // Gemeinsame Typen (Client + Server)
 
+import type { PriorityBucket } from './priorities';
+
 // ── Auth ──────────────────────────────────────────────────────────────────
 
 export type UserRole = 'admin' | 'user';
@@ -260,7 +262,7 @@ export interface TaskCreateInput extends TaskUpdateInput {
 	calendarId: string;
 }
 
-// ── Notify (Tägliche-Schul-Tasks-Benachrichtigung per Webhook) ────────────
+// ── Notify (Tägliche Tasks-Benachrichtigung per Webhook) ──────────────────
 
 /** Per-User-Webhook-Config (serverseitig; wird nicht an den Client gesendet). */
 export interface NotifyConfig {
@@ -269,6 +271,8 @@ export interface NotifyConfig {
 	url: string; // Webhook-URL bis zur Task-ID (ohne Token), z. B. http://…/api/hooks/scheduled-task%3A…
 	token: string; // Webhook-Token (letztes Pfadsegment der vollständigen URL)
 	prompt: string; // Nachrichten-Template: {{body}} = Task-Liste, {{stand}} = Datum/Uhrzeit + Anzahl
+	/** Prioritäts-Buckets, die gesendet werden (1=Hoch, 5=Schule, 9=Niedrig). */
+	priorities: PriorityBucket[];
 }
 
 /** Letzter Lauf des Notify-Jobs. */
@@ -287,6 +291,7 @@ export interface NotifyConfigView {
 	url: string | null;
 	hasToken: boolean;
 	prompt: string;
+	priorities: PriorityBucket[];
 	lastRun: NotifyLastRun | null;
 }
 
@@ -297,6 +302,8 @@ export interface NotifySaveInput {
 	url?: string;
 	token?: string;
 	prompt?: string;
+	/** Prioritäts-Buckets, die gesendet werden (fehlend: gespeicherte behalten). */
+	priorities?: PriorityBucket[];
 }
 
 export interface NotifyTestResult {

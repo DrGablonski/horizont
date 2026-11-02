@@ -8,6 +8,7 @@
 		NotifyTestResult,
 		TestResult
 	} from '$lib/types';
+	import { PRIORITY_BUCKETS, priorityBucketLabel, type PriorityBucket } from '$lib/priorities';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Checkbox from '$lib/components/ui/checkbox/checkbox.svelte';
 	import Input from '$lib/components/ui/input/input.svelte';
@@ -158,7 +159,7 @@
 
 	// ── Benachrichtigung (Webhook, z. B. T3 Code) ────────────────────────────
 	const PROMPT_HINT =
-		'{{body}} = Liste der offenen Schul-Tasks · {{stand}} = Datum, Uhrzeit und Anzahl.';
+		'{{body}} = Liste der offenen Tasks (gewählte Prioritäten) · {{stand}} = Datum, Uhrzeit und Anzahl.';
 
 	let notify = $state<NotifyConfigView | null>(null);
 	let nEnabled = $state(false);
@@ -166,10 +167,16 @@
 	let nUrl = $state('');
 	let nToken = $state('');
 	let nPrompt = $state('');
+	let nPriorities = $state<PriorityBucket[]>([5]);
 	let nImportUrl = $state('');
 	let nSaving = $state(false);
 	let nTesting = $state(false);
 	let nTestResult = $state<NotifyTestResult | null>(null);
+
+	function togglePriority(b: PriorityBucket): void {
+		if (nPriorities.includes(b)) nPriorities = nPriorities.filter((p) => p !== b);
+		else nPriorities = [...nPriorities, b].sort((x, y) => x - y);
+	}
 
 	async function loadNotify(): Promise<void> {
 		try {
@@ -180,6 +187,7 @@
 			nUrl = v.url ?? '';
 			nToken = '';
 			nPrompt = v.prompt;
+			nPriorities = v.priorities;
 		} catch (e) {
 			toast.error(errMsg(e));
 		}
@@ -204,6 +212,10 @@
 			toast.error('Bitte eine Uhrzeit angeben.');
 			return;
 		}
+		if (nEnabled && nPriorities.length === 0) {
+			toast.error('Bitte mindestens eine Priorität auswählen.');
+			return;
+		}
 		nSaving = true;
 		nTestResult = null;
 		try {
@@ -212,7 +224,8 @@
 				time: nTime,
 				url: nUrl.trim(),
 				token: nToken.trim(),
-				prompt: nPrompt
+				prompt: nPrompt,
+				priorities: nPriorities
 			});
 			notify = v;
 			nToken = '';
@@ -504,8 +517,8 @@
 						<span class="text-sm font-medium">Benachrichtigung (Webhook)</span>
 					</div>
 					<p class="mt-1 text-xs text-muted-foreground">
-						Jeden Tag um die angegebene Uhrzeit werden alle offenen Aufgaben mit
-						Priorität „Schule" per POST an die Webhook-Adresse gesendet — z. B. an T3 Code.
+						Jeden Tag um die angegebene Uhrzeit werden alle offenen Aufgaben mit den
+						unten gewählten Prioritäten per POST an die Webhook-Adresse gesendet — z. B. an T3 Code.
 					</p>
 				</div>
 				<Checkbox
@@ -535,6 +548,28 @@
 				<div class="space-y-1.5">
 					<Label for="notify-time">Uhrzeit</Label>
 					<Input id="notify-time" bind:value={nTime} type="time" />
+				</div>
+
+				<div class="space-y-1.5">
+					<Label>Prioritäten</Label>
+					<div class="flex flex-wrap gap-x-4 gap-y-2 pt-1">
+						{#each PRIORITY_BUCKETS as b (b)}
+							<div class="flex items-center gap-2">
+								<Checkbox
+									id={`notify-pri-${b}`}
+									checked={nPriorities.includes(b)}
+									onCheckedChange={() => togglePriority(b)}
+									aria-label={`Priorität ${priorityBucketLabel(b)}`}
+								/>
+								<Label for={`notify-pri-${b}`} class="cursor-pointer">
+									{priorityBucketLabel(b)}
+								</Label>
+							</div>
+						{/each}
+					</div>
+					<p class="text-xs text-muted-foreground">
+						Nur offene Aufgaben mit diesen Prioritäten werden gesendet.
+					</p>
 				</div>
 
 				<div class="space-y-1.5 sm:col-span-2">
