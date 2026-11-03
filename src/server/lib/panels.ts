@@ -91,8 +91,13 @@ const PANEL_TITLES: Record<PanelId, { title: string; subtitle: string }> = {
 
 // ── Bucketing ─────────────────────────────────────────────────────────────
 
-/** Gruppiert Events, die einen der übergebenen Tage (inklusiv) berühren. */
-function bucketDays(events: EventItem[], keys: string[], today: string): DayGroup[] {
+/** Gruppiert Ereignisse + Aufgaben pro Tag (auch Tage nur mit Aufgaben). */
+function bucketDaysMerged(
+	events: EventItem[],
+	tasks: EventItem[],
+	keys: string[],
+	today: string
+): DayGroup[] {
 	const groups: DayGroup[] = [];
 	for (const k of keys) {
 		const dStart = msFromKey(k);
@@ -100,10 +105,15 @@ function bucketDays(events: EventItem[], keys: string[], today: string): DayGrou
 		const evs = events
 			.filter((e) => e.startMs < dEnd && e.endMs > dStart)
 			.sort((a, b) => a.startMs - b.startMs || a.summary.localeCompare(b.summary, 'de'));
-		if (evs.length === 0) continue;
-		groups.push({ dayKey: k, label: dayLabel(k), isToday: k === today, events: evs });
+		const tks = tasksForDay(tasks, dStart, dEnd);
+		if (evs.length === 0 && tks.length === 0) continue;
+		groups.push({ dayKey: k, label: dayLabel(k), isToday: k === today, events: [...evs, ...tks] });
 	}
 	return groups;
+}
+
+function categoryColorMap(userId?: string): Map<string, string> {
+	return new Map((userId ? getCategories(userId) : []).map((c) => [c.name.toLowerCase(), c.color]));
 }
 
 // ── Hauptansicht ──────────────────────────────────────────────────────────
@@ -192,40 +202,43 @@ export async function buildMainResponse(
 	]);
 
 	// Aufgaben mitten unter die Kalender-Ereignisse mischen.
-	const colors = new Map(
-		(userId ? getCategories(userId) : []).map((c) => [c.name.toLowerCase(), c.color])
-	);
+	const colors = categoryColorMap(userId);
 	const tasks = rawTasks.map((t) => taskToTimelineItem(t, colors));
 	const unscheduled = tasks.filter((t) => t.dueKey == null && t.dueMs == null);
+
+	// Überfällige, offene Aufgaben „wandern": sie bleiben nicht am alten
+	// Fälligkeitstag stehen, sondern erscheinen ab sofort jeden Tag bei
+	// „Heute" — dort mit rotem Minus als überfällig markiert.
+	const overdue = tasks
+		.filter(
+			(t) =>
+				!t.completed &&
+				((t.dueKey != null && t.dueKey < today) || (t.dueMs != null && t.dueMs < todayStart))
+		)
+		.sort(
+			(a, b) =>
+				(a.dueMs ?? msFromKey(a.dueKey ?? today)) - (b.dueMs ?? msFromKey(b.dueKey ?? today))
+		);
+	const overdueIds = new Set(overdue.map((t) => t.id));
+	const dayTasks = tasks.filter((t) => !overdueIds.has(t.id));
 
 	const panels: TimePanel[] = (['past', 'now', 'future'] as PanelId[]).map((id) => {
 		const r = panelRange(todayStart, id);
 		const keys = dayKeysBetween(r.startMs, r.endMs);
-
-		// Tage bauen: Ereignisse + fällige Aufgaben (auch Tage nur mit Aufgaben zeigen).
-		const groups: DayGroup[] = [];
-		for (const k of keys) {
-			const dStart = msFromKey(k);
-			const dEnd = addDaysMs(dStart, 1);
-			const evs = events
-				.filter((e) => e.startMs < dEnd && e.endMs > dStart)
-				.sort((a, b) => a.startMs - b.startMs || a.summary.localeCompare(b.summary, 'de'));
-			const tks = tasksForDay(tasks, dStart, dEnd);
-			if (evs.length === 0 && tks.length === 0) continue;
-			groups.push({ dayKey: k, label: dayLabel(k), isToday: k === today, events: [...evs, ...tks] });
-		}
+		const groups = bucketDaysMerged(events, dayTasks, keys, today);
 
 		// „Jetzt": heute immer zeigen (auch ohne Einträge → „nichts geplant").
 		if (id === 'now' && !groups.some((g) => g.dayKey === today)) {
 			const idx = Math.max(0, keys.indexOf(today));
 			groups.splice(idx, 0, { dayKey: today, label: dayLabel(today), isToday: true, events: [] });
 		}
-		// Aufgaben ohne Fälligkeitsdatum gehören in den heutigen Tag.
+		// Überfällige + Aufgaben ohne Fälligkeitsdatum gehören in den heutigen Tag.
 		if (id === 'now') {
 			const todayGroup = groups.find((g) => g.dayKey === today);
 			if (todayGroup)
 				todayGroup.events = [
 					...todayGroup.events,
+					...overdue.map((t) => ({ ...t, overdue: true })),
 					...unscheduled.sort((a, b) => (a.completed ? 1 : 0) - (b.completed ? 1 : 0))
 				];
 		}
@@ -259,7 +272,8 @@ export function archiveWindow(todayStart: number): ArchiveWindow {
 
 export async function buildArchiveMonthResponse(
 	connections: CalDavConnection[],
-	requestedMonthKey: string | null
+	requestedMonthKey: string | null,
+	userId?: string
 ): Promise<ArchiveMonth> {
 	const today = todayKey();
 	const todayStart = msFromKey(today);
@@ -293,6 +307,8 @@ export async function buildArchiveMonthResponse(
 
 	// Events für das ganze Monatsraster holen, aber nur innerhalb des
 	// Archivbereichs (außerhalb liegen Tage der Hauptansicht).
+	// Dazu die Aufgaben (VTODOs): sie erscheinen im Archiv an ihrem
+	// Fälligkeitstag — erledigte mit Haken/Durchstrich.
 	const grid = monthGridDays(monthKey);
 	const gridStart = msFromKey(grid[0]);
 	const gridEnd = addDaysMs(msFromKey(grid[grid.length - 1]), 1);
@@ -300,13 +316,19 @@ export async function buildArchiveMonthResponse(
 	const endMs = Math.min(gridEnd, addDaysMs(msFromKey(win.newest), 1));
 	let events: EventItem[] = [];
 	let error: string | null = null;
-	if (startMs < endMs) {
-		const fetched = await fetchEventsInRange(connections, startMs, endMs);
-		events = fetched.events;
-		error = fetched.error;
-	}
+	const [fetched, rawTasks] = await Promise.all([
+		startMs < endMs
+			? fetchEventsInRange(connections, startMs, endMs)
+			: Promise.resolve({ events: [] as EventItem[], error: null, errors: [] as string[] }),
+		listAllTasks(connections).catch(() => [] as TaskItem[])
+	]);
+	events = fetched.events;
+	error = fetched.error;
 
-	const groups = bucketDays(events, grid, today);
+	const colors = categoryColorMap(userId);
+	const tasks = rawTasks.map((t) => taskToTimelineItem(t, colors));
+
+	const groups = bucketDaysMerged(events, tasks, grid, today);
 	const eventCount = groups
 		.filter((g) => g.dayKey.startsWith(monthKey))
 		.reduce((n, g) => n + g.events.length, 0);

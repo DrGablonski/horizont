@@ -132,7 +132,7 @@
 				<div class="flex items-center gap-2">
 					<label class="flex items-center gap-1 text-sm cursor-pointer">
 						<input type="radio" value="none" bind:group={dueKind} class="accent-primary" />
-						Keine
+						Heute automatisch
 					</label>
 					<label class="flex items-center gap-1 text-sm cursor-pointer">
 						<input type="radio" value="date" bind:group={dueKind} class="accent-primary" />
@@ -150,6 +150,11 @@
 						<Input type="date" bind:value={dueDate} />
 						<Input type="time" bind:value={dueTime} />
 					</div>
+				{:else}
+					<p class="text-xs text-muted-foreground">
+						Ohne eigene Auswahl bekommt die Aufgabe automatisch das heutige Datum —
+						ab morgen erscheint sie mit rotem Minus als überfällig bei „Heute".
+					</p>
 				{/if}
 			</div>
 

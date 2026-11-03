@@ -2,6 +2,7 @@
 	import type { EventItem } from '$lib/types';
 	import { durationShort, timeShort } from '$lib/dates';
 	import CheckIcon from '@lucide/svelte/icons/check';
+	import CircleMinusIcon from '@lucide/svelte/icons/circle-minus';
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
@@ -24,7 +25,9 @@
 </script>
 
 <article
-	class="group flex gap-3 rounded-lg border border-border bg-background/40 p-3 transition-colors hover:bg-muted/40"
+	class="group flex gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40 {isTask && ev.overdue
+		? 'border-destructive/50 bg-destructive/5'
+		: 'border-border bg-background/40'}"
 	class:opacity-60={isTask && ev.completed}
 	onmouseenter={() => (showActions = true)}
 	onmouseleave={() => (showActions = false)}
@@ -44,12 +47,19 @@
 					onclick={() => onToggleTask?.(ev)}
 					class="flex size-4.5 shrink-0 items-center justify-center rounded-[4px] border transition-colors {ev.completed
 						? 'border-primary bg-primary text-primary-foreground'
-						: 'border-input bg-input/30 hover:border-primary/60'}"
+						: ev.overdue
+							? 'border-destructive/60 hover:border-destructive'
+							: 'border-input bg-input/30 hover:border-primary/60'}"
 				>
 					{#if ev.completed}<CheckIcon class="size-3.5" />{/if}
 				</button>
 			</div>
-			{#if ev.dueKey && ev.dueMs == null}
+			{#if ev.overdue}
+				<span class="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-destructive">
+					<CircleMinusIcon class="size-3.5" />
+					überfällig
+				</span>
+			{:else if ev.dueKey && ev.dueMs == null}
 				<span class="block text-xs text-muted-foreground">fällig</span>
 			{/if}
 		{:else if ev.allDay}

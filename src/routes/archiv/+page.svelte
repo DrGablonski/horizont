@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
-	import type { ArchiveMonth } from '$lib/types';
+	import type { ArchiveMonth, EventItem } from '$lib/types';
 	import MonthGrid from '$lib/components/MonthGrid.svelte';
 	import EventRow from '$lib/components/EventRow.svelte';
 	import StatusBanner from '$lib/components/StatusBanner.svelte';
@@ -18,6 +18,7 @@
 		shiftMonthKey
 	} from '$lib/dates';
 	import ArchiveIcon from '@lucide/svelte/icons/archive';
+	import { toast } from 'svelte-sonner';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -34,6 +35,27 @@
 			detailSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 		}
 	});
+
+	// Aufgaben im Archiv: optimistisches Abhaken (sofort sichtbar,
+	// Rücknahme + Fehlermeldung, wenn CalDAV-Speichern fehlschlägt).
+	function setTaskCompleted(uid: string, completed: boolean): void {
+		for (const g of data?.days ?? []) {
+			const it = g.events.find((e) => e.kind === 'task' && e.uid === uid);
+			if (it) it.completed = completed;
+		}
+	}
+
+	async function toggleTask(ev: EventItem): Promise<void> {
+		const was = !!ev.completed;
+		const now = !was;
+		setTaskCompleted(ev.uid, now);
+		try {
+			await api.updateTask(ev.calendarId, ev.uid, { completed: now });
+		} catch (e) {
+			setTaskCompleted(ev.uid, was);
+			toast.error(`Abhaken fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`);
+		}
+	}
 
 	function monthFromUrl(): string | null {
 		const m = page.url.searchParams.get('monat');
@@ -190,7 +212,7 @@
 						<div class="space-y-2">
 							{#if selectedGroup && selectedGroup.events.length > 0}
 								{#each selectedGroup.events as ev (ev.id)}
-									<EventRow ev={ev} />
+									<EventRow {ev} onToggleTask={toggleTask} />
 								{/each}
 							{:else}
 								<p class="text-sm text-muted-foreground">Nichts geplant.</p>

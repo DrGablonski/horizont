@@ -12,7 +12,7 @@ import type {
 	TaskCreateInput,
 	TaskUpdateInput
 } from '$lib/types';
-import { msFromKey } from '$lib/dates';
+import { msFromKey, todayKey } from '$lib/dates';
 import { normalizeCategoryName } from '$lib/categories';
 import {
 	listCalendarObjects,
@@ -233,6 +233,12 @@ export async function createTask(
 	input: TaskCreateInput
 ): Promise<TaskItem> {
 	validateTaskCreateInput(input);
+	// Ohne ausdrücklich gewähltes Fälligkeitsdatum: automatisch den
+	// Erstellungstag eintragen — die Aufgabe taucht so sofort bei „Heute"
+	// auf und wird ab dem nächsten Tag als überfällig markiert.
+	if (input.due == null || input.due.kind === 'none') {
+		input = { ...input, due: { kind: 'date', key: todayKey() } };
+	}
 	const found = await findCalendarAcross(connections, input.calendarId);
 	if (!found) throw new NotFoundError('Kalender nicht gefunden.');
 	const { connection, calendar } = found;

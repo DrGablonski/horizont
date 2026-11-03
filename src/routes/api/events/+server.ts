@@ -12,7 +12,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 	if (scope === 'archive') {
 		// `monat` = YYYY-MM (optional, ohne/ungültig → neuester Archiv-Monat)
 		const month = url.searchParams.get('monat');
-		return json(await buildArchiveMonthResponse(connections, month));
+		return json(await buildArchiveMonthResponse(connections, month, locals.user?.id));
 	}
 	return json(await buildMainResponse(connections, locals.user?.id));
 };

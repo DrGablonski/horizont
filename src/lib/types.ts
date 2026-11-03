@@ -149,6 +149,8 @@ export interface EventItem {
 	/** Nur Tasks: Fälligkeit (für den Task-Editor). */
 	dueKey?: string;
 	dueMs?: number;
+	/** Nur Tasks: Fälligkeit liegt in der Vergangenheit und ist offen. */
+	overdue?: boolean;
 }
 
 export interface DayGroup {
