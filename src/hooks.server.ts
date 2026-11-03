@@ -58,7 +58,7 @@ export const handle: Handle = ({ event, resolve }) => {
 	const cookieToken = event.cookies.get(SESSION_COOKIE);
 	let user = getSessionUser(cookieToken);
 
-	// API-Token (Maschinen-Auth, z. B. für T3 Code): nur auf /api/* und nur,
+	// API-Token (Maschinen-Auth für externe Tools, z. B. MCP): nur auf /api/* und nur,
 	// wenn keine Session existiert. `Authorization: Bearer <token>`.
 	if (user == null && isApi) {
 		const auth = event.request.headers.get('authorization') ?? '';

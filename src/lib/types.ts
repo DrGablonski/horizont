@@ -316,12 +316,12 @@ export interface NotifySaveInput {
 export interface NotifyTestResult {
 	ok: boolean;
 	status?: number;
-	/** x-t3-hook-outcome von T3 Code, z. B. "accepted". */
+	/** optionales Ergebnis des Empfängers (Header x-t3-hook-outcome), z. B. "accepted". */
 	outcome?: string;
 	error?: string;
 }
 
-// ── API-Token (Maschinen-Auth für /api/*, z. B. T3 Code) ──────────────────
+// ── API-Token (Maschinen-Auth für /api/*, z. B. externe Tools/MCP) ────────
 
 export interface ApiTokenView {
 	hasToken: boolean;

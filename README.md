@@ -140,7 +140,7 @@ Der letzte aktive Admin kann nicht gelöscht, deaktiviert oder herabgestuft werd
 
 Externe Tools greifen **nur über den MCP-Server** (nächste Sektion) auf
 Horizont zu. Dafür erzeugt jeder User in
-**Einstellungen → „API-Token (für T3 Code & Co.)“** einen persönlichen Token.
+**Einstellungen → „API-Token (für externe Zugriffe)“** einen persönlichen Token.
 Der Token wird einmalig im Klartext angezeigt und serverseitig nur
 scrypt-gehasht gespeichert (SHA-256-Digest als Lookup-Key). Er ist per User
 isoliert — er gibt Zugriff auf genau die Datenwelt dieses Users (eigene
@@ -183,7 +183,7 @@ Danach tauchen die Tools als `horizont_calendars`, `horizont_create_event` usw. 
 1. Umgebungsvariable `HORIZONT_TOKEN`
 2. Datei `~/.config/horizont/token` (eine Zeile, `chmod 600`)
 
-Token erzeugen: Horizont → **Einstellungen → „API-Token (für T3 Code & Co.)“ → Erzeugen**
+Token erzeugen: Horizont → **Einstellungen → „API-Token (für externe Zugriffe)“ → Erzeugen**
 (einmalig im Klartext angezeigt). Bei Token-Ersetzung einfach die Datei neu befüllen.
 
 `HORIZONT_TOKEN_FILE` kann den Dateipfad überschreiben; `HORIZONT_URL`
@@ -194,8 +194,9 @@ Daneben lässt sich die **Tägliche-Tasks-Benachrichtigung** (Webhook,
 Einstellungen) koppeln: Horizont POSTet um die eingestellte Uhrzeit die
 offenen Aufgaben mit den gewählten **Kategorien** (verwaltbar in den
 Einstellungen, Name + Farbe; gespeichert im CalDAV-Feld `CATEGORIES`;
-Standard: „Schule") an T3 Code; daraufhin kann T3 über den MCP-Server
-Tasks abhaken oder Termine anlegen.
+Standard: „Schule") an eine frei wählbare Webhook-Adresse — z. B. an einen
+Chat-Bot, einen Benachrichtigungsdienst oder einen Assistenz-Server, der
+daraufhin über den MCP-Server Tasks abhaken oder Termine anlegen kann.
 
 ---
 

@@ -1,7 +1,7 @@
 // Per-User-Webhook-Config (Tägliche-Tasks-Benachrichtigung):
 // Um die konfigurierte Uhrzeit werden alle offenen Tasks mit den
 // eingestellten Kategorien (Standard: „Schule") als POST an die
-// Webhook-URL (z. B. T3 Code) gesendet.
+// Webhook-URL eines externen Empfängers gesendet.
 //
 // Persistenz: DATA_DIR/users/{userId}/notify.json (atomares Schreiben).
 // Lauf-Status: DATA_DIR/system/notify-runs.json (letzter Lauf pro User).
@@ -15,7 +15,7 @@ import type { NotifyConfig, NotifyConfigView, NotifyLastRun } from '$lib/types';
 const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 const DEFAULT_TIME = '15:00';
 /** Standard-Template: {{body}} = Task-Liste, {{stand}} = Datum/Uhrzeit + Anzahl. */
-export const DEFAULT_NOTIFY_PROMPT = 'Offene Schul-Tasks — Stand {{stand}}:\n\n{{body}}';
+export const DEFAULT_NOTIFY_PROMPT = 'Offene Aufgaben — Stand {{stand}}:\n\n{{body}}';
 /** Standard: nur Kategorie „Schule" (wie früher Priorität 5). */
 const DEFAULT_NOTIFY_CATEGORIES = ['Schule'];
 const MAX_PROMPT_LEN = 4000;
@@ -27,8 +27,8 @@ export function webhookUrlOf(cfg: Pick<NotifyConfig, 'url' | 'token'>): string {
 }
 
 /**
- * Vollständige Webhook-URL (z. B. kopiert aus der T3-UI) in Basis-URL und
- * Token aufteilen — der Token ist das letzte Pfadsegment.
+ * Vollständige Webhook-URL (z. B. aus dem Empfänger-Dienst kopiert) in Basis-URL
+ * und Token aufteilen — der Token ist das letzte Pfadsegment.
  */
 export function splitWebhookUrl(full: string): { url: string; token: string } | null {
 	const t = full.trim().replace(/\/+$/, '');

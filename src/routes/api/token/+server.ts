@@ -1,4 +1,4 @@
-// Per-User API-Token (Maschinen-Auth für /api/*, z. B. für T3 Code):
+// Per-User API-Token (Maschinen-Auth für /api/*, z. B. für externe Tools/MCP):
 //   GET    → Status (vorhanden? erstellt? zuletzt genutzt?)
 //   POST   → neuen Token erzeugen (ersetzt vorhandenen) — Klartext nur einmal
 //   DELETE → Token ablehnen

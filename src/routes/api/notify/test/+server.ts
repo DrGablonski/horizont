@@ -1,6 +1,6 @@
 // POST /api/notify/test — Webhook testen.
-// Sendet eine Beispiel-Nachricht; T3 Code antwortet mit 202 und
-// dem Header x-t3-hook-outcome (z. B. „accepted").
+// Sendet eine Beispiel-Nachricht; manche Empfänger antworten mit 202 und
+// einem Ergebnis-Header x-t3-hook-outcome (z. B. „accepted").
 // Die Formularwerte (url/token/prompt) werden getestet; leere Werte
 // fallen auf die gespeicherte Config zurück.
 
@@ -42,7 +42,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		calendarId: 'test',
 		calendarName: 'Test',
 		calendarColor: '#000000',
-		summary: 'Testnachricht von Horizont (Einstellungen → Benachrichtigung)',
+		summary: 'Testnachricht von Horizont (Einstellungen → Tägliche Benachrichtigung)',
 		completed: false
 	};
 	const text = composeMessage(prompt, [sample], now);

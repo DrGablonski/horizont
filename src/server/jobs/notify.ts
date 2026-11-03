@@ -1,4 +1,4 @@
-// Täglicher Benachrichtigungs-Job (Webhook, z. B. an T3 Code):
+// Täglicher Benachrichtigungs-Job (Webhook):
 // Um die konfigurierte Uhrzeit (pro User, Default 15:00) werden alle
 // offenen Tasks mit den eingestellten Kategorien (Standard: „Schule")
 // als Klartext an die konfigurierte Webhook-URL POSTet.
@@ -156,8 +156,9 @@ export function composeMessage(template: string, tasks: TaskItem[], now: Date): 
 }
 
 export async function postNotify(url: string, body: string, runDate: string): Promise<Response> {
-	// x-run-date: erlaubt in T3 Code Dedupe per replayKey {{headers.x-run-date}}
-	// (zweite Sendung am selben Tag wird dort als „duplicate" erkannt).
+	// x-run-date: erlaubt Dedupe beim Empfänger (z. B. Replay-Key aus
+	// {{headers.x-run-date}} — eine zweite Sendung am selben Tag wird dort als
+	// „duplicate" erkannt).
 	// guardedFetch: SSRF-Schutz (nur http(s), keine internen/gesperrten Ziele,
 	// Redirect-Zwischenstufen werden ebenfalls geprüft).
 	return guardedFetch(url, 'Webhook-URL', {

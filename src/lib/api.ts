@@ -207,12 +207,12 @@ export const api = {
 			body: JSON.stringify({ categories })
 		}),
 
-	// API-Token (Maschinen-Auth für /api/*, z. B. für T3 Code)
+	// API-Token (Maschinen-Auth für /api/*, z. B. externe Tools)
 	apiToken: () => req<ApiTokenView>('/api/token'),
 	generateApiToken: () => req<ApiTokenGenerated>('/api/token', { method: 'POST' }),
 	revokeApiToken: () => req<{ ok: true }>('/api/token', { method: 'DELETE' }),
 
-	// Benachrichtigung (Webhook, z. B. T3 Code)
+	// Benachrichtigung (täglicher Webhook)
 	notify: () => req<NotifyConfigView>('/api/notify'),
 	saveNotify: (input: NotifySaveInput) =>
 		req<NotifyConfigView>('/api/notify', { method: 'POST', body: JSON.stringify(input) }),

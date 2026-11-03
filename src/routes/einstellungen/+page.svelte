@@ -233,9 +233,9 @@
 		}
 	}
 
-	// ── Benachrichtigung (Webhook, z. B. T3 Code) ────────────────────────────
+	// ── Tägliche Benachrichtigung (Webhook) ──────────────────────────────────
 	const PROMPT_HINT =
-		'{{body}} = Liste der offenen Tasks (gewählte Kategorien) · {{stand}} = Datum, Uhrzeit und Anzahl.';
+		'Platzhalter in der Vorlage: {{body}} = Liste deiner offenen Aufgaben · {{stand}} = Datum, Uhrzeit und Anzahl. Den Rest kannst du frei formulieren.';
 
 	let notify = $state<NotifyConfigView | null>(null);
 	let nEnabled = $state(false);
@@ -280,8 +280,7 @@
 		}
 	}
 
-	/** Komplette Webhook-URL aus der T3-UI einfügen → in URL + Token aufteilen. */
-	function importWebhookUrl(): void {
+	/** Komplette Webhook-URL einfügen → automatisch in URL + Token aufteilen. */	function importWebhookUrl(): void {
 		const t = nImportUrl.trim().replace(/\/+$/, '');
 		const i = t.lastIndexOf('/');
 		if (i <= 0) {
@@ -347,7 +346,7 @@
 		}
 	}
 
-	// ── API-Token (Maschinen-Auth, z. B. für T3 Code) ────────────────────────
+	// ── API-Token (Maschinen-Auth für externe Zugriffe) ──────────────────────
 	let apiTokenView = $state<ApiTokenView | null>(null);
 	let newToken = $state('');
 	let tGenerating = $state(false);
@@ -417,9 +416,10 @@
 	<div>
 		<h1 class="text-xl font-semibold tracking-tight">Einstellungen</h1>
 		<p class="text-sm text-muted-foreground">
-			Deine persönlichen Einstellungen: Kalenderverbindungen (CalDAV) und die
-			tägliche Webhook-Benachrichtigung. Die dir zugewiesene Verbindung wird vom
-			Administrator vorgehalten; externe Quellen wie iCloud kannst du selbst anlegen.
+			Horizont richtet sich nach deinem Kalender: Verbinde unten ein Kalender-Konto
+			(über CalDAV — das funktioniert z. B. mit iCloud, Nextcloud, Radicale oder anderen
+			CalDAV-Anbietern), verwalte Kategorien für deine Aufgaben und stelle optional eine
+			tägliche Benachrichtigung per Webhook ein.
 		</p>
 	</div>
 
@@ -528,7 +528,7 @@
 		{:else}
 			<div class="flex items-center gap-2 rounded-xl border border-dashed border-border p-8 text-sm text-muted-foreground">
 				<PlugZapIcon class="size-4" />
-				<span>Noch keine Verbindungen. Lege unten eine externe CalDAV-Quelle an.</span>
+				<span>Noch kein Kalender verbunden. Trage unten eine CalDAV-Quelle ein, damit Horizont deine Termine und Aufgaben zeigen kann.</span>
 			</div>
 		{/if}
 
@@ -605,8 +605,9 @@
 						<span class="text-sm font-medium">Aufgaben-Kategorien</span>
 					</div>
 					<p class="mt-1 text-xs text-muted-foreground">
-						Kategorien für Aufgaben (Name + Farbe). Aufgaben speichern die Kategorie im
-						CalDAV-Feld „CATEGORIES" — sichtbar auch in anderen Kalender-Apps.
+						Hier benennst und einfärbst du die Kategorien, die du deinen Aufgaben geben
+						kannst — z. B. „Schule", „Privat" oder „Garten". Die Kategorie wird direkt
+						in der Aufgabe gespeichert und ist deshalb auch in anderen Kalender-Apps sichtbar.
 					</p>
 				</div>
 				<Button size="sm" variant="ghost" disabled={catSaving} onclick={resetCategories}>
@@ -677,11 +678,17 @@
 				<div>
 					<div class="flex items-center gap-2">
 						<BellIcon class="size-4" />
-						<span class="text-sm font-medium">Benachrichtigung (Webhook)</span>
+						<span class="text-sm font-medium">Tägliche Benachrichtigung</span>
 					</div>
 					<p class="mt-1 text-xs text-muted-foreground">
-						Jeden Tag um die angegebene Uhrzeit werden alle offenen Aufgaben mit den
-						unten gewählten Kategorien per POST an die Webhook-Adresse gesendet — z. B. an T3 Code.
+						Jeden Tag um die angegebene Uhrzeit schickt Horizont eine Textnachricht mit
+						deinen offenen Aufgaben an eine Webhook-Adresse. Ein Webhook ist einfach
+						eine Internet-Adresse, die Nachrichten entgegennimmt und weiterverarbeitet —
+						z. B. ein Chat-Bot, ein Benachrichtigungsdienst oder ein Assistenzprogramm.
+						Welche Aufgaben gesendet werden, bestimmst du über die Kategorien.
+					</p>
+					<p class="mt-1 text-xs text-muted-foreground">
+						Du hast keinen Webhook? Kein Problem — lass diesen Abschnitt einfach aus.
 					</p>
 				</div>
 				<Checkbox
@@ -693,12 +700,12 @@
 
 			<div class="mt-4 grid gap-4 sm:grid-cols-2">
 				<div class="space-y-1.5 sm:col-span-2">
-					<Label for="notify-import">Komplette Webhook-URL importieren</Label>
+					<Label for="notify-import">Komplette Webhook-URL einfügen</Label>
 					<div class="flex gap-2">
 						<Input
 							id="notify-import"
 							bind:value={nImportUrl}
-							placeholder="Aus T3 Code kopieren und hier einfügen"
+							placeholder="Hier einfügen, z. B. https://…/webhook/a1b2c3d4"
 							autocomplete="off"
 							spellcheck={false}
 						/>
@@ -706,6 +713,10 @@
 							Aufteilen
 						</Button>
 					</div>
+					<p class="text-xs text-muted-foreground">
+						Am einfachsten: die ganze URL von deinem Dienst hier einfügen und
+						„Aufteilen" klicken — Horizont trennt sie automatisch in Adresse und Token.
+					</p>
 				</div>
 
 				<div class="space-y-1.5">
@@ -737,29 +748,31 @@
 				</div>
 
 				<div class="space-y-1.5 sm:col-span-2">
-					<Label for="notify-url">Webhook-URL (ohne Token)</Label>
+					<Label for="notify-url">Webhook-URL</Label>
 					<Input
 						id="notify-url"
 						bind:value={nUrl}
-						placeholder="http://T3-CODE-HOST:PORT/api/hooks/scheduled-task%3A…"
+						placeholder="https://example.com/webhook/…"
 						autocomplete="off"
 						spellcheck={false}
 						class="font-mono text-xs"
 					/>
 					<p class="text-xs text-muted-foreground">
-						Alles bis direkt vor dem Token — am einfachsten per „Aufteilen" oben.
+						Die Adresse des Dienstes, der die Nachrichten empfangen soll — alles bis
+						direkt vor dem Zugriffsschlüssel. Am einfachsten trägst du sie oben über
+						„Einfügen + Aufteilen" ein.
 					</p>
 				</div>
 
 				<div class="space-y-1.5 sm:col-span-2">
-					<Label for="notify-token">Token</Label>
+					<Label for="notify-token">Zugriffsschlüssel (Token)</Label>
 					<Input
 						id="notify-token"
 						bind:value={nToken}
 						placeholder={
 							notify?.hasToken
 								? 'Gespeichert — leer lassen, um ihn zu behalten'
-								: 'Letztes Segment der Webhook-URL'
+								: 'Der geheime Teil am Ende der Webhook-URL'
 						}
 						autocomplete="off"
 						spellcheck={false}
@@ -767,15 +780,17 @@
 					/>
 					<p class="text-xs text-muted-foreground">
 						{#if notify?.hasToken}
-							Ein Token ist gespeichert. Neues Eingeben ersetzt ihn.
+							Ein Zugriffsschlüssel ist gespeichert — wie ein Passwort für den Versand.
+							Einfach neu ausfüllen, um ihn zu ersetzen.
 						{:else}
-							Noch kein Token gespeichert.
+							Noch kein Zugriffsschlüssel gespeichert. Du bekommst ihn zusammen mit
+							der Webhook-URL von dem Dienst, der die Nachrichten empfangen soll.
 						{/if}
 					</p>
 				</div>
 
 				<div class="space-y-1.5 sm:col-span-2">
-					<Label for="notify-prompt">Nachricht (Template)</Label>
+					<Label for="notify-prompt">Wie soll die Nachricht aussehen? (Vorlage)</Label>
 					<Textarea
 						id="notify-prompt"
 						bind:value={nPrompt}
@@ -839,7 +854,7 @@
 						{#if nTestResult.outcome}
 							· Ergebnis: {nTestResult.outcome}
 						{/if}
-						— die Nachricht sollte jetzt in T3 Code angekommen sein.
+						— die Nachricht sollte jetzt bei deinem Empfänger angekommen sein.
 					</p>
 				{:else if nTestResult.error}
 					<p class="text-sm text-destructive">{nTestResult.error}</p>
@@ -849,15 +864,16 @@
 
 		<Separator />
 
-		<!-- API-Token: externe Tools (z. B. T3 Code) lesen & bearbeiten -->
+		<!-- API-Token: Zugriff für externe Tools (MCP) -->
 		<div class="rounded-xl border border-border bg-card p-5">
 			<div class="flex items-center gap-2">
 				<KeyRoundIcon class="size-4" />
-				<span class="text-sm font-medium">API-Token (für T3 Code & Co.)</span>
+				<span class="text-sm font-medium">API-Token (für externe Zugriffe)</span>
 			</div>
 			<p class="mt-1 text-xs text-muted-foreground">
-				Mit dem Token greift der MCP-Server (z. B. in T3 Code / OpenCode) auf
-				deine Termine und Tasks zu (Header <code class="font-mono">Authorization: Bearer &lt;token&gt;</code>).
+				Mit diesem Token können externe Programme — z. B. ein Assistenz-/Automatisierungs-
+				Tool über den mitgelieferten MCP-Server — auf deine Termine und Aufgaben zugreifen.
+				Der Token funktioniert wie ein Passwort (Header <code class="font-mono">Authorization: Bearer &lt;token&gt;</code>).
 			</p>
 
 			{#if apiTokenView}

@@ -2,7 +2,7 @@
 // MCP-Server für den selbst gehosteten Horizont-Kalender (stdio-Transport).
 //
 // Spricht die /api-Endpunkte von Horizont mit dem per-User API-Token
-// (Horizont → Einstellungen → „API-Token (für T3 Code & Co.)“ → Erzeugen).
+// (Horizont → Einstellungen → „API-Token (für externe Zugriffe)“ → Erzeugen).
 //
 // Konfiguration (Umgebungsvariablen):
 //   HORIZONT_URL    Horizont-Instanz, z. B. http://localhost:8917
@@ -47,7 +47,7 @@ async function api(method, urlPath, body) {
   if (!token) {
     throw new ApiError(
       0,
-      `Kein API-Token konfiguriert. Token erzeugen in Horizont → Einstellungen → „API-Token (für T3 Code & Co.)“, ` +
+      `Kein API-Token konfiguriert. Token erzeugen in Horizont → Einstellungen → „API-Token (für externe Zugriffe)“, ` +
         `und entweder die Umgebungsvariable HORIZONT_TOKEN setzen oder in ${TOKEN_FILE} schreiben (Datei: 600).`
     );
   }

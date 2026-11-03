@@ -1,4 +1,4 @@
-// Per-User API-Token (Maschinen-Auth für /api/*, z. B. für T3 Code):
+// Per-User API-Token (Maschinen-Auth für /api/*, z. B. für externe Tools/MCP):
 // Der Token wird einmal erzeugt und im UI angezeigt, danach nur noch als
 // scrypt-Hash gespeichert (SHA-256-Digest als schneller Lookup-Key).
 //

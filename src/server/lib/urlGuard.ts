@@ -5,7 +5,7 @@
 // explizite IP-Literale als auch via DNS-Auflösung des Hostnames.
 // Private Netzwerke (192.168.x, 10.x, 172.16–31.x, IPv6-ULA) sind bewusst
 // erlaubt: Self-Hosting in lokalen Netzen ist der Haupteinsatzfall
-// (Radicale, T3 Code auf dem Heimserver).
+// (z. B. Radicale oder andere Dienste im Heimnetz).
 //
 // Redirects werden manuell gefolgt und jedes Ziel wieder geprüft — sonst
 // könnte ein eigener Server mit einem 302 auf 169.254.169.254 (Cloud-

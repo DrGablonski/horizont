@@ -172,8 +172,8 @@
 				onclick={() => (showCaldav = !showCaldav)}
 			>
 				<span>
-					System-CalDAV
-					<span class="ml-1 text-xs font-normal text-muted-foreground">(optional)</span>
+					Eigener Kalender-Server
+					<span class="ml-1 text-xs font-normal text-muted-foreground">(nur für Profis, optional)</span>
 				</span>
 				<span class={'transition-transform' + (showCaldav ? ' rotate-180' : '')}>
 					<ChevronDownIcon class="size-4" />
@@ -182,9 +182,11 @@
 			{#if showCaldav}
 				<div class="space-y-4 border-t border-border p-3">
 					<p class="text-xs leading-relaxed text-muted-foreground">
-						Optional: Legt jetzt schon den CalDAV-Zielserver (Radicale + caldav-admin-Sidecar) fest.
-						Dadurch erhält der Admin direkt einen CalDAV-Account und neue Users automatisch einen.
-						Kann später jederzeit auch unter „Admin" nachgeholt werden.
+						Nur relevant, wenn du einen eigenen Kalender-Server (Radicale mit
+						caldav-admin-Beiprogramm) betreibst. Der normale Weg: hier leer lassen und
+						unter „Einstellungen" später ganz normal einen Kalender verbinden.
+						Wird es ausgefüllt, erhält der Admin sofort einen CalDAV-Zugang und jeder
+						neue Benutzer automatisch einen. Kann auch später unter „Admin" nachgeholt werden.
 					</p>
 					<div class="grid gap-4 sm:grid-cols-2">
 						<div class="space-y-1.5">
