@@ -8,6 +8,7 @@ import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from '
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DATA_DIR } from '$server/lib/constants';
+import { normalizeCalDavUrl } from '$server/caldav/client';
 import type { CalDavConnection, CalDavSettings, ConnectionsResponse, ConnectionView } from '$lib/types';
 
 const LEGACY_SETTINGS_FILE = 'settings.json';
@@ -84,7 +85,7 @@ export function setAssigned(userId: string, settings: CalDavSettings): CalDavCon
 		id: randomUUID(),
 		name: 'Zugewiesener CalDAV',
 		kind: 'assigned',
-		url: settings.url.trim().replace(/\/+$/, ''),
+		url: normalizeCalDavUrl(settings.url).replace(/\/+$/, ''),
 		username: settings.username.trim(),
 		password: settings.password
 	};
@@ -103,7 +104,7 @@ export interface ExternalConnectionInput {
 }
 
 export function createExternal(userId: string, input: ExternalConnectionInput): CalDavConnection {
-	const url = (input.url ?? '').trim().replace(/\/+$/, '');
+	const url = normalizeCalDavUrl(input.url ?? '').replace(/\/+$/, '');
 	if (!url) throw new Error('CalDAV-URL fehlt.');
 	const username = (input.username ?? '').trim();
 	const password = input.password ?? '';
@@ -132,7 +133,7 @@ export function updateExternal(
 	const cur = conns[idx];
 	let { url, username, password } = cur;
 	if (input.url !== undefined) {
-		url = input.url.trim().replace(/\/+$/, '');
+		url = normalizeCalDavUrl(input.url).replace(/\/+$/, '');
 		if (!url) throw new Error('CalDAV-URL fehlt.');
 	}
 	if (input.username !== undefined) username = input.username.trim();

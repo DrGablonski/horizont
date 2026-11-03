@@ -149,13 +149,23 @@ function authError(): never {
 
 // ── Discovery ─────────────────────────────────────────────────────────────
 
+/**
+ * Nutzer-URL normalisieren: nacktes "kalender.example.com" → https-URL.
+ * (http bleibt nur erhalten, wenn es ausdrücklich angegeben wurde.)
+ */
+export function normalizeCalDavUrl(raw: string): string {
+	const t = raw.trim().replace(/\s+/g, '');
+	if (!t) return '';
+	if (!/^https?:\/\//i.test(t)) return `https://${t}`;
+	return t;
+}
+
 export interface HomeInfo {
 	home: string;
 	principal: string | null;
 }
 
-export async function resolveHome(settings: CalDavSettings): Promise<HomeInfo> {
-	const body = `<?xml version="1.0" encoding="utf-8"?>
+const PROPFIND_HOME = `<?xml version="1.0" encoding="utf-8"?>
 <propfind xmlns="DAV:">
   <prop>
     <current-user-principal/>
@@ -163,13 +173,28 @@ export async function resolveHome(settings: CalDavSettings): Promise<HomeInfo> {
   </prop>
 </propfind>`;
 
-	const base = settings.url.replace(/\/?$/, '/');
-	const r = await davRequest(settings, base, 'PROPFIND', body, { Depth: '0' });
-	if (r.status === 401 || r.status === 403) authError();
-	if (r.status >= 400) {
-		// Kein Discovery-Endpunkt – die URL selbst als Basis verwenden.
-		return { home: base, principal: null };
+/**
+ * Eine Kandidaten-URL per PROPFIND (Depth 0) auf Principal + Kalender-Home
+ * abprüfen. Rückgabe:
+ *  - { home, principal }            Kandidat ist ein CalDAV-Herkunftsort
+ *  - { answered: true }             Server hat auf PROPFIND geantwortet, aber
+ *                                   kein Principal/Home geliefert (→ URL selbst
+ *                                   ist vermutlich schon das Home)
+ *  - null                           kein CalDAV / nicht erreichbar (weiter)
+ * Wirft nur bei Auth-Problemen (401/403).
+ */
+async function probeHome(
+	settings: CalDavSettings,
+	url: string
+): Promise<(HomeInfo & { answered?: undefined }) | { answered: true } | null> {
+	let r: DavResponse;
+	try {
+		r = await davRequest(settings, url, 'PROPFIND', PROPFIND_HOME, { Depth: '0' });
+	} catch {
+		return null; // Netzwerk-/TLS-Fehler → nächster Kandidat
 	}
+	if (r.status === 401 || r.status === 403) authError();
+	if (r.status >= 400) return null;
 
 	const doc = parseXml(r.text);
 	const principalHrefs = collect(doc, 'current-user-principal').map((n: any) => collect(n, 'href').map(textOf).find((t: any) => t));
@@ -177,13 +202,90 @@ export async function resolveHome(settings: CalDavSettings): Promise<HomeInfo> {
 
 	const principalHref = principalHrefs.find((h: any) => h);
 	const homeHref = homeHrefs.find((h: any) => h);
+	if (!principalHref && !homeHref) return { answered: true };
 
-	let home = base;
-	if (homeHref) home = new URL(homeHref, base).toString();
-	else if (principalHref) home = new URL(principalHref, base).toString();
-	const principal = principalHref ? new URL(principalHref, base).toString() : null;
+	let home = url;
+	if (homeHref) home = new URL(homeHref, url).toString();
+	else if (principalHref) home = new URL(principalHref, url).toString();
+	const principal = principalHref ? new URL(principalHref, url).toString() : null;
 
 	return { home, principal };
+}
+
+/**
+ * Bekannte CalDAV-Pfade (RFC 6764 Well-Known + gängige Self-Hosting-Pfade),
+ * mit denen eine Server-Root automatisch gefunden wird:
+ * Radicale/Baïkal/Nextcloud/Xandikos … antworten auf /.well-known/caldav;
+ * die übrigen sind Fallbacks für Server ohne Well-Known-Unterstützung.
+ */
+const KNOWN_CALDAV_PATHS = ['/.well-known/caldav', '/remote.php/dav/', '/dav/', '/caldav/'];
+
+/**
+ * Discover the CalDAV calendar-home. The URL entered by the user is tried
+ * first; if it is only a server root, auto-discovery walks Well-Known and
+ * well-known self-hosting paths — so entering just "https://kalender.example.com"
+ * is enough for virtually every self-hosted CalDAV server.
+ */
+export async function resolveHome(settings: CalDavSettings): Promise<HomeInfo> {
+	const base = settings.url.replace(/\/?$/, '/');
+
+	// Kandidaten: erst die eingetragene URL, dann (falls sie nur die Server-
+	// Wurzel ist) die bekannten CalDAV-Pfade abklappern.
+	const candidates: string[] = [base];
+	let originRoot: string | null = null;
+	try {
+		const u = new URL(base);
+		originRoot = `${u.protocol}//${u.host}/`;
+	} catch {
+		/* ungültige URL → nur base als Kandidat */
+	}
+	if (originRoot) {
+		for (const p of KNOWN_CALDAV_PATHS) {
+			const cand = originRoot.slice(0, -1) + p;
+			if (!candidates.includes(cand) && cand !== base) candidates.push(cand);
+		}
+		// Schemata-Fallback: blank-eingetragene Domains werden zu https
+		// normalisiert; viele Heimnetz-Server laufen aber unter http
+		// (und umgekehrt) → beide Schemata probieren.
+		const alt = originRoot.startsWith('https:')
+			? originRoot.replace('https:', 'http:')
+			: originRoot.startsWith('http:')
+				? originRoot.replace('http:', 'https:')
+				: null;
+		if (alt) {
+			candidates.push(alt);
+			for (const p of KNOWN_CALDAV_PATHS) candidates.push(alt.slice(0, -1) + p);
+		}
+	}
+
+	let firstAuthError: CalDavError | null = null;
+	for (const cand of candidates) {
+		let info: Awaited<ReturnType<typeof probeHome>>;
+		try {
+			info = await probeHome(settings, cand);
+		} catch (e) {
+			// Auth-Fehler merken, aber andere Kandidaten weiter probieren —
+			// ein 401 am falschen Pfad heißt nicht, dass die Zugangsdaten falsch sind.
+			if (e instanceof CalDavError && (e.status === 401 || e.status === 403)) {
+				firstAuthError ??= e;
+				continue;
+			}
+			throw e;
+		}
+		if (!info) continue;
+		if ('answered' in info) {
+			// Server hat auf PROPFIND geantwortet, aber kein Principal/Home
+			// geliefert → die Eingabe ist vermutlich schon das Kalender-Home.
+			// Kein Grund, weitere Kandidaten zu probieren.
+			return { home: cand.replace(/\/?$/, '/'), principal: null };
+		}
+		return info;
+	}
+	if (firstAuthError) throw firstAuthError;
+
+	// Kein Discovery-Endpunkt gefunden – die URL selbst als Basis verwenden
+	// (Server, deren URL direkt der Kalender ist, oder ältere Installationen).
+	return { home: base, principal: null };
 }
 
 // ── Existenzprüfung + Kalender anlegen (interner Workflow-Speicher) ─────

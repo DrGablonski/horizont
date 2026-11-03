@@ -2,7 +2,7 @@
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
-import { listCalendars, resolveHome } from '$server/caldav/client';
+import { listCalendars, normalizeCalDavUrl, resolveHome } from '$server/caldav/client';
 import { listConnections } from '$server/store/connections';
 import type { CalDavSettings, TestResult } from '$lib/types';
 
@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	if (body && typeof body.url === 'string' && body.url.trim()) {
 		// Formularwerte testen (unabhängig von gespeicherten Daten).
-		const url = body.url.trim().replace(/\/+$/, '');
+		const url = normalizeCalDavUrl(body.url).replace(/\/+$/, '');
 		const username = typeof body.username === 'string' ? body.username.trim() : '';
 		const password = typeof body.password === 'string' ? body.password.trim() : '';
 		settings = { url, username, password };

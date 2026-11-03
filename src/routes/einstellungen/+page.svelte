@@ -445,7 +445,11 @@
 								</div>
 								<div class="space-y-1.5 sm:col-span-2">
 									<Label for="edit-url">CalDAV-URL</Label>
-									<Input id="edit-url" bind:value={eUrl} type="url" required />
+									<Input id="edit-url" bind:value={eUrl} type="text" required />
+									<p class="text-xs text-muted-foreground">
+										Empfohlen: nur die Adresse des Servers, z. B. „kalender.example.com" oder
+										„192.168.1.50:5232" — Horizont findet den CalDAV-Zugang automatisch.
+									</p>
 								</div>
 								<div class="space-y-1.5">
 									<Label for="edit-user">Benutzername</Label>
@@ -560,10 +564,16 @@
 							<Input
 								id="new-url"
 								bind:value={newUrl}
-								type="url"
-								placeholder="https://p17-caldav.icloud.com:443/dav/12345/"
+								type="text"
+								placeholder="einfach die Server-Adresse, z. B. kalender.example.com"
 								required
 							/>
+							<p class="text-xs text-muted-foreground">
+								Einfach nur die Adresse deines Kalender-Servers eintragen — auch ohne
+								„https://" und ohne Pfad. Horizont erkennt automatisch, wo der Server
+								seine CalDAV-Daten anbietet (z. B. iCloud, Nextcloud, Radicale, Baïkal).
+								Nur bei sehr alten Servern musst du den vollen CalDAV-Pfad angeben.
+							</p>
 						</div>
 						<div class="space-y-1.5">
 							<Label for="new-user">Benutzername</Label>
