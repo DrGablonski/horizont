@@ -8,12 +8,14 @@
 		day,
 		onAddDay,
 		onEdit,
-		onDelete
+		onDelete,
+		onToggleTask
 	}: {
 		day: DayGroup;
 		onAddDay?: (dayKey: string) => void;
 		onEdit?: (ev: EventItem) => void;
 		onDelete?: (ev: EventItem) => void;
+		onToggleTask?: (ev: EventItem) => void;
 	} = $props();
 </script>
 
@@ -39,7 +41,7 @@
 	</div>
 	<div class="space-y-2">
 		{#each day.events as ev (ev.id)}
-			<EventRow {ev} {onEdit} {onDelete} />
+			<EventRow {ev} {onEdit} {onDelete} {onToggleTask} />
 		{:else}
 			<p class="text-sm text-muted-foreground/70">Nichts geplant.</p>
 		{/each}

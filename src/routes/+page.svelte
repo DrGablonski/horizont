@@ -1,29 +1,45 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
-	import type { MainEventsResponse, EventItem, CalDavCalendar, EventUpdateInput, EventCreateInput } from '$lib/types';
+	import type {
+		MainEventsResponse,
+		EventItem,
+		CalDavCalendar,
+		EventUpdateInput,
+		EventCreateInput,
+		TaskUpdateInput,
+		TaskCreateInput,
+		TaskCategory
+	} from '$lib/types';
 	import TimePanel from '$lib/components/TimePanel.svelte';
 	import WorkflowSection from '$lib/components/WorkflowSection.svelte';
 	import StatusBanner from '$lib/components/StatusBanner.svelte';
 	import EventEditor from '$lib/components/EventEditor.svelte';
-	import TaskSection from '$lib/components/TaskSection.svelte';
+	import TaskEditor from '$lib/components/TaskEditor.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
 	import { dayKey } from '$lib/dates';
 	import { toast } from 'svelte-sonner';
 	import RotateCwIcon from '@lucide/svelte/icons/rotate-cw';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
 
 
 	let data = $state<MainEventsResponse | null>(null);
 	let loading = $state(true);
 	let loadError = $state<string | null>(null);
 	let calendars = $state<CalDavCalendar[]>([]);
+	let categories = $state<TaskCategory[]>([]);
 
 	// Event-Editor State
 	let editorOpen = $state(false);
 	let editorMode = $state<'create' | 'edit'>('create');
 	let editorInitial = $state<Partial<EventUpdateInput> & { calendarId?: string; uid?: string }>({});
+
+	// Task-Editor State (Aufgaben leben mitten in der Timeline)
+	let taskEditorOpen = $state(false);
+	let taskEditorMode = $state<'create' | 'edit'>('create');
+	let taskEditorInitial = $state<Partial<TaskUpdateInput> & { calendarId?: string; uid?: string }>({});
 
 	function errMsg(e: unknown): string {
 		return e instanceof Error ? e.message : String(e);
@@ -33,9 +49,14 @@
 		loading = true;
 		loadError = null;
 		try {
-			const [eventsRes, calRes] = await Promise.all([api.mainEvents(), api.calendars()]);
+			const [eventsRes, calRes, catRes] = await Promise.all([
+				api.mainEvents(),
+				api.calendars(),
+				api.categories()
+			]);
 			data = eventsRes;
 			calendars = calRes.calendars;
+			categories = catRes.categories;
 		} catch (e) {
 			loadError = errMsg(e);
 		} finally {
@@ -71,6 +92,10 @@
 	}
 
 	function openEdit(ev: EventItem) {
+		if (ev.kind === 'task') {
+			openTaskEdit(ev);
+			return;
+		}
 		editorMode = 'edit';
 		const startKey = dayKey(ev.startMs);
 		const endKeyStr = dayKey(ev.endMs - 1);
@@ -90,6 +115,17 @@
 	}
 
 	async function handleDeleteEvent(ev: EventItem) {
+		if (ev.kind === 'task') {
+			if (!confirm(`Aufgabe "${ev.summary}" wirklich löschen?`)) return;
+			try {
+				await api.deleteTask(ev.calendarId, ev.uid);
+				removeTimelineItem(ev);
+				toast.success('Aufgabe gelöscht.');
+			} catch (e) {
+				toast.error(errMsg(e));
+			}
+			return;
+		}
 		if (!confirm(`Event "${ev.summary}" wirklich löschen?`)) return;
 		try {
 			await api.deleteEvent(ev.calendarId, ev.uid);
@@ -119,6 +155,91 @@
 			throw e;
 		}
 	}
+
+	// ── Task-Handler (optimistic wie bei Social-Media-Likes) ───────────────
+
+	function findTimelineItem(uid: string): EventItem | undefined {
+		for (const p of data?.panels ?? [])
+			for (const g of p.days) {
+				const it = g.events.find((e) => e.kind === 'task' && e.uid === uid);
+				if (it) return it;
+			}
+		return undefined;
+	}
+
+	function removeTimelineItem(ev: EventItem): void {
+		for (const p of data?.panels ?? [])
+			for (const g of p.days) {
+				const i = g.events.findIndex((e) => e.id === ev.id);
+				if (i >= 0) g.events.splice(i, 1);
+			}
+	}
+
+	function setTaskCompleted(uid: string, completed: boolean): void {
+		const it = findTimelineItem(uid);
+		if (it) it.completed = completed;
+	}
+
+	/**
+	 * Abhaken ohne Umwege: Der Haken wird SOFORT gesetzt (wie ein Like),
+	 * erst danach an CalDAV gespeichert. Schlägt die Speicherung fehl, wird
+	 * der Haken zurückgenommen und eine Fehlermeldung gezeigt.
+	 */
+	async function toggleTask(ev: EventItem): Promise<void> {
+		const was = !!ev.completed;
+		const now = !was;
+		setTaskCompleted(ev.uid, now);
+		try {
+			await api.updateTask(ev.calendarId, ev.uid, { completed: now });
+		} catch (e) {
+			setTaskCompleted(ev.uid, was);
+			toast.error(`Abhaken fehlgeschlagen: ${errMsg(e)}`);
+		}
+	}
+
+	function openCreateTask() {
+		taskEditorMode = 'create';
+		taskEditorInitial = { calendarId: calendars[0]?.id ?? '' };
+		taskEditorOpen = true;
+	}
+
+	function openTaskEdit(ev: EventItem) {
+		taskEditorMode = 'edit';
+		taskEditorInitial = {
+			uid: ev.uid,
+			summary: ev.summary,
+			description: ev.description,
+			completed: !!ev.completed,
+			due: ev.dueKey
+				? { kind: 'date' as const, key: ev.dueKey }
+				: ev.dueMs != null
+					? { kind: 'time' as const, ms: ev.dueMs }
+					: { kind: 'none' as const },
+			category: ev.category ?? null,
+			calendarId: ev.calendarId
+		};
+		taskEditorOpen = true;
+	}
+
+	async function handleTaskSubmit(input: TaskCreateInput | TaskUpdateInput) {
+		try {
+			if (taskEditorMode === 'create') {
+				await api.createTask(input as TaskCreateInput);
+				toast.success('Aufgabe erstellt.');
+			} else {
+				const uid = taskEditorInitial.uid;
+				const calId = taskEditorInitial.calendarId;
+				if (uid && calId) {
+					await api.updateTask(calId, uid, input as TaskUpdateInput);
+					toast.success('Aufgabe aktualisiert.');
+				}
+			}
+			await load();
+		} catch (e) {
+			toast.error(errMsg(e));
+			throw e;
+		}
+	}
 </script>
 
 <div class="space-y-6">
@@ -132,6 +253,10 @@
 				<Button variant="outline" size="sm" onclick={() => openCreate()}>
 					<PlusIcon class="size-4" />
 					<span>Event</span>
+				</Button>
+				<Button variant="outline" size="sm" onclick={openCreateTask}>
+					<CircleCheckIcon class="size-4" />
+					<span>Aufgabe</span>
 				</Button>
 			{/if}
 			<Button variant="outline" size="sm" disabled={loading} onclick={refresh} class="shrink-0">
@@ -178,14 +303,11 @@
 						onAddDay={openCreate}
 						onEdit={openEdit}
 						onDelete={handleDeleteEvent}
+						onToggleTask={toggleTask}
 					/>
 				{/each}
 			</div>
 		{/if}
-	{/if}
-
-	{#if data?.configured}
-		<TaskSection />
 	{/if}
 
 	<WorkflowSection />
@@ -199,5 +321,17 @@
 		initial={editorInitial}
 		onSubmit={handleEditorSubmit}
 		onClose={() => (editorOpen = false)}
+	/>
+{/if}
+
+{#if taskEditorOpen}
+	<TaskEditor
+		mode={taskEditorMode}
+		open={taskEditorOpen}
+		calendars={calendars}
+		categories={categories}
+		initial={taskEditorInitial}
+		onSubmit={handleTaskSubmit}
+		onClose={() => (taskEditorOpen = false)}
 	/>
 {/if}

@@ -14,7 +14,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 		const month = url.searchParams.get('monat');
 		return json(await buildArchiveMonthResponse(connections, month));
 	}
-	return json(await buildMainResponse(connections));
+	return json(await buildMainResponse(connections, locals.user?.id));
 };
 
 export const POST: RequestHandler = async ({ request, locals }) => {

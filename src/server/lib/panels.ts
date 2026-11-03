@@ -39,6 +39,9 @@ import {
 import { fetchCalendarIcs } from '$server/caldav/client';
 import { resolveAllCalendars } from '$server/caldav/multi';
 import { icalToEventItems } from '$server/caldav/ical';
+import { listAllTasks } from '$server/lib/write';
+import { getCategories } from '$server/store/categories';
+import type { TaskItem } from '$lib/types';
 
 interface Range {
 	startMs: number;
@@ -128,7 +131,50 @@ async function fetchEventsInRange(
 	}
 }
 
-export async function buildMainResponse(connections: CalDavConnection[]): Promise<MainEventsResponse> {
+// ── Tasks in die Timeline einbetten ──────────────────────────────────────
+
+/** Wandelt eine CalDAV-Aufgabe (VTODO) in einen Timeline-Eintrag um. */
+function taskToTimelineItem(t: TaskItem, colors: Map<string, string>): EventItem {
+	const anchorMs = t.dueMs ?? (t.dueKey ? msFromKey(t.dueKey) : null);
+	return {
+		id: `task:${t.calendarId}:${t.uid}`,
+		uid: t.uid,
+		calendarId: t.calendarId,
+		calendarName: t.calendarName,
+		calendarColor: t.calendarColor,
+		summary: t.summary,
+		description: t.description,
+		startMs: anchorMs ?? 0,
+		endMs: (anchorMs ?? 0) + 1,
+		allDay: true,
+		kind: 'task',
+		completed: t.completed,
+		category: t.category,
+		categoryColor: t.category
+			? colors.get(t.category.toLowerCase()) ?? '#64748b'
+			: undefined,
+		dueKey: t.dueKey,
+		dueMs: t.dueMs
+	};
+}
+
+/** Tasks, die auf diesem Tag fällig sind (Stichtag oder Datum-Fälligkeit). */
+function tasksForDay(tasks: EventItem[], dayStart: number, dayEnd: number): EventItem[] {
+	return tasks
+		.filter((t) => (t.dueMs != null && t.dueMs >= dayStart && t.dueMs < dayEnd) ||
+			(t.dueMs == null && t.dueKey != null && msFromKey(t.dueKey) === dayStart))
+		.sort(
+			(a, b) =>
+				(a.completed ? 1 : 0) - (b.completed ? 1 : 0) ||
+				(a.dueMs ?? Infinity) - (b.dueMs ?? Infinity) ||
+				a.summary.localeCompare(b.summary, 'de')
+		);
+}
+
+export async function buildMainResponse(
+	connections: CalDavConnection[],
+	userId?: string
+): Promise<MainEventsResponse> {
 	const today = todayKey();
 	const todayStart = msFromKey(today);
 	const base: Omit<MainEventsResponse, 'panels'> = {
@@ -140,17 +186,48 @@ export async function buildMainResponse(connections: CalDavConnection[]): Promis
 	if (connections.length === 0) return emptyResponse(base);
 
 	const { startMs, endMs } = mainRange(todayStart);
-	const { events, error } = await fetchEventsInRange(connections, startMs, endMs);
+	const [{ events, error }, rawTasks] = await Promise.all([
+		fetchEventsInRange(connections, startMs, endMs),
+		listAllTasks(connections).catch(() => [] as TaskItem[])
+	]);
+
+	// Aufgaben mitten unter die Kalender-Ereignisse mischen.
+	const colors = new Map(
+		(userId ? getCategories(userId) : []).map((c) => [c.name.toLowerCase(), c.color])
+	);
+	const tasks = rawTasks.map((t) => taskToTimelineItem(t, colors));
+	const unscheduled = tasks.filter((t) => t.dueKey == null && t.dueMs == null);
 
 	const panels: TimePanel[] = (['past', 'now', 'future'] as PanelId[]).map((id) => {
 		const r = panelRange(todayStart, id);
 		const keys = dayKeysBetween(r.startMs, r.endMs);
-		const groups = bucketDays(events, keys, today);
+
+		// Tage bauen: Ereignisse + fällige Aufgaben (auch Tage nur mit Aufgaben zeigen).
+		const groups: DayGroup[] = [];
+		for (const k of keys) {
+			const dStart = msFromKey(k);
+			const dEnd = addDaysMs(dStart, 1);
+			const evs = events
+				.filter((e) => e.startMs < dEnd && e.endMs > dStart)
+				.sort((a, b) => a.startMs - b.startMs || a.summary.localeCompare(b.summary, 'de'));
+			const tks = tasksForDay(tasks, dStart, dEnd);
+			if (evs.length === 0 && tks.length === 0) continue;
+			groups.push({ dayKey: k, label: dayLabel(k), isToday: k === today, events: [...evs, ...tks] });
+		}
 
 		// „Jetzt": heute immer zeigen (auch ohne Einträge → „nichts geplant").
 		if (id === 'now' && !groups.some((g) => g.dayKey === today)) {
 			const idx = Math.max(0, keys.indexOf(today));
 			groups.splice(idx, 0, { dayKey: today, label: dayLabel(today), isToday: true, events: [] });
+		}
+		// Aufgaben ohne Fälligkeitsdatum gehören in den heutigen Tag.
+		if (id === 'now') {
+			const todayGroup = groups.find((g) => g.dayKey === today);
+			if (todayGroup)
+				todayGroup.events = [
+					...todayGroup.events,
+					...unscheduled.sort((a, b) => (a.completed ? 1 : 0) - (b.completed ? 1 : 0))
+				];
 		}
 
 		const eventCount = groups.reduce((n, g) => n + g.events.length, 0);

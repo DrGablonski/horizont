@@ -139,6 +139,16 @@ export interface EventItem {
 	startMs: number;
 	endMs: number;
 	allDay: boolean;
+	/** 'task' = CalDAV-Aufgabe (VTODO), mitten in der Timeline angezeigt. */
+	kind?: 'event' | 'task';
+	/** Nur Tasks: erledigt? */
+	completed?: boolean;
+	/** Nur Tasks: Kategorie (CalDAV CATEGORIES) + Farbe. */
+	category?: string;
+	categoryColor?: string;
+	/** Nur Tasks: Fälligkeit (für den Task-Editor). */
+	dueKey?: string;
+	dueMs?: number;
 }
 
 export interface DayGroup {

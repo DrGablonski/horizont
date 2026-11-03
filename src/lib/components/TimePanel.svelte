@@ -9,12 +9,14 @@
 		panel,
 		onAddDay,
 		onEdit,
-		onDelete
+		onDelete,
+		onToggleTask
 	}: {
 		panel: TimePanelData;
 		onAddDay?: (dayKey: string) => void;
 		onEdit?: (ev: EventItem) => void;
 		onDelete?: (ev: EventItem) => void;
+		onToggleTask?: (ev: EventItem) => void;
 	} = $props();
 	let open = $state(panel.defaultOpen);
 </script>
@@ -39,7 +41,7 @@
 	<CollapsibleContent>
 		<div class="space-y-5 border-t border-border px-4 py-4">
 			{#each panel.days as day (day.dayKey)}
-				<DayBlock {day} {onAddDay} {onEdit} {onDelete} />
+				<DayBlock {day} {onAddDay} {onEdit} {onDelete} {onToggleTask} />
 			{:else}
 				<p class="text-sm text-muted-foreground">Keine Einträge in diesem Zeitraum.</p>
 			{/each}
