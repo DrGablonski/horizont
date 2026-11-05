@@ -448,7 +448,7 @@
 									<Input id="edit-url" bind:value={eUrl} type="text" required />
 									<p class="text-xs text-muted-foreground">
 										Empfohlen: nur die Adresse des Servers, z. B. „kalender.example.com" oder
-										„192.168.1.50:5232" — Horizont findet den CalDAV-Zugang automatisch.
+										„192.168.1.100:5232" — Horizont findet den CalDAV-Zugang automatisch.
 									</p>
 								</div>
 								<div class="space-y-1.5">
