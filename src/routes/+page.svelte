@@ -175,24 +175,44 @@
 			}
 	}
 
+	/** Entfernt einen Eintrag und liefert eine Funktion, die ihn zurückholt. */
+	function removeTimelineItemWithUndo(ev: EventItem): () => void {
+		for (const p of data?.panels ?? [])
+			for (const g of p.days) {
+				const i = g.events.findIndex((e) => e.id === ev.id);
+				if (i >= 0) {
+					g.events.splice(i, 1);
+					return () => g.events.splice(i, 0, ev);
+				}
+			}
+		return () => {};
+	}
+
 	function setTaskCompleted(uid: string, completed: boolean): void {
 		const it = findTimelineItem(uid);
 		if (it) it.completed = completed;
 	}
 
 	/**
-	 * Abhaken ohne Umwege: Der Haken wird SOFORT gesetzt (wie ein Like),
-	 * erst danach an CalDAV gespeichert. Schlägt die Speicherung fehl, wird
-	 * der Haken zurückgenommen und eine Fehlermeldung gezeigt.
+	 * Abhaken ohne Umwege: Erledigte Tasks verschwinden SOFORT aus der
+	 * Startseite – sie landen im Archiv. Erst danach wird an CalDAV
+	 * gespeichert. Schlägt die Speicherung fehl, wandert der Task zurück
+	 * an seine alte Position. Abgehakte zurückzunehmen lässt sie wieder
+	 * in der Timeline erscheinen.
 	 */
 	async function toggleTask(ev: EventItem): Promise<void> {
 		const was = !!ev.completed;
 		const now = !was;
-		setTaskCompleted(ev.uid, now);
+		let undo: () => void = () => {};
+		if (now) {
+			undo = removeTimelineItemWithUndo(ev);
+		} else {
+			setTaskCompleted(ev.uid, now);
+		}
 		try {
 			await api.updateTask(ev.calendarId, ev.uid, { completed: now });
 		} catch (e) {
-			setTaskCompleted(ev.uid, was);
+			undo();
 			toast.error(`Abhaken fehlgeschlagen: ${errMsg(e)}`);
 		}
 	}

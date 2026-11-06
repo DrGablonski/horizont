@@ -147,23 +147,27 @@ export function icalToTaskItems(ics: string, calendar: CalDavCalendar): TaskItem
 
 		const completed = v.hasProperty?.('completed') ?? false;
 
+		// COMPLETED-Datum (Tag des Abhakens) lesen – erledigte Tasks landen
+		// im Archiv an diesem Tag. ical.js v2 hat kein Component.getProperty;
+		// getFirstPropertyValue liefert das Time-Objekt direkt.
+		let completedAt: number | null = null;
+		try {
+			const dt = v.getFirstPropertyValue?.('completed') as IcalTimeLike | null | undefined;
+			if (dt && typeof dt.toJSDate === 'function') completedAt = toMs(dt);
+		} catch {
+			/* ignore */
+		}
+
 		let dueKey: string | undefined;
 		let dueMs: number | undefined;
 
-		const dueProp = v.getProperty?.('due') as any;
-		if (dueProp) {
-			try {
-				const dt = dueProp.getDateTime?.() as IcalTimeLike | undefined;
-				if (dt) {
-					if (dt.isDate) {
-						const p = (n: number) => String(n).padStart(2, '0');
-						dueKey = `${dt.year}-${p(dt.month)}-${p(dt.day)}`;
-					} else {
-						dueMs = toMs(dt);
-					}
-				}
-			} catch {
-				/* ignore */
+		const dueVal = v.getFirstPropertyValue?.('due') as IcalTimeLike | null | undefined;
+		if (dueVal && typeof dueVal.toJSDate === 'function') {
+			if (dueVal.isDate) {
+				const p = (n: number) => String(n).padStart(2, '0');
+				dueKey = `${dueVal.year}-${p(dueVal.month)}-${p(dueVal.day)}`;
+			} else {
+				dueMs = toMs(dueVal);
 			}
 		}
 
@@ -194,6 +198,7 @@ export function icalToTaskItems(ics: string, calendar: CalDavCalendar): TaskItem
 			summary,
 			description,
 			completed,
+			completedAt,
 			dueKey,
 			dueMs,
 			category,

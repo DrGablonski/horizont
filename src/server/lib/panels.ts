@@ -159,6 +159,7 @@ function taskToTimelineItem(t: TaskItem, colors: Map<string, string>): EventItem
 		allDay: true,
 		kind: 'task',
 		completed: t.completed,
+		completedAt: t.completedAt ?? null,
 		category: t.category,
 		categoryColor: t.category
 			? colors.get(t.category.toLowerCase()) ?? '#64748b'
@@ -202,8 +203,12 @@ export async function buildMainResponse(
 	]);
 
 	// Aufgaben mitten unter die Kalender-Ereignisse mischen.
+	// Erledigte (abgehakte) Tasks bleiben auf der Startseite ausgespart –
+	// sie landen im Archiv (dort am Tag des Abhakens).
 	const colors = categoryColorMap(userId);
-	const tasks = rawTasks.map((t) => taskToTimelineItem(t, colors));
+	const tasks = rawTasks
+		.map((t) => taskToTimelineItem(t, colors))
+		.filter((t) => !t.completed);
 	const unscheduled = tasks.filter((t) => t.dueKey == null && t.dueMs == null);
 
 	// Überfällige, offene Aufgaben „wandern": sie bleiben nicht am alten
@@ -326,7 +331,16 @@ export async function buildArchiveMonthResponse(
 	error = fetched.error;
 
 	const colors = categoryColorMap(userId);
-	const tasks = rawTasks.map((t) => taskToTimelineItem(t, colors));
+	const tasks = rawTasks.map((t) => {
+		const item = taskToTimelineItem(t, colors);
+		// Erledigte Tasks landen im Archiv am Tag des Abhakens (COMPLETED);
+		// ohne Erledigungs-Datum bleibt der alte Fälligkeitstag als Anker.
+		if (item.completed && item.completedAt != null) {
+			item.dueKey = dayKey(item.completedAt);
+			item.dueMs = undefined;
+		}
+		return item;
+	});
 
 	const groups = bucketDaysMerged(events, tasks, grid, today);
 	const eventCount = groups

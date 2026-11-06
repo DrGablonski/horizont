@@ -143,6 +143,8 @@ export interface EventItem {
 	kind?: 'event' | 'task';
 	/** Nur Tasks: erledigt? */
 	completed?: boolean;
+	/** Nur Tasks: Erledigungs-Zeitpunkt (VTODO COMPLETED, epoch ms); null = nicht gesetzt. */
+	completedAt?: number | null;
 	/** Nur Tasks: Kategorie (CalDAV CATEGORIES) + Farbe. */
 	category?: string;
 	categoryColor?: string;
@@ -249,6 +251,8 @@ export interface TaskItem {
 	summary: string;
 	description?: string;
 	completed: boolean;
+	/** Erledigungs-Zeitpunkt (VTODO COMPLETED, epoch ms); null = erledigt ohne Datum. */
+	completedAt?: number | null;
 	dueKey?: string; // YYYY-MM-DD (date-only)
 	dueMs?: number; // epoch ms (date-time)
 	category?: string; // Kategoriename (CalDAV CATEGORIES)
