@@ -2,44 +2,18 @@
 
 // ── Auth ──────────────────────────────────────────────────────────────────
 
-export type UserRole = 'admin' | 'user';
-
 /** Öffentliche User-Daten (ohne Hashes). */
 export interface AppUser {
 	id: string;
 	username: string;
-	role: UserRole;
 	createdAt: number;
 	lastLoginAt: number | null;
 }
 
-/** Admin-View eines Users (zusätzliche Felder). */
-export interface AdminUserView extends AppUser {
-	disabled: boolean;
-	/** Hat der User eine zugewiesene CalDAV-Verbindung? */
-	hasAssignedConnection: boolean;
-}
-
-/** Ergebnis einer User-Anlage: CalDAV-Handover für die Übergabe an den User. */
-export interface CaldavHandover {
-	url: string;
-	username: string;
-	password: string;
-}
-
-export interface CreateUserResult {
-	user: AppUser;
-	caldav: CaldavHandover | null;
-}
-
-/** Ergebnis des Setups: angelegter Admin + (optional) CalDAV-Handover. */
+/** Ergebnis des Setups: angelegter (einziges) User. */
 export interface SetupResult {
 	ok: true;
 	user: AppUser;
-	/** CalDAV-Zugangsdaten des Admins, falls im Setup eine System-CalDAV hinterlegt wurde. */
-	caldav: CaldavHandover | null;
-	/** Fehlermeldung, falls die CalDAV-Anlage während des Setups fehlschlug (Setup selbst erfolgreich). */
-	caldavError: string | null;
 }
 
 // ── CalDAV-Verbindungen (Multi-Connection pro User) ──────────────────────
@@ -51,20 +25,16 @@ export interface CalDavSettings {
 	password: string;
 }
 
-export type ConnectionKind = 'assigned' | 'external';
-
-/** Eine gespeicherte Verbindung eines Users. `assigned` = vom Admin zugewiesen (read-only). */
+/** Eine gespeicherte Verbindung des Users. */
 export interface CalDavConnection extends CalDavSettings {
 	id: string;
 	name: string;
-	kind: ConnectionKind;
 }
 
 /** View einer Verbindung ohne Klartext-Passwort. */
 export interface ConnectionView {
 	id: string;
 	name: string;
-	kind: ConnectionKind;
 	url: string;
 	username: string;
 	hasPassword: boolean;
@@ -73,40 +43,6 @@ export interface ConnectionView {
 export interface ConnectionsResponse {
 	configured: boolean;
 	connections: ConnectionView[];
-}
-
-/** System-CALDAV (Admin-Konfiguration für User-Anlage/-Löschung). */
-export interface SystemCaldavConfig {
-	/** Basis-URL des Radicale-Servers, z. B. http://RADICALE:5232 */
-	baseUrl: string;
-	/** Admin-API (caldav-admin-Sidecar), z. B. http://RADICALE:5233 */
-	adminApiUrl: string;
-	adminToken: string;
-}
-
-export interface SystemCaldavConfigView {
-	configured: boolean;
-	baseUrl: string;
-	adminApiUrl: string;
-	hasToken: boolean;
-}
-
-/** Ergebnis einer (rückwirkenden) CalDAV-Provisionierung für die bestehenden Users. */
-export interface ProvisionSummary {
-	/** User, für die ein CalDAV-Account neu angelegt wurde. */
-	provisioned: string[];
-	/** User, die übersprungen wurden (bereits zugewiesen / deaktiviert / keine Config). */
-	skipped: string[];
-	/** User, deren CalDAV-Anlage fehlschlug (inkl. Fehlerursache). */
-	failed: { username: string; error: string }[];
-}
-
-/**
- * Antwort beim Speichern der System-CalDAV-Konfiguration: die Config-View plus
- * das Ergebnis der rückwirkenden Provisionierung für bestehende Users.
- */
-export interface SystemCaldavSaveResult extends SystemCaldavConfigView {
-	provisioning: ProvisionSummary;
 }
 
 export interface TestResult {
@@ -285,12 +221,21 @@ export interface TaskCreateInput extends TaskUpdateInput {
 	calendarId: string;
 }
 
-// ── Notify (Tägliche Tasks-Benachrichtigung per Webhook) ──────────────────
+// ── Notify (Tasks-Benachrichtigung per Webhook) ────────────────────────────
+
+/** Wie oft automatisch gesendet wird. */
+export type NotifyFrequency = 'manual' | 'daily' | 'weekly' | 'interval';
 
 /** Per-User-Webhook-Config (serverseitig; wird nicht an den Client gesendet). */
 export interface NotifyConfig {
+	/** Veraltet: true ⇔ frequency !== 'manual' (nur noch intern abgeleitet). */
 	enabled: boolean;
-	time: string; // lokale Uhrzeit HH:MM, z. B. "15:00"
+	frequency: NotifyFrequency;
+	time: string; // lokale Uhrzeit HH:MM (für daily/weekly), z. B. "15:00"
+	/** Für 'weekly': Wochentag, 0=Mo … 6=So. */
+	weekday: number;
+	/** Für 'interval': Abstand in Stunden (1–23). */
+	intervalHours: number;
 	url: string; // Webhook-URL bis zur Task-ID (ohne Token), z. B. http://…/api/hooks/scheduled-task%3A…
 	token: string; // Webhook-Token (letztes Pfadsegment der vollständigen URL)
 	prompt: string; // Nachrichten-Template: {{body}} = Task-Liste, {{stand}} = Datum/Uhrzeit + Anzahl
@@ -298,18 +243,23 @@ export interface NotifyConfig {
 	categories: string[];
 }
 
-/** Letzter Lauf des Notify-Jobs. */
+/** Letzter Lauf des Notify-Jobs (oder eines manuellen Versands). */
 export interface NotifyLastRun {
 	date: string; // YYYY-MM-DD (lokal)
+	/** Dedupe für wöchentliche Läufe: YYYY-MM-DD des Wochen-Montags. */
+	weekKey?: string;
 	status: 'ok' | 'skipped' | 'error';
 	error?: string;
+	/** Zeitstempel (ms) des Lauf-Starts; bei 'interval' Basis für den nächsten Lauf. */
 	at?: number;
 }
 
 /** View für den Client (ohne den rohen Token). */
 export interface NotifyConfigView {
-	enabled: boolean;
+	frequency: NotifyFrequency;
 	time: string;
+	weekday: number;
+	intervalHours: number;
 	/** Gespeicherte Basis-URL (nicht sensibel, für das Formular zur Bearbeitung). */
 	url: string | null;
 	hasToken: boolean;
@@ -319,14 +269,29 @@ export interface NotifyConfigView {
 }
 
 export interface NotifySaveInput {
-	enabled: boolean;
+	frequency: NotifyFrequency;
 	time: string;
+	/** Wochentag 0=Mo … 6=So (nur für 'weekly' relevant; fehlend: behalten). */
+	weekday?: number;
+	/** Abstand in Stunden 1–23 (nur für 'interval' relevant; fehlend: behalten). */
+	intervalHours?: number;
 	/** Leer/fehlend: gespeicherten Wert beibehalten. */
 	url?: string;
 	token?: string;
 	prompt?: string;
 	/** Kategoriennamen, die gesendet werden (fehlend: gespeicherte behalten). */
 	categories?: string[];
+}
+
+/** Ergebnis des manuellen Versands (POST /api/notify/send). */
+export interface NotifySendResult {
+	ok: boolean;
+	/** true = nichts gesendet (keine Verbindung oder keine offenen Tasks). */
+	skipped?: boolean;
+	status?: number;
+	/** optionales Ergebnis des Empfängers (Header x-t3-hook-outcome), z. B. "accepted". */
+	outcome?: string;
+	error?: string;
 }
 
 export interface NotifyTestResult {

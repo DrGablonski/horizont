@@ -42,7 +42,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		calendarId: 'test',
 		calendarName: 'Test',
 		calendarColor: '#000000',
-		summary: 'Testnachricht von Horizont (Einstellungen → Tägliche Benachrichtigung)',
+		summary: 'Testnachricht von Horizont (Einstellungen → Benachrichtigung (Webhook))',
 		completed: false
 	};
 	const text = composeMessage(prompt, [sample], now);

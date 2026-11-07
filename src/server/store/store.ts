@@ -1,25 +1,25 @@
-// Persistenz für Workflows (CalDAV) + Auflösung der Primary-Verbindung pro User.
+// Persistenz für Workflows (CalDAV) + Auflösung der Primary-Verbindung des Users.
 //
 // Workflows: CalDAV (Radicale) – VTODO-Objekte im internen „workflows"-Kalender
-// der dem User zugewiesenen Verbindung. Die eigentliche CalDAV-Logik liegt in
+// der ersten Verbindung des Users. Die eigentliche CalDAV-Logik liegt in
 // store/workflowStore.ts; hier wird die Verbindung des Users aufgelöst.
 //
-// CalDAV-Verbindungen selbst: siehe store/connections.ts (per User).
+// CalDAV-Verbindungen selbst: siehe store/connections.ts.
 
 import * as wstore from '$server/store/workflowStore';
-import { getAssigned, toSettings } from '$server/store/connections';
+import { getPrimaryConnection, toSettings } from '$server/store/connections';
 import { NotConfiguredError } from '$server/lib/workflowErrors';
 import type { CalDavSettings, UpdateStepInput, UpdateWorkflowInput, Workflow } from '$lib/types';
 
-/** Liefert die dem User zugewiesene Verbindung (primary) oder wirft (→ 503). */
+/** Liefert die erste Verbindung des Users (Primary) oder wirft (→ 503). */
 export function requirePrimary(userId: string): CalDavSettings {
-	const assigned = getAssigned(userId);
-	if (!assigned) {
+	const primary = getPrimaryConnection(userId);
+	if (!primary) {
 		throw new NotConfiguredError(
-			'Keine zugewiesene CalDAV-Verbindung vorhanden. Bitte beim Administrator melden, dass eine Verbindung zugeordnet wird.'
+			'Keine CalDAV-Verbindung vorhanden. Bitte verbinde zuerst in den Einstellungen einen Kalender.'
 		);
 	}
-	return toSettings(assigned);
+	return toSettings(primary);
 }
 
 // ── Workflows (delegiert an CalDAV; asynchron) ────────────────────────────

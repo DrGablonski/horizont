@@ -1,19 +1,19 @@
-// Per-User-Verbindungen:
+// CalDAV-Verbindungen des Users:
 //   GET    → Liste (ohne Passwörter)
-//   POST   → externe Verbindung anlegen (User selbst)
-//   PATCH  → externe Verbindung ändern
-//   DELETE → externe Verbindung löschen
-// Die „assigned"-Verbindung (vom Admin) ist read-only.
+//   POST   → Verbindung anlegen
+//   PATCH  → Verbindung ändern
+//   DELETE → Verbindung löschen
+// Alle Verbindungen gehören dem User und sind voll editierbar/löschbar.
 
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import {
-	createExternal,
+	createConnection,
 	listConnectionsView,
-	removeExternal,
-	updateExternal
+	removeConnection,
+	updateConnection
 } from '$server/store/connections';
-import type { ExternalConnectionInput } from '$server/store/connections';
+import type { ConnectionInput } from '$server/store/connections';
 
 function badRequest(msg: string) {
 	return json({ error: msg }, { status: 400 });
@@ -27,18 +27,18 @@ export const GET: RequestHandler = ({ locals }) => {
 export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!locals.user) return json({ error: 'Nicht angemeldet.' }, { status: 401 });
 
-	const body = (await request.json().catch(() => null)) as Partial<ExternalConnectionInput> | null;
+	const body = (await request.json().catch(() => null)) as Partial<ConnectionInput> | null;
 	if (!body || typeof body.url !== 'string' || !body.url.trim()) {
 		return badRequest('CalDAV-URL fehlt.');
 	}
-	const input: ExternalConnectionInput = {
+	const input: ConnectionInput = {
 		name: typeof body.name === 'string' ? body.name : '',
 		url: body.url,
 		username: typeof body.username === 'string' ? body.username : '',
 		password: typeof body.password === 'string' ? body.password : ''
 	};
 	try {
-		createExternal(locals.user.id, input);
+		createConnection(locals.user.id, input);
 		return json(listConnectionsView(locals.user.id));
 	} catch (e) {
 		return badRequest(e instanceof Error ? e.message : 'Ungültige Eingaben.');
@@ -49,13 +49,13 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 	if (!locals.user) return json({ error: 'Nicht angemeldet.' }, { status: 401 });
 
 	const body = (await request.json().catch(() => null)) as
-		| (Partial<ExternalConnectionInput> & { id?: string; password?: string })
+		| (Partial<ConnectionInput> & { id?: string; password?: string })
 		| null;
 	if (!body || typeof body.id !== 'string' || !body.id) {
 		return badRequest('Verbindungs-ID fehlt.');
 	}
 	try {
-		updateExternal(locals.user.id, body.id, {
+		updateConnection(locals.user.id, body.id, {
 			name: body.name,
 			url: body.url,
 			username: body.username,
@@ -75,7 +75,7 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
 		return badRequest('Verbindungs-ID fehlt.');
 	}
 	try {
-		removeExternal(locals.user.id, body.id);
+		removeConnection(locals.user.id, body.id);
 		return json(listConnectionsView(locals.user.id));
 	} catch (e) {
 		return badRequest(e instanceof Error ? e.message : 'Ungültige Eingaben.');

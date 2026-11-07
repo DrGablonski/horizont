@@ -1,8 +1,8 @@
-// Per-User-Verbindungs-Store: CalDAV-Verbindungen (1× zugewiesen + n× extern).
+// Verbindungs-Store: CalDAV-Verbindungen des Users (alle voll editierbar).
 //
 // Persistenz: DATA_DIR/users/{userId}/connections.json (atomares Schreiben).
-// Die „assigned"-Verbindung (vom Admin beim User-Setup erzeugt) ist für den
-// User read-only; externe Verbindungen (z. B. iCloud) verwaltet der User selbst.
+// Pro Deployment gibt es genau einen User; sämtliche Verbindungen gehören ihm
+// und werden in den Einstellungen selbst angelegt, geändert und gelöscht.
 
 import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -54,9 +54,9 @@ export function listConnections(userId: string): CalDavConnection[] {
 	return readConns(userId);
 }
 
-/** Die vom Admin zugewiesene Verbindung (primary) oder null. */
-export function getAssigned(userId: string): CalDavConnection | null {
-	return listConnections(userId).find((c) => c.kind === 'assigned') ?? null;
+/** Die erste gespeicherte Verbindung (Primary für Workflows) oder null. */
+export function getPrimaryConnection(userId: string): CalDavConnection | null {
+	return listConnections(userId)[0] ?? null;
 }
 
 /** Credentials-Teil einer Verbindung (für den CalDAV-Client). */
@@ -69,7 +69,6 @@ export function listConnectionsView(userId: string): ConnectionsResponse {
 	const views: ConnectionView[] = conns.map((c) => ({
 		id: c.id,
 		name: c.name,
-		kind: c.kind,
 		url: c.url,
 		username: c.username,
 		hasPassword: Boolean(c.password)
@@ -77,33 +76,16 @@ export function listConnectionsView(userId: string): ConnectionsResponse {
 	return { configured: conns.length > 0, connections: views };
 }
 
-// ── Mutationen: assigned (nur Admin) ──────────────────────────────────────
+// ── Mutationen (der User selbst) ──────────────────────────────────────────
 
-export function setAssigned(userId: string, settings: CalDavSettings): CalDavConnection {
-	const conns = readConns(userId);
-	const conn: CalDavConnection = {
-		id: randomUUID(),
-		name: 'Zugewiesener CalDAV',
-		kind: 'assigned',
-		url: normalizeCalDavUrl(settings.url).replace(/\/+$/, ''),
-		username: settings.username.trim(),
-		password: settings.password
-	};
-	const next = [conn, ...conns.filter((c) => c.kind !== 'assigned')];
-	writeConns(userId, next);
-	return conn;
-}
-
-// ── Mutationen: external (User selbst) ────────────────────────────────────
-
-export interface ExternalConnectionInput {
+export interface ConnectionInput {
 	name: string;
 	url: string;
 	username: string;
 	password: string;
 }
 
-export function createExternal(userId: string, input: ExternalConnectionInput): CalDavConnection {
+export function createConnection(userId: string, input: ConnectionInput): CalDavConnection {
 	const url = normalizeCalDavUrl(input.url ?? '').replace(/\/+$/, '');
 	if (!url) throw new Error('CalDAV-URL fehlt.');
 	const username = (input.username ?? '').trim();
@@ -112,7 +94,6 @@ export function createExternal(userId: string, input: ExternalConnectionInput): 
 	const conn: CalDavConnection = {
 		id: randomUUID(),
 		name,
-		kind: 'external',
 		url,
 		username,
 		password
@@ -121,13 +102,13 @@ export function createExternal(userId: string, input: ExternalConnectionInput): 
 	return conn;
 }
 
-export function updateExternal(
+export function updateConnection(
 	userId: string,
 	connId: string,
-	input: Partial<ExternalConnectionInput> & { password?: string }
+	input: Partial<ConnectionInput> & { password?: string }
 ): CalDavConnection {
 	const conns = listConnections(userId);
-	const idx = conns.findIndex((c) => c.id === connId && c.kind === 'external');
+	const idx = conns.findIndex((c) => c.id === connId);
 	if (idx === -1) throw new Error('Verbindung nicht gefunden.');
 
 	const cur = conns[idx];
@@ -146,30 +127,21 @@ export function updateExternal(
 	return next;
 }
 
-export function removeExternal(userId: string, connId: string): void {
+export function removeConnection(userId: string, connId: string): void {
 	const conns = listConnections(userId);
-	const next = conns.filter((c) => !(c.id === connId && c.kind === 'external'));
+	const next = conns.filter((c) => c.id !== connId);
 	if (next.length === conns.length) throw new Error('Verbindung nicht gefunden.');
 	writeConns(userId, next);
-}
-
-// ── Aufräumen bei User-Löschung ───────────────────────────────────────────
-
-import { rmSync } from 'node:fs';
-
-export function wipeUserData(userId: string): void {
-	const p = join(DATA_DIR, 'users', userId);
-	if (existsSync(p)) rmSync(p, { recursive: true, force: true });
 }
 
 // ── Legacy-Migration ──────────────────────────────────────────────────────
 
 /**
  * Übernimmt die alte Einzel-User-Konfiguration (DATA_DIR/settings.json) als
- * „assigned"-Verbindung des ersten Admins und archiviert die Datei.
+ * Verbindung des Setups-Users und archiviert die Datei.
  * Wird genau einmal beim Setup aufgerufen; tut nichts, wenn die Datei fehlt.
  */
-export function migrateLegacySettings(adminId: string): void {
+export function migrateLegacySettings(userId: string): void {
 	const legacy = join(DATA_DIR, LEGACY_SETTINGS_FILE);
 	if (!existsSync(legacy)) return;
 
@@ -182,7 +154,8 @@ export function migrateLegacySettings(adminId: string): void {
 	}
 
 	if (raw) {
-		setAssigned(adminId, {
+		createConnection(userId, {
+			name: 'CalDAV',
 			url: raw.url,
 			username: raw.username ?? '',
 			password: raw.password ?? ''

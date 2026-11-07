@@ -29,7 +29,7 @@ const mock = http.createServer((req, res) => {
     const p = u.pathname;
 
     if (req.method === "GET" && p === "/api/auth/me") {
-      return res.end(JSON.stringify({ user: { id: "u1", username: "test", role: "admin", createdAt: 0, lastLoginAt: null } }));
+      return res.end(JSON.stringify({ user: { id: "u1", username: "test", createdAt: 0, lastLoginAt: null } }));
     }
     if (req.method === "GET" && p === "/api/calendars") {
       return res.end(JSON.stringify({

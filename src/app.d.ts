@@ -7,7 +7,6 @@ declare global {
 			user: {
 				id: string;
 				username: string;
-				role: 'admin' | 'user';
 				createdAt: number;
 				lastLoginAt: number | null;
 			} | null;

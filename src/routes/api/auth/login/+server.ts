@@ -34,7 +34,7 @@ export const POST: RequestHandler = async (event) => {
 	const user = username ? getUserByUsername(username) : null;
 
 	// Gleiches Fehlerbild bei unbekanntem User wie bei falschem Passwort.
-	const valid = user != null && !user.disabled && verifyPassword(user, password);
+	const valid = user != null && verifyPassword(user, password);
 	if (!valid) {
 		return json({ error: 'Benutzername oder Passwort ist falsch.' }, { status: 401 });
 	}

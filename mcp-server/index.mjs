@@ -201,7 +201,6 @@ makeTool(
     return {
       url: BASE_URL,
       user: user?.username,
-      role: user?.role,
       configured: cal?.configured,
       calendars: (cal?.calendars ?? []).map((c) => c.name),
     };

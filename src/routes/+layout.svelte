@@ -40,14 +40,11 @@
 	});
 	const loggedIn = $derived(user !== null);
 
-	// „Administration“ erscheint nur für Admins – sowohl in der
-	// Desktop-Leiste als auch im mobilen Burger-Menü.
-	const nav = $derived([
+	const nav = [
 		{ href: '/', label: 'Heute' },
 		{ href: '/archiv', label: 'Archiv' },
-		{ href: '/einstellungen', label: 'Einstellungen' },
-		...(user?.role === 'admin' ? [{ href: '/admin', label: 'Administration' }] : [])
-	]);
+		{ href: '/einstellungen', label: 'Einstellungen' }
+	];
 
 	function navClass(href: string): string {
 		const active = page.url.pathname === href;
@@ -134,11 +131,6 @@
 				<div class="mx-1 h-6 w-px bg-border"></div>
 				<div class="flex items-center gap-2">
 					<span class="max-w-40 truncate text-sm text-muted-foreground">{user?.username}</span>
-					{#if user?.role === 'admin'}
-						<span class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-							Admin
-						</span>
-					{/if}
 				</div>
 				<Button variant="ghost" size="icon" title="Abmelden" disabled={loggingOut} onclick={logout}>
 					{#if loggingOut}
@@ -185,11 +177,6 @@
 									<span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">
 										{user?.username}
 									</span>
-									{#if user?.role === 'admin'}
-										<span class="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-											Admin
-										</span>
-									{/if}
 									<ThemeToggle />
 								</div>
 								<div class="h-px bg-border"></div>

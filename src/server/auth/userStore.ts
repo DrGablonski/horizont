@@ -1,14 +1,17 @@
 // User-Store: Persistenz (JSON) + scrypt-Passwort-Hashing.
 //
+// Pro Deployment gibt es genau EINEN User; /setup legt ihn an, danach ist
+// /setup geschlossen (hasUsers()).
+//
 // users.json im Datenverzeichnis, atomares Schreiben (tmp + rename).
 // Sessions sind rein in-memory (siehe sessionStore.ts) — nach einem
-// Container-Neustart sind alle Users automatisch abgemeldet.
+// Container-Neustart sind alle Sessions automatisch ungültig.
 
 import { randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { DATA_DIR } from '$server/lib/constants';
-import type { AppUser, UserRole } from '$lib/types';
+import type { AppUser } from '$lib/types';
 
 const USERS_FILE = 'users.json';
 const SALT_BYTES = 16;
@@ -20,8 +23,6 @@ export interface StoredUser {
 	username: string;
 	salt: string; // hex
 	passwordHash: string; // hex
-	role: UserRole;
-	disabled: boolean;
 	createdAt: number;
 	lastLoginAt: number | null;
 }
@@ -119,11 +120,7 @@ function assertPassword(password: string): void {
 
 // ── Mutationen ────────────────────────────────────────────────────────────
 
-export function createUser(input: {
-	username: string;
-	password: string;
-	role: UserRole;
-}): StoredUser {
+export function createUser(input: { username: string; password: string }): StoredUser {
 	const username = input.username.trim();
 	const password = input.password;
 	assertUsername(username);
@@ -141,60 +138,12 @@ export function createUser(input: {
 		username,
 		salt,
 		passwordHash: hash,
-		role: input.role,
-		disabled: false,
 		createdAt: now,
 		lastLoginAt: null
 	};
 	users.push(user);
 	saveUsers(users);
 	return user;
-}
-
-export function patchUser(
-	id: string,
-	patch: { role?: UserRole; disabled?: boolean; password?: string }
-): StoredUser {
-	const users = listUsers();
-	const idx = users.findIndex((u) => u.id === id);
-	if (idx === -1) throw new Error('User nicht gefunden.');
-
-	if (patch.role !== undefined && patch.role !== users[idx].role) {
-		// Letzter aktiver Admin darf kein User mehr werden.
-		const activeAdmins = users.filter((u) => u.role === 'admin' && !u.disabled);
-		if (users[idx].role === 'admin' && !users[idx].disabled && activeAdmins.length <= 1) {
-			throw new Error('Der letzte aktive Admin kann nicht herabgestuft werden.');
-		}
-		users[idx].role = patch.role;
-	}
-	if (patch.disabled !== undefined) {
-		if (patch.disabled) {
-			const activeAdmins = users.filter((u) => u.role === 'admin' && !u.disabled);
-			if (users[idx].role === 'admin' && !users[idx].disabled && activeAdmins.length <= 1) {
-				throw new Error('Der letzte aktive Admin kann nicht deaktiviert werden.');
-			}
-		}
-		users[idx].disabled = patch.disabled;
-	}
-	if (patch.password !== undefined && patch.password !== '') {
-		assertPassword(patch.password);
-		const { salt, hash } = hashPassword(patch.password);
-		users[idx].salt = salt;
-		users[idx].passwordHash = hash;
-	}
-
-	saveUsers(users);
-	return users[idx];
-}
-
-export function removeUser(id: string): void {
-	const users = listUsers();
-	const next = users.filter((u) => u.id !== id);
-	if (next.length === users.length) throw new Error('User nicht gefunden.');
-	if (next.filter((u) => u.role === 'admin' && !u.disabled).length === 0) {
-		throw new Error('Der letzte aktive Admin kann nicht gelöscht werden.');
-	}
-	saveUsers(next);
 }
 
 export function touchLastLogin(id: string): void {
@@ -211,7 +160,6 @@ export function publicUser(u: StoredUser): AppUser {
 	return {
 		id: u.id,
 		username: u.username,
-		role: u.role,
 		createdAt: u.createdAt,
 		lastLoginAt: u.lastLoginAt
 	};

@@ -5,6 +5,7 @@
 		ApiTokenView,
 		ConnectionsResponse,
 		NotifyConfigView,
+		NotifyFrequency,
 		NotifyTestResult,
 		TaskCategory,
 		TestResult
@@ -25,6 +26,7 @@
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import CircleXIcon from '@lucide/svelte/icons/circle-x';
 	import PlugZapIcon from '@lucide/svelte/icons/plug-zap';
+	import SendIcon from '@lucide/svelte/icons/send';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
@@ -233,13 +235,16 @@
 		}
 	}
 
-	// ── Tägliche Benachrichtigung (Webhook) ──────────────────────────────────
+	// ── Benachrichtigung (Webhook) ───────────────────────────────────────────
 	const PROMPT_HINT =
 		'Platzhalter in der Vorlage: {{body}} = Liste deiner offenen Aufgaben · {{stand}} = Datum, Uhrzeit und Anzahl. Den Rest kannst du frei formulieren.';
+	const WEEKDAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 
 	let notify = $state<NotifyConfigView | null>(null);
-	let nEnabled = $state(false);
+	let nFrequency = $state<NotifyFrequency>('manual');
 	let nTime = $state('15:00');
+	let nWeekday = $state(0);
+	let nIntervalHours = $state(6);
 	let nUrl = $state('');
 	let nToken = $state('');
 	let nPrompt = $state('');
@@ -247,6 +252,7 @@
 	let nImportUrl = $state('');
 	let nSaving = $state(false);
 	let nTesting = $state(false);
+	let nSending = $state(false);
 	let nTestResult = $state<NotifyTestResult | null>(null);
 
 	function toggleNotifyCategory(name: string): void {
@@ -269,8 +275,10 @@
 		try {
 			const v = await api.notify();
 			notify = v;
-			nEnabled = v.enabled;
+			nFrequency = v.frequency;
 			nTime = v.time;
+			nWeekday = v.weekday;
+			nIntervalHours = v.intervalHours;
 			nUrl = v.url ?? '';
 			nToken = '';
 			nPrompt = v.prompt;
@@ -298,7 +306,7 @@
 			toast.error('Bitte eine Uhrzeit angeben.');
 			return;
 		}
-		if (nEnabled && nCategories.length === 0) {
+		if (nCategories.length === 0) {
 			toast.error('Bitte mindestens eine Kategorie auswählen.');
 			return;
 		}
@@ -306,8 +314,10 @@
 		nTestResult = null;
 		try {
 			const v = await api.saveNotify({
-				enabled: nEnabled,
+				frequency: nFrequency,
 				time: nTime,
+				weekday: nWeekday,
+				intervalHours: nIntervalHours,
 				url: nUrl.trim(),
 				token: nToken.trim(),
 				prompt: nPrompt,
@@ -343,6 +353,26 @@
 			toast.error(errMsg(e));
 		} finally {
 			nTesting = false;
+		}
+	}
+
+	/** Jetzt senden: verschickt die echten offenen Tasks (unabhängig von der Automatik). */
+	async function sendNow(): Promise<void> {
+		nSending = true;
+		try {
+			const r = await api.sendNotify();
+			if (r.ok) {
+				toast.success(`Nachricht gesendet${r.outcome ? ` (${r.outcome})` : ''}.`);
+			} else if (r.skipped) {
+				toast.info(`${r.error ?? 'Nichts gesendet.'}`);
+			} else {
+				toast.error(r.error ?? 'Senden fehlgeschlagen.');
+			}
+			loadNotify(); // Lauf-Status aktualisieren
+		} catch (e) {
+			toast.error(errMsg(e));
+		} finally {
+			nSending = false;
 		}
 	}
 
@@ -397,9 +427,6 @@
 		);
 	}
 
-	// Die Admin-Funktionen (Users, System-CALDAV) leben seitlich unter /admin;
-	// hier bleiben nur die normalen Einstellungen.
-
 	onMount(() => {
 		load();
 		loadCategories();
@@ -435,7 +462,7 @@
 			<div class="space-y-3">
 				{#each data.connections as conn (conn.id)}
 					{#if editingId === conn.id}
-						<!-- Bearbeitungsformular für externe Verbindung -->
+						<!-- Bearbeitungsformular -->
 						<div class="space-y-4 rounded-xl border border-border bg-card p-5">
 							<h2 class="text-sm font-medium">Verbindung bearbeiten</h2>
 							<div class="grid gap-4 sm:grid-cols-2">
@@ -479,18 +506,10 @@
 						</div>
 					{:else}
 						<div class="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
-							<span
-								class="h-2.5 w-2.5 shrink-0 rounded-full"
-								class:list={conn.kind === 'assigned' ? ['bg-emerald-500'] : ['bg-blue-500']}
-							></span>
+							<span class="h-2.5 w-2.5 shrink-0 rounded-full bg-blue-500"></span>
 							<div class="min-w-0 flex-1">
 								<div class="flex flex-wrap items-center gap-2">
 									<span class="text-sm font-medium">{conn.name}</span>
-									{#if conn.kind === 'assigned'}
-										<Badge variant="secondary" class="text-[10px]">zugewiesen</Badge>
-									{:else}
-										<Badge variant="outline" class="text-[10px]">extern</Badge>
-									{/if}
 								</div>
 								<p class="truncate text-xs text-muted-foreground">
 									{conn.url} · {conn.username || 'ohne Benutzername'}
@@ -506,24 +525,22 @@
 								>
 									{#if testing && editingId === conn.id}<Spinner class="size-3.5" />{:else}<PlugZapIcon class="size-3.5" />{/if}
 								</Button>
-								{#if conn.kind === 'external'}
-									<Button
-										variant="ghost"
-										size="icon"
-										title="Bearbeiten"
-										onclick={() => startEdit(conn.id, conn.name, conn.url, conn.username)}
-									>
-										<PencilIcon class="size-3.5" />
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon"
-										title="Löschen"
-										onclick={() => remove(conn.id, conn.name)}
-									>
-										<TrashIcon class="size-3.5" />
-									</Button>
-								{/if}
+								<Button
+									variant="ghost"
+									size="icon"
+									title="Bearbeiten"
+									onclick={() => startEdit(conn.id, conn.name, conn.url, conn.username)}
+								>
+									<PencilIcon class="size-3.5" />
+								</Button>
+								<Button
+									variant="ghost"
+									size="icon"
+									title="Löschen"
+									onclick={() => remove(conn.id, conn.name)}
+								>
+									<TrashIcon class="size-3.5" />
+								</Button>
 							</div>
 						</div>
 					{/if}
@@ -538,7 +555,7 @@
 
 		<Separator />
 
-		<!-- Neue externe Verbindung anlegen -->
+		<!-- Neue Verbindung anlegen -->
 		<div class="rounded-xl border border-border bg-card p-5">
 			<button
 				type="button"
@@ -547,7 +564,7 @@
 			>
 				<div class="flex items-center gap-2">
 					<PlusIcon class="size-4" />
-					<span class="text-sm font-medium">Externe CalDAV-Quelle anlegen</span>
+					<span class="text-sm font-medium">CalDAV-Quelle anlegen</span>
 				</div>
 				<span class="text-xs text-muted-foreground">{showNew ? 'ausblenden' : 'aufklappen'}</span>
 			</button>
@@ -684,28 +701,21 @@
 
 		<!-- Benachrichtigung: offene Tasks per Webhook -->
 		<div class="rounded-xl border border-border bg-card p-5">
-			<div class="flex items-start justify-between gap-3">
-				<div>
-					<div class="flex items-center gap-2">
-						<BellIcon class="size-4" />
-						<span class="text-sm font-medium">Tägliche Benachrichtigung</span>
-					</div>
-					<p class="mt-1 text-xs text-muted-foreground">
-						Jeden Tag um die angegebene Uhrzeit schickt Horizont eine Textnachricht mit
-						deinen offenen Aufgaben an eine Webhook-Adresse. Ein Webhook ist einfach
-						eine Internet-Adresse, die Nachrichten entgegennimmt und weiterverarbeitet —
-						z. B. ein Chat-Bot, ein Benachrichtigungsdienst oder ein Assistenzprogramm.
-						Welche Aufgaben gesendet werden, bestimmst du über die Kategorien.
-					</p>
-					<p class="mt-1 text-xs text-muted-foreground">
-						Du hast keinen Webhook? Kein Problem — lass diesen Abschnitt einfach aus.
-					</p>
+			<div>
+				<div class="flex items-center gap-2">
+					<BellIcon class="size-4" />
+					<span class="text-sm font-medium">Benachrichtigung (Webhook)</span>
 				</div>
-				<Checkbox
-					bind:checked={nEnabled}
-					id="notify-enabled"
-					aria-label="Benachrichtigung aktivieren"
-				/>
+				<p class="mt-1 text-xs text-muted-foreground">
+					Horizont schickt deine offenen Aufgaben an eine Webhook-Adresse — automatisch
+					(täglich, wöchentlich oder alle N Stunden) oder nur manuell über „Jetzt senden".
+					Ein Webhook ist einfach eine Internet-Adresse, die Nachrichten entgegennimmt und
+					weiterverarbeitet — z. B. ein Chat-Bot, ein Benachrichtigungsdienst oder ein
+					Assistenzprogramm. Welche Aufgaben gesendet werden, bestimmst du über die Kategorien.
+				</p>
+				<p class="mt-1 text-xs text-muted-foreground">
+					Du hast keinen Webhook? Kein Problem — lass diesen Abschnitt einfach aus.
+				</p>
 			</div>
 
 			<div class="mt-4 grid gap-4 sm:grid-cols-2">
@@ -730,9 +740,56 @@
 				</div>
 
 				<div class="space-y-1.5">
-					<Label for="notify-time">Uhrzeit</Label>
-					<Input id="notify-time" bind:value={nTime} type="time" />
+					<Label for="notify-frequency">Automatisierung</Label>
+					<select
+						id="notify-frequency"
+						class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+						bind:value={nFrequency}
+					>
+						<option value="manual">Nur manuell (keine Automatik)</option>
+						<option value="daily">Täglich</option>
+						<option value="weekly">Wöchentlich</option>
+						<option value="interval">Alle N Stunden</option>
+					</select>
+					<p class="text-xs text-muted-foreground">
+						Wie oft Horizont automatisch sendet. „Jetzt senden" geht immer — auch ohne Automatik.
+					</p>
 				</div>
+
+				{#if nFrequency === 'weekly'}
+					<div class="space-y-1.5">
+						<Label for="notify-weekday">Wochentag</Label>
+						<select
+							id="notify-weekday"
+							class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+							bind:value={nWeekday}
+						>
+							{#each WEEKDAY_NAMES as name, i}
+								<option value={i}>{name}</option>
+							{/each}
+						</select>
+					</div>
+				{:else if nFrequency === 'interval'}
+					<div class="space-y-1.5">
+						<Label for="notify-interval">Alle N Stunden</Label>
+						<select
+							id="notify-interval"
+							class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+							bind:value={nIntervalHours}
+						>
+							{#each Array(23) as _, i}
+								<option value={i + 1}>alle {i + 1} Stunde{i + 1 === 1 ? '' : 'n'}</option>
+							{/each}
+						</select>
+					</div>
+				{/if}
+
+				{#if nFrequency === 'daily' || nFrequency === 'weekly'}
+					<div class="space-y-1.5">
+						<Label for="notify-time">Uhrzeit</Label>
+						<Input id="notify-time" bind:value={nTime} type="time" />
+					</div>
+				{/if}
 
 				<div class="space-y-1.5">
 					<Label>Kategorien</Label>
@@ -816,6 +873,10 @@
 				<Button size="sm" disabled={nSaving || !nTime.trim()} onclick={saveNotifyCfg}>
 					{#if nSaving}<Spinner class="size-3.5" />{/if}
 					<span>Speichern</span>
+				</Button>
+				<Button size="sm" disabled={nSending || !notify?.url || !notify?.hasToken} onclick={sendNow}>
+					{#if nSending}<Spinner class="size-3.5" />{:else}<SendIcon class="size-3.5" />{/if}
+					<span>Jetzt senden</span>
 				</Button>
 				<Button size="sm" variant="outline" disabled={nTesting} onclick={testNotify}>
 					{#if nTesting}<Spinner class="size-3.5" />{:else}<PlugZapIcon class="size-3.5" />{/if}

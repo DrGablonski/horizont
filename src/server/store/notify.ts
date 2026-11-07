@@ -1,7 +1,8 @@
-// Per-User-Webhook-Config (Tägliche-Tasks-Benachrichtigung):
-// Um die konfigurierte Uhrzeit werden alle offenen Tasks mit den
-// eingestellten Kategorien (Standard: „Schule") als POST an die
-// Webhook-URL eines externen Empfängers gesendet.
+// Per-User-Webhook-Config (Tasks-Benachrichtigung):
+// Je nach gewählter Automatisierung (frequency) werden offene Tasks mit den
+// eingestellten Kategorien automatisch an die Webhook-URL gesendet —
+// nie (manual), täglich (daily), wöchentlich (weekly) oder alle N Stunden
+// (interval). Manuell senden kann der Nutzer jederzeit über „Jetzt senden".
 //
 // Persistenz: DATA_DIR/users/{userId}/notify.json (atomares Schreiben).
 // Lauf-Status: DATA_DIR/system/notify-runs.json (letzter Lauf pro User).
@@ -10,10 +11,15 @@ import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from '
 import { join } from 'node:path';
 import { DATA_DIR } from '$server/lib/constants';
 import { normalizeCategoryName, priorityToCategoryName } from '$lib/categories';
-import type { NotifyConfig, NotifyConfigView, NotifyLastRun } from '$lib/types';
+import type { NotifyConfig, NotifyConfigView, NotifyFrequency, NotifyLastRun } from '$lib/types';
 
 const TIME_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 const DEFAULT_TIME = '15:00';
+/** Wochentag für weekly: 0=Mo … 6=So (Standard: Montag). */
+const DEFAULT_WEEKDAY = 0;
+/** Abstand für interval in Stunden (Standard: alle 6 Stunden). */
+const DEFAULT_INTERVAL_HOURS = 6;
+const FREQUENCIES: NotifyFrequency[] = ['manual', 'daily', 'weekly', 'interval'];
 /** Standard-Template: {{body}} = Task-Liste, {{stand}} = Datum/Uhrzeit + Anzahl. */
 export const DEFAULT_NOTIFY_PROMPT = 'Offene Aufgaben — Stand {{stand}}:\n\n{{body}}';
 /** Standard: nur Kategorie „Schule" (wie früher Priorität 5). */
@@ -50,7 +56,8 @@ function notifyPath(userId: string): string {
  * Alte Configs mit einer einzigen `webhookUrl` werden dabei in
  * `url` + `token` aufgeteilt (Token = letztes Pfadsegment); fehlende
  * `categories` werden aus alten `priorities` migriert oder fallen auf
- * Standard „Schule" zurück.
+ * Standard „Schule" zurück. Fehlende `frequency` wird aus dem alten
+ * `enabled` abgeleitet (true ⇒ 'daily', false ⇒ 'manual').
  */
 /** Kategoriennamen normalisieren: gültige Namen, dedupliziert (case-insensitive). */
 function normalizeNotifyCategories(v: unknown): string[] | null {
@@ -90,7 +97,27 @@ export function getNotify(userId: string): NotifyConfig | null {
 		const c = raw?.config;
 		if (c == null || typeof c !== 'object') return null;
 		const cfg = c as Partial<NotifyConfig> & { webhookUrl?: unknown; priorities?: unknown };
-		if (typeof cfg.enabled !== 'boolean' || typeof cfg.time !== 'string') return null;
+		if (typeof cfg.time !== 'string') return null;
+		if (typeof cfg.enabled !== 'boolean' && typeof cfg.frequency !== 'string') return null;
+
+		// Migration: fehlende frequency aus dem alten enabled ableiten.
+		const frequency: NotifyFrequency = FREQUENCIES.includes(cfg.frequency as NotifyFrequency)
+			? (cfg.frequency as NotifyFrequency)
+			: cfg.enabled
+				? 'daily'
+				: 'manual';
+
+		const weekday =
+			typeof cfg.weekday === 'number' && Number.isInteger(cfg.weekday) && cfg.weekday >= 0 && cfg.weekday <= 6
+				? cfg.weekday
+				: DEFAULT_WEEKDAY;
+		const intervalHours =
+			typeof cfg.intervalHours === 'number' &&
+			Number.isInteger(cfg.intervalHours) &&
+			cfg.intervalHours >= 1 &&
+			cfg.intervalHours <= 23
+				? cfg.intervalHours
+				: DEFAULT_INTERVAL_HOURS;
 
 		let url = typeof cfg.url === 'string' ? cfg.url : '';
 		let token = typeof cfg.token === 'string' ? cfg.token : '';
@@ -102,8 +129,11 @@ export function getNotify(userId: string): NotifyConfig | null {
 			}
 		}
 		return {
-			enabled: cfg.enabled,
+			enabled: frequency !== 'manual',
+			frequency,
 			time: cfg.time,
+			weekday,
+			intervalHours,
 			url,
 			token,
 			prompt: typeof cfg.prompt === 'string' && cfg.prompt !== '' ? cfg.prompt : DEFAULT_NOTIFY_PROMPT,
@@ -133,8 +163,10 @@ function validateUrl(u: string): string {
 export function saveNotify(
 	userId: string,
 	input: {
-		enabled: boolean;
+		frequency: NotifyFrequency;
 		time: string;
+		weekday?: number;
+		intervalHours?: number;
 		url?: string;
 		token?: string;
 		prompt?: string;
@@ -146,16 +178,39 @@ export function saveNotify(
 	const [h, m] = rawTime.split(':');
 	const time = `${h.padStart(2, '0')}:${m}`;
 
+	if (!FREQUENCIES.includes(input.frequency)) {
+		throw new Error('Ungültige Automatisierung (manual, daily, weekly oder interval).');
+	}
+
 	const current =
 		getNotify(userId) ??
 		{
 			enabled: false,
+			frequency: 'manual' as NotifyFrequency,
 			time: DEFAULT_TIME,
+			weekday: DEFAULT_WEEKDAY,
+			intervalHours: DEFAULT_INTERVAL_HOURS,
 			url: '',
 			token: '',
 			prompt: DEFAULT_NOTIFY_PROMPT,
 			categories: [...DEFAULT_NOTIFY_CATEGORIES]
 		};
+
+	// Wochentag (0=Mo … 6=So) und Stunden-Abstand (1–23): fehlend = behalten.
+	let weekday = current.weekday;
+	if (input.weekday !== undefined) {
+		if (!Number.isInteger(input.weekday) || input.weekday < 0 || input.weekday > 6) {
+			throw new Error('Ungültiger Wochentag (0=Mo … 6=So).');
+		}
+		weekday = input.weekday;
+	}
+	let intervalHours = current.intervalHours;
+	if (input.intervalHours !== undefined) {
+		if (!Number.isInteger(input.intervalHours) || input.intervalHours < 1 || input.intervalHours > 23) {
+			throw new Error('Ungültiger Stunden-Abstand (1–23).');
+		}
+		intervalHours = input.intervalHours;
+	}
 
 	// Leere Eingaben → gespeicherten Wert beibehalten (wie bei Passwörtern).
 	let url = current.url;
@@ -184,7 +239,17 @@ export function saveNotify(
 		categories = valid;
 	}
 
-	const config: NotifyConfig = { enabled: Boolean(input.enabled), time, url, token, prompt, categories };
+	const config: NotifyConfig = {
+		enabled: input.frequency !== 'manual',
+		frequency: input.frequency,
+		time,
+		weekday,
+		intervalHours,
+		url,
+		token,
+		prompt,
+		categories
+	};
 	const p = notifyPath(userId);
 	const tmp = `${p}.tmp`;
 	writeFileSync(tmp, JSON.stringify({ version: 2, config }, null, 2), 'utf8');
@@ -197,8 +262,10 @@ export function getNotifyView(userId: string): NotifyConfigView {
 	const lastRun = getRun(userId);
 	if (!c) {
 		return {
-			enabled: false,
+			frequency: 'manual',
 			time: DEFAULT_TIME,
+			weekday: DEFAULT_WEEKDAY,
+			intervalHours: DEFAULT_INTERVAL_HOURS,
 			url: null,
 			hasToken: false,
 			prompt: DEFAULT_NOTIFY_PROMPT,
@@ -207,8 +274,10 @@ export function getNotifyView(userId: string): NotifyConfigView {
 		};
 	}
 	return {
-		enabled: c.enabled,
+		frequency: c.frequency,
 		time: c.time,
+		weekday: c.weekday,
+		intervalHours: c.intervalHours,
 		url: c.url || null,
 		hasToken: Boolean(c.token),
 		prompt: c.prompt,

@@ -1,25 +1,21 @@
 // Client-seitiger API-Zugriff auf die /api-Endpunkte.
 
 import type {
-	AdminUserView,
 	ApiTokenGenerated,
 	ApiTokenView,
 	ArchiveMonth,
 	CalendarsResponse,
 	ConnectionsResponse,
-	CreateUserResult,
 	CreateWorkflowInput,
 	AppUser,
-	CalDavSettings,
 	EventCreateInput,
 	EventItem,
 	EventUpdateInput,
 	MainEventsResponse,
 	SetupResult,
-	SystemCaldavConfigView,
-	SystemCaldavSaveResult,
 	NotifyConfigView,
 	NotifySaveInput,
+	NotifySendResult,
 	NotifyTestResult,
 	TasksResponse,
 	TaskCategory,
@@ -58,24 +54,9 @@ export interface LoginInput {
 export interface SetupInput {
 	username: string;
 	password: string;
-	/** Optional: System-CalDAV-Konfiguration (Basis-URL + Admin-API-URL). */
-	caldav?: { baseUrl: string; adminApiUrl: string; adminToken?: string };
 }
 
-export interface AdminUserPatch {
-	role?: 'admin' | 'user';
-	disabled?: boolean;
-	password?: string;
-	caldav?: CalDavSettings | null;
-}
-
-export interface AdminSystemCaldavInput {
-	baseUrl: string;
-	adminApiUrl: string;
-	adminToken?: string;
-}
-
-export interface ExternalConnectionInput {
+export interface ConnectionInput {
 	id?: string;
 	name?: string;
 	url: string;
@@ -98,28 +79,9 @@ export const api = {
 	},
 	setup: (input: SetupInput) => req<SetupResult>('/api/auth/setup', { method: 'POST', body: JSON.stringify(input) }),
 
-	// Admin: Users
-	adminUsers: () => req<{ users: AdminUserView[]; systemCaldav: SystemCaldavConfigView }>('/api/admin/users'),
-	adminCreateUser: (input: { username: string; password: string }) =>
-		req<CreateUserResult>('/api/admin/users', { method: 'POST', body: JSON.stringify(input) }),
-	adminPatchUser: (id: string, patch: AdminUserPatch) =>
-		req<AppUser>(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
-	adminDeleteUser: (id: string) =>
-		req<{ ok: true }>(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-
-	// Admin: System-CALDAV
-	adminCaldav: () => req<SystemCaldavConfigView>('/api/admin/caldav'),
-	adminSaveCaldav: (input: AdminSystemCaldavInput) =>
-		req<SystemCaldavSaveResult>('/api/admin/caldav', { method: 'POST', body: JSON.stringify(input) }),
-	adminTestCaldav: (input?: { baseUrl?: string; adminApiUrl?: string; adminToken?: string }) =>
-		req<{ ok: boolean; error?: string }>('/api/admin/caldav/test', {
-			method: 'POST',
-			body: JSON.stringify(input ?? {})
-		}),
-
-	// Verbindungen (pro User)
+	// Verbindungen (der CalDAV-Zugang des Users)
 	connections: () => req<ConnectionsResponse>('/api/settings'),
-	createConnection: (input: Omit<ExternalConnectionInput, 'id'>) =>
+	createConnection: (input: Omit<ConnectionInput, 'id'>) =>
 		req<ConnectionsResponse>('/api/settings', { method: 'POST', body: JSON.stringify(input) }),
 	updateConnection: (id: string, input: { name?: string; url?: string; username?: string; password?: string }) =>
 		req<ConnectionsResponse>('/api/settings', {
@@ -212,10 +174,11 @@ export const api = {
 	generateApiToken: () => req<ApiTokenGenerated>('/api/token', { method: 'POST' }),
 	revokeApiToken: () => req<{ ok: true }>('/api/token', { method: 'DELETE' }),
 
-	// Benachrichtigung (täglicher Webhook)
+	// Benachrichtigung (Webhook, automatisiert oder manuell)
 	notify: () => req<NotifyConfigView>('/api/notify'),
 	saveNotify: (input: NotifySaveInput) =>
 		req<NotifyConfigView>('/api/notify', { method: 'POST', body: JSON.stringify(input) }),
 	testNotify: (input?: { url?: string; token?: string; prompt?: string }) =>
-		req<NotifyTestResult>('/api/notify/test', { method: 'POST', body: JSON.stringify(input ?? {}) })
+		req<NotifyTestResult>('/api/notify/test', { method: 'POST', body: JSON.stringify(input ?? {}) }),
+	sendNotify: () => req<NotifySendResult>('/api/notify/send', { method: 'POST' })
 };

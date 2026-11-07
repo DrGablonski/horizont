@@ -1,33 +1,22 @@
 # Horizont
 
-Minimalistischer, **multi-user-fähiger**, selbst hostbarer Kalender mit drei
-zusammenklappbaren Zeiträumen — **Vergangenheit**, **Jetzt** und **Zukunft** —
-plus einem **Workflow/Fokus-Modus** für sequenzielle Aufgabenlisten. Deine
-Termine kommen aus **CalDAV**-Backends (Radicale, Baïkal, iCal, Nextcloud, …).
-Jeder User hat eine eigene Datenwelt: eine ihm **zugewiesene** CalDAV-Verbindung
-(wird vom Admin angelegt, inkl. automatischem CalDAV-Account über den
-`caldav-admin`-Sidecar) und beliebig viele **externe** Verbindungen (z. B.
-eigene iCloud/Nextcloud-Accounts).
+Minimalistischer, selbst hostbarer Kalender für **genau einen Benutzer** — mit
+drei zusammenklappbaren Zeiträumen — **Vergangenheit**, **Jetzt** und
+**Zukunft** — plus einem **Workflow/Fokus-Modus** für sequenzielle
+Aufgabenlisten. Deine Termine kommen aus **CalDAV**-Backends (Radicale, Baïkal,
+iCal, Nextcloud, …). Alle CalDAV-Verbindungen gehören dem Benutzer und sind
+vollständig verwaltbar (anlegen, bearbeiten, testen, löschen).
 
 ---
 
 ## Funktionen
 
-- **Multi-User-Auth**
+- **Ein Benutzer pro Instanz**
   - Login/Logout mit Session-Cookie (in-memory — bei Neustart alle Sessions
     beendet), scrypt-gehashte Passwörter.
-  - **Erstes-Setup**: solange kein User existiert, ist `/setup` öffentlich und
-    legt den Admin an (übernimmt dabei die alte Einzel-User-Konfiguration).
-  - **Admin-Bereich** (`/admin`, nur für Admins):
-    - User anlegen/löschen/deaktivieren, Rollen verwalten (letzter aktiver
-      Admin ist geschützt).
-    - Beim User-Anlegen wird **automatisch** ein CalDAV-Account auf dem
-      konfigurierten Radicale-Server angelegt (via `caldav-admin`-Sidecar);
-      die CalDAV-Zugangsdaten werden **einmalig** zum Übergeben angezeigt.
-    - User-Löschung kaskadiert: CalDAV-Account + Collections + alle
-      Userdaten.
-    - System-CALDAV-Konfiguration (Basis-URL, Admin-API-URL, Admin-Token) mit
-      Verbindungstest.
+  - **Erstes-Setup**: solange kein Benutzer existiert, ist `/setup` öffentlich
+    und legt den Benutzer an (übernimmt dabei die alte
+    Einzel-User-Konfiguration). Danach ist `/setup` geschlossen.
 - **Drei Zeiträume, eine Ansicht**
   - *Vergangenheit*: die letzten 14 Tage
   - *Jetzt*: heute + 2 Tage (Heute, Morgen, Übermorgen)
@@ -41,9 +30,9 @@ eigene iCloud/Nextcloud-Accounts).
   - **Fokus-Modus** (`/fokus/<id>`): ablenkungsfreie Vollansicht mit nur dem
     aktuellen Schritt.
   - Schrittemitfortschritt wird sofort gespeichert.
-- **CalDAV-Anbindung pro User**: eine zugewiesene (nur URL änderbar, vom Admin)
-  und beliebige externe Verbindungen (vollständig editierbar/löschbar),
-  Verbindungstest mit Kalender-Liste, farbcodierte Kalender.
+- **CalDAV-Anbindung**: beliebig viele Verbindungen (z. B. iCloud, Nextcloud,
+  eigene Server), vollständig editierbar/löschbar, Verbindungstest mit
+  Kalender-Liste, farbcodierte Kalender.
 - **Dunkel-/Hellmodus** (klassenbasiert, folgt dem System) und dezent, ruhiges UI
   auf Basis von shadcn-svelte + Tailwind.
 
@@ -56,8 +45,6 @@ eigene iCloud/Nextcloud-Accounts).
   [fast-xml-parser](https://github.com/NaturalIntelligence/fast-xml-parser) für CalDAV-XML
 - [adapter-node](https://kit.svelte.dev/adapter-node) für den produktiven Build
 - [Docker](https://www.docker.com/) für den Betrieb (Proxmox / beliebiger Host)
-- [caldav-admin](#caldav-admin-sidecar) (Python 3, Standardlib + passlib) als
-  Sidecar auf dem Radicale-Host
 
 ---
 
@@ -105,15 +92,13 @@ Danach in Dockge für den Stack `horizont` auf **Deploy** klicken – das
 erzeugt den Container mit dem neuen Image neu.
 
 - **Erstes Starten**: <http://localhost:3000/setup> ist öffentlich (nur solange
-  kein User existiert) und legt den Admin an. Bestehende Daten aus einer
-  Einzel-User-Installation (`data/settings.json`) werden automatisch als
-  zugewiesene Verbindung des Admins übernommen; die Datei wird zu
-  `settings.json.legacy` archiviert.
+  kein Benutzer existiert) und legt den Benutzer an. Bestehende Daten aus einer
+  alten Installation (`data/settings.json`) werden automatisch als Verbindung
+  übernommen; die Datei wird zu `settings.json.legacy` archiviert.
 - Port ändern: in [`docker-compose.yml`](docker-compose.yml) unter `ports`
   (z. B. `"8080:3000"`).
 - Alle Daten werden im Volume `horizont-data` unter `/app/data` persistiert:
-  `users.json` (Accounts), `users/<id>/` (Verbindungen, Workflows),
-  `system/caldav.json` (System-CALDAV-Konfiguration).
+  `users.json` (der Account), `users/<id>/` (Verbindungen, Workflows).
 - Zum Löschen: `docker compose down -v`.
 
 > **Proxmox:** am einfachsten über eine Container-Template-VM mit Docker oder ein
@@ -127,25 +112,24 @@ erzeugt den Container mit dem neuen Image neu.
 | ---------------- | ---------------------------------------------------------------- |
 | Passwort-Hashing | scrypt (N=16384, r=8, p=1), 16-Byte-Salt, 64-Byte-Key            |
 | Sessions         | in-memory (Prozess), 12 h TTL, httpOnly/sameSite=lax-Cookie      |
-| API-Token        | per User, scrypt-gehasht (`DATA_DIR/users/<id>/api-token.json`), `Authorization: Bearer <token>` auf `/api/*` |
-| Autorisierung    | `src/hooks.server.ts`: `/api/*` → 401, Seiten → Redirect, `/admin*` → 403/Redirect für Nicht-Admins |
-| User-Store       | `DATA_DIR/users.json` (nur bei Bedarf im Prozess, kein DB)       |
-| Userdaten        | `DATA_DIR/users/<id>/` (Verbindungen, Workflows, API-Token) — bei Löschung komplett entfernt |
+| API-Token        | scrypt-gehasht (`DATA_DIR/users/<id>/api-token.json`), `Authorization: Bearer <token>` auf `/api/*` |
+| Autorisierung    | `src/hooks.server.ts`: `/api/*` → 401, Seiten → Redirect          |
+| User-Store       | `DATA_DIR/users.json` (genau ein Eintrag, kein DB)               |
+| Userdaten        | `DATA_DIR/users/<id>/` (Verbindungen, Workflows, API-Token)      |
 
-Der letzte aktive Admin kann nicht gelöscht, deaktiviert oder herabgestuft werden.
+Der Login bleibt auch nach dem Setup erhalten (Session-Cookie); `/setup` ist nur
+für die Ersteinrichtung offen.
 
 ---
 
 ## API-Token (Basis der externen Integration)
 
 Externe Tools greifen **nur über den MCP-Server** (nächste Sektion) auf
-Horizont zu. Dafür erzeugt jeder User in
+Horizont zu. Dafür erzeugt der Benutzer in
 **Einstellungen → „API-Token (für externe Zugriffe)“** einen persönlichen Token.
 Der Token wird einmalig im Klartext angezeigt und serverseitig nur
-scrypt-gehasht gespeichert (SHA-256-Digest als Lookup-Key). Er ist per User
-isoliert — er gibt Zugriff auf genau die Datenwelt dieses Users (eigene
-CalDAV-Verbindungen, Workflows). Ablehnen/Ersetzen jederzeit in derselben
-Sektion; bei User-Löschung fällt der Token automatisch weg.
+scrypt-gehasht gespeichert (SHA-256-Digest als Lookup-Key). Ablehnen/Ersetzen
+jederzeit in derselben Sektion.
 
 Interner Aufruf des MCP-Servers: `Authorization: Bearer <token>` gegen die
 `/api`-Endpunkte — die Endpunkte selbst sind internes Implementierungsdetail,
@@ -156,8 +140,8 @@ kein öffentliches Interface.
 ## MCP-Server (für OpenCode & Co.)
 
 [`mcp-server/`](mcp-server/) ist ein kleiner MCP-Server (Node.js, stdio), der die
-`/api`-Endpunkte mit deinem per-User API-Token adressiert und als Tools
-exponiert — z. B. für OpenCode (→ `horizont_*`-Tools):
+`/api`-Endpunkte mit dem API-Token adressiert und als Tools exponiert — z. B.
+für OpenCode (→ `horizont_*`-Tools):
 
 | Tool | Wirkung |
 | --- | --- |
@@ -190,99 +174,35 @@ Token erzeugen: Horizont → **Einstellungen → „API-Token (für externe Zugr
 defaultet auf `http://localhost:8917`. Test: `bun run smoke` in `mcp-server/`
 (läuft gegen eine Mock-API).
 
-Daneben lässt sich die **Tägliche-Tasks-Benachrichtigung** (Webhook,
-Einstellungen) koppeln: Horizont POSTet um die eingestellte Uhrzeit die
-offenen Aufgaben mit den gewählten **Kategorien** (verwaltbar in den
-Einstellungen, Name + Farbe; gespeichert im CalDAV-Feld `CATEGORIES`;
-Standard: „Schule") an eine frei wählbare Webhook-Adresse — z. B. an einen
-Chat-Bot, einen Benachrichtigungsdienst oder einen Assistenz-Server, der
-daraufhin über den MCP-Server Tasks abhaken oder Termine anlegen kann.
+Daneben lässt sich die **Tasks-Benachrichtigung** (Webhook, Einstellungen)
+koppeln: Horizont POSTet die offenen Aufgaben mit den gewählten **Kategorien**
+(verwaltbar in den Einstellungen, Name + Farbe; gespeichert im CalDAV-Feld
+`CATEGORIES`; Standard: „Schule") an eine frei wählbare Webhook-Adresse —
+z. B. an einen Chat-Bot, einen Benachrichtigungsdienst oder einen
+Assistenz-Server, der daraufhin über den MCP-Server Tasks abhaken oder
+Termine anlegen kann.
+
+Die **Automatisierung** ist konfigurierbar:
+
+| Modus | Verhalten |
+| --- | --- |
+| Nur manuell | keine Automatik — Senden nur über den Button „Jetzt senden" (`POST /api/notify/send`) |
+| Täglich | einmal täglich um die eingestellte Uhrzeit |
+| Wöchentlich | einmal pro Woche am gewählten Wochentag um die eingestellte Uhrzeit |
+| Alle N Stunden | alle 1–23 Stunden (Abstand ab dem letzten Versand) |
+
+„Jetzt senden" funktioniert immer — unabhängig vom Modus — und verschickt
+die aktuellen offenen Tasks mit derselben Nachrichtenkomposition wie der
+automatische Job.
 
 ---
 
-## System-CALDAV + caldav-admin-Sidecar
-
-Radicale hat keine Admin-API. Der **`caldav-admin`**-Sidecar (Python 3, nur
-Standardlib + `passlib`/`bcrypt`) läuft **auf dem Radicale-Host** und verwaltet:
-
-- `/etc/radicale/users` — htpasswd-Datei (bcrypt, von Radicale per
-  `htpasswd_encryption = autodetect` gelesen)
-- `/var/lib/radicale/collections/<login>/` — Collection-Verzeichnis pro User
-
-### Endpunkte (Token via `X-Admin-Token`)
-
-| Methode | Pfad               | Wirkung                                  |
-| ------- | ------------------ | ---------------------------------------- |
-| GET     | `/health`          | `{"ok": true}` (Token-Check)             |
-| GET     | `/api/v1/users`    | User-Liste                               |
-| POST    | `/api/v1/users`    | User anlegen (Body: `login`, `password`) |
-| DELETE  | `/api/v1/users/{login}` | User + Collections entfernen      |
-
-### Einrichtung auf dem Radicale-Host (Beispiel: Debian)
-
-```bash
-# 1) Dependencies (passlib + bcrypt) — auf Debian:
-apt install -y python3-passlib python3-bcrypt   # oder via pip
-
-# 2) Verzeichnisse + Token:
-mkdir -p /opt/caldav-admin /etc/caldav-admin
-umask 077
-printf 'ADMIN_TOKEN=%s\n' "$(openssl rand -hex 32)" > /etc/caldav-admin/admin.env
-chmod 600 /etc/caldav-admin/admin.env
-
-# 3) Server (aus diesem Repo):
-cp caldav-admin/server.py /opt/caldav-admin/server.py
-chmod 755 /opt/caldav-admin/server.py
-
-# 4) systemd:
-cat > /etc/systemd/system/caldav-admin.service <<'EOF'
-[Unit]
-Description=caldav-admin - Admin-API für Radicale-htpasswd-User
-After=network.target radicale.service
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/python3 /opt/caldav-admin/server.py
-Restart=on-failure
-User=root
-
-[Install]
-WantedBy=multi-user.target
-EOF
-systemctl daemon-reload
-systemctl enable --now caldav-admin
-```
-
-Das Service läuft als `root`, weil es sowohl die htpasswd-Datei
-(`root:radicale`, 640) als auch das Collections-Verzeichnis (`radicale:radicale`,
-750) schreiben muss; der Port ist nur mit gültigem Admin-Token nutzbar.
-
-### Verdrahtung in Horizont
-
-In **Admin → System-CALDAV** konfiguriertest du:
-
-1. **Basis-URL** des CalDAV-Servers (z. B. `http://<host>:5232`)
-2. **Admin-API-URL** des Sidecars (z. B. `http://<host>:5233`)
-3. **Admin-Token** (identisch zu `ADMIN_TOKEN` in `/etc/caldav-admin/admin.env`)
-4. **Testen** prüft Erreichbarkeit + Token.
-
-Danach bekommt jeder neu angelegte User automatisch einen CalDAV-Account mit
-**zufälligem Passwort** (einmalig in der Admin-UI angezeigt) und eine
-entsprechende zugewiesene Verbindung.
-
-> **Wichtig:** Der Admin-Token ist ein Geheimnis. Er liegt im App-Data-Verzeichnis
-> (`system/caldav.json`) und darf nicht ins Backup-/Git-Leak wandern.
-
----
-
-## CalDAV einrichten (pro User)
+## CalDAV einrichten
 
 1. Logge dich ein und öffne <`/einstellungen`>.
-2. **Zugewiesene Verbindung** (falls vorhanden): URL ist editierbar,
-   Zugangsdaten zeigt der Admin; **nicht** löschbar.
-3. **Externe Verbindungen**: URL + Benutzername + Passwort frei anlegbar,
+2. **CalDAV-Quelle anlegen**: URL + Benutzername + Passwort frei anlegbar,
    editierbar, löschbar (z. B. eigener iCloud- oder Nextcloud-Account).
-4. **Verbindung testen** zeigt die gefundenen Kalender, **bevor** du speicherst.
+3. **Verbindung testen** zeigt die gefundenen Kalender, **bevor** du speicherst.
 
 > Passwörter bleiben gespeichert: ein leeres Passwort-Feld beim Speichern
 > bedeutet „beibehalten", sofern bereits eines hinterlegt ist.
@@ -299,7 +219,7 @@ bun run build      # produktiver Build nach ./build
 ```
 
 - Daten werden lokal in `./data` abgelegt (überschreibbar via `DATA_DIR`).
-- Für ein sauberes Testen: `rm -rf data` löscht Users, Workflows + Einstellungen.
+- Für ein sauberes Testen: `rm -rf data` löscht Account, Workflows + Einstellungen.
 - Ohne `data/users.json` ist `/setup` öffentlich (First-Run).
 
 ### Umgebungsvariablen
@@ -317,15 +237,15 @@ bun run build      # produktiver Build nach ./build
 
 Alle Endpunkte liegen unter `/api` und sind serverseitig (Node-Adapter).
 Die App ruft sie ausschließlich clientseitig auf. **Alle** Endpunkte
-(außer Login/Setup) erfordern eine gültige Session; `/api/admin/*` zusätzlich
-die Admin-Rolle.
+(außer Login/Setup) erfordern eine gültige Session oder einen gültigen
+API-Token (`Authorization: Bearer`).
 
 | Methode | Pfad                                      | Beschreibung                              |
 | ------- | ----------------------------------------- | ----------------------------------------- |
 | POST    | `/api/auth/login`                         | Login (Session-Cookie)                    |
 | POST    | `/api/auth/logout`                        | Logout                                    |
 | GET     | `/api/auth/me`                            | Aktuellen User                            |
-| POST    | `/api/auth/setup`                         | First-Run: Admin anlegen (nur ohne Users) |
+| POST    | `/api/auth/setup`                         | First-Run: Benutzer anlegen (nur ohne User) |
 | GET     | `/api/events?scope=main`                  | Panels (past/now/future) + Status        |
 | GET     | `/api/events?scope=archive&page=N`        | Archiv-Seite (31 Tage) + Pagination       |
 | GET     | `/api/events?scope=calendars`             | Kalender-Liste (alle Verbindungen)        |
@@ -338,8 +258,8 @@ die Admin-Rolle.
 | DELETE  | `/api/tasks/[calendarId]/[uid]`           | Aufgabe löschen                           |
 | GET     | `/api/calendars`                          | Verbindungs- + Kalender-Übersicht         |
 | GET     | `/api/settings`                           | Verbindungen (ohne PW)                    |
-| POST    | `/api/settings`                           | Externe Verbindung anlegen/ändern         |
-| DELETE  | `/api/settings/[id]`                      | Externe Verbindung löschen                |
+| POST    | `/api/settings`                           | Verbindung anlegen/ändern                 |
+| DELETE  | `/api/settings/[id]`                      | Verbindung löschen                        |
 | POST    | `/api/settings/test`                      | Verbindung testen                         |
 | GET     | `/api/workflows`                          | alle Workflows                            |
 | POST    | `/api/workflows`                          | Workflow anlegen                          |
@@ -350,13 +270,6 @@ die Admin-Rolle.
 | PATCH   | `/api/workflows/:id/steps/:sid`           | Schritt (done/title) ändern              |
 | DELETE  | `/api/workflows/:id/steps/:sid`           | Schritt löschen                           |
 | POST    | `/api/workflows/:id/reset`                | Workflow zurücksetzen                     |
-| GET     | `/api/admin/users`                        | User-Liste + System-CALDAV-Status        |
-| POST    | `/api/admin/users`                        | User anlegen (+ CalDAV via Sidecar)      |
-| PATCH   | `/api/admin/users/:id`                    | Rolle/Status/Passwort/Verbindung ändern   |
-| DELETE  | `/api/admin/users/:id`                    | User löschen (Kaskade)                   |
-| GET     | `/api/admin/caldav`                       | System-CALDAV-Konfiguration (ohne PW)    |
-| POST    | `/api/admin/caldav`                       | System-CALDAV-Konfiguration speichern     |
-| POST    | `/api/admin/caldav/test`                  | Sidecar-Erreichbarkeit + Token prüfen     |
 
 ---
 
@@ -371,12 +284,9 @@ src/
     components/            # App-Komponenten (TimePanel, DayBlock, WorkflowCard, …)
   server/
     auth/                  # userStore (scrypt), sessionStore (in-memory), apiHelpers
-    admin/
-      caldavAdmin.ts       # Client für den caldav-admin-Sidecar
     caldav/                # CalDAV-Client (multi-Connection) + iCal-Parsing
     store/
-      connections.ts       # pro-User-Verbindungen (assigned/external) + Legacy-Migration
-      system.ts            # System-CALDAV-Konfiguration (DATA_DIR/system/)
+      connections.ts       # CalDAV-Verbindungen + Legacy-Migration
       store.ts, workflowStore.ts
     lib/                   # Konstanten + Panel-Logik
   hooks.server.ts          # zentrales Auth-Gate
@@ -384,14 +294,11 @@ src/
     +layout.svelte         # Layout, Navigation (auth-aware), Theme
     +page.svelte           # Hauptansicht
     archiv/+page.svelte    # Archiv (paginiert)
-    einstellungen/+page.svelte   # Connections (assigned + external)
+    einstellungen/+page.svelte   # CalDAV-Verbindungen
     fokus/[id]/+page.svelte
     login/+page.svelte
     setup/+page.svelte     # First-Run
-    admin/+page.svelte     # User-Verwaltung + System-CALDAV
     api/                   # alle Endpunkte
-caldav-admin/
-  server.py                # caldav-admin-Sidecar (für den Radicale-Host)
 ```
 
 ---
@@ -400,11 +307,9 @@ caldav-admin/
 
 - Es wird **nicht** mit einer eigenen Cloud kommuniziert: nur mit deinen
   CalDAV-Servern und lokal.
-- User- und Verbindungsdaten liegen ausschließlich in `DATA_DIR`.
+- Benutzer- und Verbindungsdaten liegen ausschließlich in `DATA_DIR`.
 - Keine Analytics, keine Tracking-Pixel, keine externen Fonts zur Laufzeit
   (Inter wird lokal via `@fontsource-variable/inter` gebündelt).
-- Der Admin-Token des caldav-admin-Sidecars ist ein Geheimnis und gehört nicht
-  in Backups, die andere Nutzer lesen können.
 
 ## Lizenz
 

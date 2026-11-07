@@ -47,11 +47,10 @@ export function getSessionUser(token: string | undefined | null): AppUser | null
 		return null;
 	}
 	const stored = getUserById(rec.userId);
-	if (!stored || stored.disabled) return null;
+	if (!stored) return null;
 	return {
 		id: stored.id,
 		username: stored.username,
-		role: stored.role,
 		createdAt: stored.createdAt,
 		lastLoginAt: stored.lastLoginAt
 	};

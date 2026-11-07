@@ -108,8 +108,8 @@ export function getApiTokenView(userId: string): ApiTokenView {
  * Löst einen Bearer-Token in einen User auf.
  *
  * Ablauf: SHA-256-Digest (billig) über alle User-Dateien vergleichen,
- * scrypt-Verifikation nur beim Digest-Treffer. Deaktivierte User werden
- * übersprungen; die letzten-Nutzung wird (gedrosselt) mitgespeichert.
+ * scrypt-Verifikation nur beim Digest-Treffer; die letzten-Nutzung wird
+ * (gedrosselt) mitgespeichert.
  */
 export function resolveApiTokenUser(token: string): AppUser | null {
 	if (typeof token !== 'string' || token.length < MIN_TOKEN_LEN || !token.startsWith(TOKEN_PREFIX)) {
@@ -117,7 +117,6 @@ export function resolveApiTokenUser(token: string): AppUser | null {
 	}
 	const digest = createHash('sha256').update(token).digest('hex');
 	for (const u of listUsers()) {
-		if (u.disabled) continue;
 		const t = readToken(u.id);
 		if (!t || t.digest !== digest) continue;
 		const a = Buffer.from(scryptOf(token, t.salt), 'hex');

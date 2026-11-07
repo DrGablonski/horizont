@@ -1,15 +1,18 @@
-// Täglicher Benachrichtigungs-Job (Webhook):
-// Um die konfigurierte Uhrzeit (pro User, Default 15:00) werden alle
-// offenen Tasks mit den eingestellten Kategorien (Standard: „Schule")
-// als Klartext an die konfigurierte Webhook-URL POSTet.
+// Benachrichtigungs-Job (Webhook): offene Tasks mit den eingestellten
+// Kategorien werden je nach Automatisierung (cfg.frequency) automatisch an
+// die konfigurierte Webhook-URL POSTet:
+//   manual   → nie automatisch (nur „Jetzt senden" / POST /api/notify/send)
+//   daily    → einmal täglich ab der konfigurierten Uhrzeit (cfg.time)
+//   weekly   → einmal wöchentlich am gewählten Wochentag (cfg.weekday) um cfg.time
+//   interval → alle cfg.intervalHours Stunden (zeitbasiert über letzten Lauf)
 //
 // In-Prozess-Timer (exakt eine Instanz pro Deployment, siehe
-// docker-compose.yml): Alle 60 s wird geprüft, ob bei einem User die
-// konfigurierte Zeit vergangen und heute noch nicht gelaufen ist. Der
-// Lauf-Status (DATA_DIR/system/notify-runs.json) ist persistiert — ein
-// Neustart NACH der konfigurierten Zeit führt zu einem Nachhol-Lauf.
-// Fehlgeschlagene Läufe werden alle 10 Minuten wiederholt, bis sie
-// erfolgreich sind oder der Tag vorbei ist.
+// docker-compose.yml): Alle 60 s wird geprüft, ob bei einem User ein Lauf
+// fällig ist. Der Lauf-Status (DATA_DIR/system/notify-runs.json) ist
+// persistiert — ein Neustart nach der Fälligkeit führt zu einem Nachhol-Lauf.
+// daily/weekly dedupen datumsbasiert (weekly über die Wochen-Montags-Kette),
+// interval über den at-Zeitstempel des letzten Laufs. Fehlgeschlagene Läufe
+// werden alle 10 Minuten wiederholt.
 
 import { listUsers } from '$server/auth/userStore';
 import { listConnections } from '$server/store/connections';
@@ -17,7 +20,7 @@ import { DEFAULT_NOTIFY_PROMPT, getNotify, getRun, setRun, webhookUrlOf } from '
 import { listAllTasks } from '$server/lib/write';
 import { guardedFetch } from '$server/lib/urlGuard';
 import { categoryNameOf } from '$lib/categories';
-import type { NotifyConfig, TaskItem } from '$lib/types';
+import type { NotifyConfig, NotifySendResult, TaskItem } from '$lib/types';
 
 const TICK_MS = 60_000;
 const POST_TIMEOUT_MS = 15_000;
@@ -47,11 +50,31 @@ export function dateKey(d: Date): string {
 	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+/** Wochentag wie in der Config: 0=Mo … 6=So (JS-getDay: 0=So … 6=Sa). */
+function weekdayOf(d: Date): number {
+	return (d.getDay() + 6) % 7;
+}
+
+/** Dedupe-Schlüssel für weekly: YYYY-MM-DD des Montags der Woche von d. */
+function weekKey(d: Date): string {
+	const mon = new Date(d);
+	mon.setDate(mon.getDate() - weekdayOf(d));
+	return dateKey(mon);
+}
+
 function dueAt(cfgTime: string, now: Date): Date {
 	const [h, m] = cfgTime.split(':').map(Number);
 	const t = new Date(now);
 	t.setHours(h, m, 0, 0);
 	return t;
+}
+
+/**
+ * Fehler-Lauf? Dann alle 10 Minuten erneut versuchen; ok/skipped → nicht
+ * erneut (Dedupe für das laufende Zeitfenster ist bereits geprüft).
+ */
+function retryError(run: { status: string; at?: number } | null, now: Date): boolean {
+	return run?.status === 'error' && (run.at == null || now.getTime() - run.at >= ERROR_RETRY_MS);
 }
 
 // ── Tick ───────────────────────────────────────────────────────────────────
@@ -63,20 +86,29 @@ async function tick(): Promise<void> {
 		const now = new Date();
 		const today = dateKey(now);
 		for (const user of listUsers()) {
-			if (user.disabled) continue;
 			const cfg = getNotify(user.id);
-			if (!cfg || !cfg.enabled || !cfg.url || !cfg.token) continue;
-			if (now < dueAt(cfg.time, now)) continue; // noch zu früh
+			if (!cfg || cfg.frequency === 'manual' || !cfg.url || !cfg.token) continue;
 			const run = getRun(user.id);
-			if (run?.date === today) {
-				if (run.status === 'error') {
-					// Fehler-Lauf: alle 10 Minuten erneut versuchen.
-					if (run.at != null && now.getTime() - run.at < ERROR_RETRY_MS) continue;
-				} else {
-					continue; // ok/skipped: maximal 1× pro Tag
+
+			if (cfg.frequency === 'daily') {
+				if (now < dueAt(cfg.time, now)) continue; // noch zu früh
+				if (run?.date === today && !retryError(run, now)) continue;
+			} else if (cfg.frequency === 'weekly') {
+				if (weekdayOf(now) !== cfg.weekday) continue; // heute nicht dran
+				if (now < dueAt(cfg.time, now)) continue; // noch zu früh
+				const wk = weekKey(now);
+				if (run?.weekKey === wk && !retryError(run, now)) continue;
+			} else if (cfg.frequency === 'interval') {
+				// Zeitbasiert: letzter Lauf (at) + Abstand; Fehler erneut nach 10 min.
+				if (run?.at != null) {
+					const waitMs = run.status === 'error' ? ERROR_RETRY_MS : cfg.intervalHours * 3_600_000;
+					if (now.getTime() - run.at < waitMs) continue;
 				}
+			} else {
+				continue; // unbekannte frequency: nichts tun
 			}
-			await runForUser(user.id, cfg, now, today);
+
+			await sendMessageForUser(user.id, cfg, now);
 		}
 	} catch (e) {
 		console.error('[notify]', e instanceof Error ? e.message : e);
@@ -85,12 +117,21 @@ async function tick(): Promise<void> {
 	}
 }
 
-async function runForUser(userId: string, cfg: NotifyConfig, now: Date, today: string): Promise<void> {
+// ── Versand (Job + manueller Trigger /api/notify/send) ─────────────────────
+
+/**
+ * Sendet die aktuelle Task-Nachricht wirklich und aktualisiert den
+ * Lauf-Status — wird für den manuellen Trigger genau so verwendet wie für
+ * den Timer (unabhängig von der frequency-Einstellung).
+ */
+export async function sendMessageForUser(userId: string, cfg: NotifyConfig, now: Date): Promise<NotifySendResult> {
+	const today = dateKey(now);
+	const week = cfg.frequency === 'weekly' ? weekKey(now) : undefined;
 	try {
 		const connections = listConnections(userId);
 		if (connections.length === 0) {
-			setRun(userId, { date: today, status: 'skipped', error: 'Keine CalDAV-Verbindung' });
-			return;
+			setRun(userId, { date: today, weekKey: week, status: 'skipped', error: 'Keine CalDAV-Verbindung', at: Date.now() });
+			return { ok: false, skipped: true, error: 'Keine CalDAV-Verbindung' };
 		}
 		const tasks = await listAllTasks(connections);
 		const open = tasks.filter(
@@ -100,18 +141,26 @@ async function runForUser(userId: string, cfg: NotifyConfig, now: Date, today: s
 			}
 		);
 		if (open.length === 0) {
-			// Keine offenen Tasks mit den gewählten Prioritäten → keine Nachricht (keinerlei Spam).
-			setRun(userId, { date: today, status: 'skipped', error: 'Keine offenen Tasks (gewählte Prioritäten)' });
-			return;
+			// Keine offenen Tasks mit den gewählten Kategorien → keine Nachricht (keinerlei Spam).
+			setRun(userId, {
+				date: today,
+				weekKey: week,
+				status: 'skipped',
+				error: 'Keine offenen Tasks (gewählte Kategorien)',
+				at: Date.now()
+			});
+			return { ok: false, skipped: true, error: 'Keine offenen Tasks in den gewählten Kategorien.' };
 		}
 		const text = composeMessage(cfg.prompt || DEFAULT_NOTIFY_PROMPT, open, now);
 		const res = await postNotify(webhookUrlOf(cfg), text, today);
 		if (!res.ok) throw new Error(`Webhook hat ${res.status} geantwortet`);
-		setRun(userId, { date: today, status: 'ok' });
+		setRun(userId, { date: today, weekKey: week, status: 'ok', at: Date.now() });
+		return { ok: true, status: res.status, outcome: res.headers.get('x-t3-hook-outcome') ?? undefined };
 	} catch (e) {
 		const msg = e instanceof Error ? e.message : String(e);
 		console.error(`[notify] user ${userId}: ${msg}`);
-		setRun(userId, { date: today, status: 'error', error: msg, at: Date.now() });
+		setRun(userId, { date: today, weekKey: week, status: 'error', error: msg, at: Date.now() });
+		return { ok: false, error: msg };
 	}
 }
 
