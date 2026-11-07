@@ -1,0 +1,131 @@
+import Foundation
+import Observation
+
+/// Datenhaltung für Start-, Archiv- und Workflow-Screens.
+/// Mutationen (Abhaken, Schritt fortgeschritten) optimistisch + Rollback bei Fehler.
+@MainActor
+@Observable
+final class AppStore {
+	private let client: APIClient
+
+	// Start
+	var home: MainEventsResponse?
+	var homeError: String?
+	var homeBusy = false
+
+	// Archiv
+	var archive: ArchiveMonth?
+	var archiveError: String?
+	var archiveBusy = false
+
+	// Workflows
+	var workflows: [Workflow] = []
+	var workflowsError: String?
+	var workflowsBusy = false
+
+	init(client: APIClient) {
+		self.client = client
+	}
+
+	// MARK: – Start
+
+	func loadHome() async {
+		homeBusy = true
+		defer { homeBusy = false }
+		do {
+			home = try await client.mainEvents()
+			homeError = home?.error
+		} catch {
+			homeError = error.localizedDescription
+		}
+	}
+
+	/// Task in den Timeline-Panels abhaken/anaken (optimistisch).
+	func toggleTask(_ event: EventItem) async {
+		guard var panels = home?.panels else { return }
+		let newValue = !(event.completed ?? false)
+		guard let loc = findEvent(event.id, in: &panels) else { return }
+		panels[loc.panel].days[loc.day].events[loc.item].completed = newValue
+		home?.panels = panels
+
+		do {
+			try await client.updateTaskCompleted(
+				calendarId: event.calendarId, uid: event.uid, completed: newValue)
+		} catch {
+			// Rollback
+			if var p = home?.panels, let l = findEvent(event.id, in: &p) {
+				p[l.panel].days[l.day].events[l.item].completed = !newValue
+				home?.panels = p
+			}
+			homeError = error.localizedDescription
+		}
+	}
+
+	private struct EventLocation { let panel: Int; let day: Int; let item: Int }
+
+	private func findEvent(_ id: String, in panels: inout [TimePanel]) -> EventLocation? {
+		for p in panels.indices {
+			for d in panels[p].days.indices {
+				if let i = panels[p].days[d].events.firstIndex(where: { $0.id == id }) {
+					return EventLocation(panel: p, day: d, item: i)
+				}
+			}
+		}
+		return nil
+	}
+
+	// MARK: – Archiv
+
+	func loadArchive(monthKey: String? = nil) async {
+		archiveBusy = true
+		defer { archiveBusy = false }
+		do {
+			archive = try await client.archiveMonth(monthKey)
+			archiveError = archive?.error
+		} catch {
+			archiveError = error.localizedDescription
+		}
+	}
+
+	// MARK: – Workflows
+
+	func loadWorkflows() async {
+		workflowsBusy = true
+		defer { workflowsBusy = false }
+		do {
+			workflows = try await client.workflows()
+			workflowsError = nil
+		} catch {
+			workflowsError = error.localizedDescription
+		}
+	}
+
+	func workflow(_ id: String) -> Workflow? {
+		workflows.first { $0.id == id }
+	}
+
+	func toggleStep(workflowId: String, stepId: String) async {
+		guard let wf = workflow(workflowId),
+		      let step = wf.steps.first(where: { $0.id == stepId }) else { return }
+		do {
+			let updated = try await client.updateStep(
+				workflowId: workflowId, stepId: stepId, done: !step.done)
+			if let i = workflows.firstIndex(where: { $0.id == workflowId }) {
+				workflows[i] = updated
+			}
+		} catch {
+			workflowsError = error.localizedDescription
+		}
+	}
+
+	func resetWorkflow(_ id: String) async {
+		do {
+			let updated = try await client.resetWorkflow(workflowId: id)
+			if let i = workflows.firstIndex(where: { $0.id == id }) {
+				workflows[i] = updated
+			}
+		} catch {
+			workflowsError = error.localizedDescription
+		}
+	}
+}
