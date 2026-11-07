@@ -5,11 +5,11 @@ import SwiftUI
 extension Color {
 	/// #rrggbb (wie CalDAV-Kalenderfarben), sonst neutral.
 	init(hex: String?) {
-		guard let hex else { self = Color(nsColor: .secondaryLabel); return }
+		guard let hex else { self = Color(nsColor: .secondaryLabelColor); return }
 		var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
 		if s.hasPrefix("#") { s.removeFirst() }
 		guard s.count == 6, let v = Int(s, radix: 16) else {
-			self = Color(nsColor: .secondaryLabel)
+			self = Color(nsColor: .secondaryLabelColor)
 			return
 		}
 		self = Color(

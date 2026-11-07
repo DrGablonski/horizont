@@ -77,7 +77,7 @@ struct WorkflowDetailView: View {
 									Text("\(idx + 1). \(step.title)")
 										.font(step.id == wf.activeStepId ? .body.weight(.semibold) : .body)
 										.strikethrough(step.done)
-										.foregroundStyle(step.done ? Color(.secondaryLabel) : Color(.label))
+										.foregroundStyle(step.done ? Color(nsColor: .secondaryLabelColor) : Color(nsColor: .labelColor))
 									if step.id == wf.activeStepId && !step.done {
 										Text("Aktueller Schritt")
 											.font(.caption2)
@@ -91,7 +91,7 @@ struct WorkflowDetailView: View {
 								RoundedRectangle(cornerRadius: 10)
 									.fill(step.id == wf.activeStepId && !step.done
 									      ? Color.accentColor.opacity(0.12)
-									      : Color(.quaternaryLabelColor).opacity(0.35))
+									      : Color(nsColor: .quaternaryLabelColor).opacity(0.35))
 							)
 						}
 

@@ -38,7 +38,7 @@ struct EventRowView: View {
 			VStack(alignment: .leading, spacing: 2) {
 				Text(event.summary)
 					.strikethrough(event.completed ?? false)
-					.foregroundStyle((event.completed ?? false) ? Color(.secondaryLabel) : Color(.label))
+					.foregroundStyle((event.completed ?? false) ? Color(nsColor: .secondaryLabelColor) : Color(nsColor: .labelColor))
 					.font(.body)
 				HStack(spacing: 8) {
 					if !event.allDay {
