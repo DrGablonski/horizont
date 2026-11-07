@@ -52,8 +52,13 @@ struct MacMainView: View {
 
 	var body: some View {
 		NavigationSplitView {
-			List(Section.allCases, selection: $section) { s in
-				Label(s.rawValue, systemImage: s.icon)
+			// Explizites .tag(s): sonst taggt die List nach Section.ID (String),
+			// der Binding-Typ ist aber Section → Klicks tun nichts.
+			List(selection: $section) {
+				ForEach(Section.allCases) { s in
+					Label(s.rawValue, systemImage: s.icon)
+						.tag(s)
+				}
 			}
 			.navigationSplitViewColumnWidth(min: 180, ideal: 200)
 		} detail: {

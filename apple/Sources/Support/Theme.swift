@@ -19,6 +19,21 @@ extension Color {
 	}
 }
 
+extension View {
+	/// Karten-Look wie im Web (`rounded-xl border bg-card`).
+	func cardStyle() -> some View {
+		self
+			.background(
+				RoundedRectangle(cornerRadius: 12)
+					.fill(Color(nsColor: .controlBackgroundColor))
+			)
+			.overlay(
+				RoundedRectangle(cornerRadius: 12)
+					.strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1)
+			)
+	}
+}
+
 enum Fmt {
 	/// Epoch-ms → "HH:mm" (lokal).
 	static func time(_ ms: Int) -> String {
