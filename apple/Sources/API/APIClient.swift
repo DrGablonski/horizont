@@ -114,6 +114,47 @@ final class APIClient {
 		try await send("/api/workflows/\(workflowId)/reset", method: "POST")
 	}
 
+	/// Workflow anlegen (POST /api/workflows). steps = Titel, einer pro Schritt.
+	@discardableResult
+	func createWorkflow(title: String, steps: [String]) async throws -> Workflow {
+		try await send("/api/workflows", method: "POST",
+		              body: ["title": title, "steps": steps])
+	}
+
+	/// Titel/Notizen ändern (PATCH /api/workflows/{id}). Nil-Felder bleiben unverändert.
+	@discardableResult
+	func updateWorkflow(workflowId: String, title: String? = nil,
+	                    notes: String? = nil) async throws -> Workflow {
+		var body: [String: Any] = [:]
+		if let title { body["title"] = title }
+		if let notes { body["notes"] = notes }
+		return try await send("/api/workflows/\(workflowId)", method: "PATCH", body: body)
+	}
+
+	func deleteWorkflow(workflowId: String) async throws {
+		_ = try await raw("/api/workflows/\(workflowId)", method: "DELETE")
+	}
+
+	/// Schritt anhängen (POST /api/workflows/{id}/steps).
+	@discardableResult
+	func addStep(workflowId: String, title: String) async throws -> Workflow {
+		try await send("/api/workflows/\(workflowId)/steps", method: "POST",
+		              body: ["title": title])
+	}
+
+	/// Schritt umbenennen (PATCH …/steps/{stepId}).
+	@discardableResult
+	func setStepTitle(workflowId: String, stepId: String, title: String) async throws -> Workflow {
+		try await send("/api/workflows/\(workflowId)/steps/\(stepId)",
+		              method: "PATCH", body: ["title": title])
+	}
+
+	/// Schritt löschen (DELETE …/steps/{stepId}).
+	@discardableResult
+	func deleteStep(workflowId: String, stepId: String) async throws -> Workflow {
+		try await send("/api/workflows/\(workflowId)/steps/\(stepId)", method: "DELETE")
+	}
+
 	// MARK: – Tasks (abhaken, anlegen, löschen)
 
 	func updateTaskCompleted(calendarId: String, uid: String, completed: Bool) async throws {

@@ -4,19 +4,30 @@ import SwiftUI
 /// eigener Bereichskopf mit Aktion, Panels als Karten, Tage mit Kopfzeile
 /// und Trennlinie, Events als klickbare Zeilen (Detail-Popover).
 struct HomeView: View {
+	/// Welcher Typ wird im Quick-Add-Sheet geöffnet (nil = Sheet zu).
+	private enum QuickAddKind: String, Identifiable {
+		case task, event
+		var id: String { rawValue }
+	}
+
 	@Environment(AppStore.self) private var store
 	@State private var openPanels: [String: Bool] = [:]
 	@State private var selectedEvent: EventItem?
-	@State private var showQuickAdd = false
+	@State private var quickAdd: QuickAddKind?
 
 	var body: some View {
 		VStack(spacing: 0) {
 			SectionHeader("Horizont", subtitle: "Vergangenheit · Jetzt · Zukunft") {
 				AccentPillButton(title: "Neue Aufgabe", systemImage: "plus") {
-					openQuickAdd()
+					openQuickAdd(.task)
 				}
 				.keyboardShortcut("n")
 				.help("Neue Aufgabe (⌘N)")
+				AccentPillButton(title: "Neuer Termin", systemImage: "calendar.badge.plus") {
+					openQuickAdd(.event)
+				}
+				.keyboardShortcut("n", modifiers: [.command, .shift])
+				.help("Neuer Termin (⌘⇧N)")
 			}
 
 			Group {
@@ -34,8 +45,8 @@ struct HomeView: View {
 				}
 			}
 		}
-		.sheet(isPresented: $showQuickAdd) {
-			QuickAddTaskView()
+		.sheet(item: $quickAdd) { kind in
+			QuickAddTaskView(initialEvent: kind == .event)
 		}
 		.task {
 			if store.home == nil { await store.loadHome() }
@@ -194,7 +205,7 @@ struct HomeView: View {
 
 	// MARK: – Aktionen & Klapp-Zustand
 
-	private func openQuickAdd() {
+	private func openQuickAdd(_ kind: QuickAddKind) {
 		// Auswahl-Listen für den Dialog bei Bedarf vorladen.
 		if !store.calendarsLoaded || store.categories.isEmpty {
 			Task {
@@ -202,7 +213,7 @@ struct HomeView: View {
 				await store.loadCategories()
 			}
 		}
-		showQuickAdd = true
+		quickAdd = kind
 	}
 
 	private func isOpen(_ panel: TimePanel) -> Bool {

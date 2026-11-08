@@ -214,11 +214,83 @@ final class AppStore {
 	func resetWorkflow(_ id: String) async {
 		do {
 			let updated = try await client.resetWorkflow(workflowId: id)
-			if let i = workflows.firstIndex(where: { $0.id == id }) {
-				workflows[i] = updated
-			}
+			replaceWorkflow(updated)
 		} catch {
 			workflowsError = error.localizedDescription
+		}
+	}
+
+	/// Workflow anlegen; Erfolg = nil, sonst Fehlertext (Dialog zeigt ihn).
+	func createWorkflow(title: String, steps: [String]) async -> String? {
+		do {
+			_ = try await client.createWorkflow(title: title, steps: steps)
+			await loadWorkflows()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// Titel/Notizen ändern; Erfolg = nil, sonst Fehlertext.
+	func updateWorkflowEdit(_ wf: Workflow, title: String, notes: String) async -> String? {
+		do {
+			replaceWorkflow(try await client.updateWorkflow(workflowId: wf.id,
+			                                             title: title, notes: notes))
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// Workflow löschen (optimistisch; bei Fehler neu laden).
+	func deleteWorkflow(_ id: String) async {
+		workflows.removeAll { $0.id == id }
+		do {
+			try await client.deleteWorkflow(workflowId: id)
+		} catch {
+			workflowsError = error.localizedDescription
+			await loadWorkflows()
+		}
+	}
+
+	/// Schritt anhängen; Erfolg = nil, sonst Fehlertext.
+	func addStep(workflowId: String, title: String) async -> String? {
+		do {
+			replaceWorkflow(try await client.addStep(workflowId: workflowId, title: title))
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// Schritt umbenennen; Erfolg = nil, sonst Fehlertext.
+	func renameStep(workflowId: String, stepId: String, title: String) async -> String? {
+		do {
+			replaceWorkflow(try await client.setStepTitle(
+				workflowId: workflowId, stepId: stepId, title: title))
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// Schritt löschen; Erfolg = nil, sonst Fehlertext.
+	func deleteStep(workflowId: String, stepId: String) async -> String? {
+		do {
+			replaceWorkflow(try await client.deleteStep(
+				workflowId: workflowId, stepId: stepId))
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// Aktualisierte Antwort (enthält immer den ganzen Workflow) an Stelle des alten einfügen.
+	private func replaceWorkflow(_ wf: Workflow) {
+		if let i = workflows.firstIndex(where: { $0.id == wf.id }) {
+			workflows[i] = wf
+		} else {
+			workflows.insert(wf, at: 0)
 		}
 	}
 

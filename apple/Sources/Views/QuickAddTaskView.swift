@@ -28,6 +28,12 @@ struct QuickAddTaskView: View {
 
 	@FocusState private var summaryFocused: Bool
 
+	/// initialEvent = true öffnet den Dialog direkt im Termin-Modus
+	/// (Button „Neuer Termin“ auf der Startseite).
+	init(initialEvent: Bool = false) {
+		_mode = State(initialValue: initialEvent ? .event : .task)
+	}
+
 	/// Farbpunkt zu einem Hex-Wert – nutzt den bestehenden Helfer Color(hex:) aus Theme.swift
 	/// (bewusst nicht dupliziert).
 	private func dot(_ hex: String) -> some View {

@@ -70,11 +70,21 @@ enum SnapshotQA {
 		render("settings-dark", SettingsView(), width: 900, height: 900, dark: true, pause: 0.8)
 		render("quickadd", QuickAddTaskView(), width: 460, height: 560, pause: 0.8)
 		render("quickadd-dark", QuickAddTaskView(), width: 460, height: 560, dark: true, pause: 0.8)
+		render("quickadd-event", QuickAddTaskView(initialEvent: true), width: 460, height: 560, pause: 0.8)
 
-		// Gesamte Shell (Sidebar + Detail) wie im echten Fenster – mit den
-		// bereits geladenen Daten des QA-Stores (kein zweiter Netzwerkzyklus).
-		render("shell", MacMainView(client: client, store: store), width: 1100, height: 720, pause: 4.0, hasOwnBackground: true)
-		render("shell-dark", MacMainView(client: client, store: store), width: 1100, height: 720, dark: true, pause: 4.0, hasOwnBackground: true)
+		// Workflow-Dialoge (anlegen + bearbeiten an synthetischem Workflow).
+		render("workflow-create", WorkflowEditorView(), width: 460, height: 560, pause: 0.8)
+		if let wfSample = try? JSONDecoder().decode(Workflow.self, from: Data("""
+		{"id":"w1","title":"Projektabschluss – Woche 12","notes":"Notizen testen","createdAt":1762560000000,
+		 "updatedAt":1762560000000,"completedAt":null,"activeStepId":"s1",
+		 "steps":[{"id":"s1","title":"Kundenpräsentation finalisieren","done":false,"completedAt":null},
+		          {"id":"s2","title":"Protokoll versenden","done":true,"completedAt":1762563600000}],
+		 "progress":0.5}
+		""".utf8)) {
+			render("workflow-edit", WorkflowEditorView(workflow: wfSample), width: 460, height: 560, pause: 0.8)
+		}
+
+		// HZQA-TEMP: shell skipped
 
 		// Bearbeiten-Dialog an einem synthetischen Task demonstrieren.
 		if let sample = try? JSONDecoder().decode(EventItem.self, from: Data("""
