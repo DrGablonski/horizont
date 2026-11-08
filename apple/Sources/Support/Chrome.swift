@@ -39,48 +39,18 @@ struct SidebarBackground: View {
 
 // MARK: – Wortmarke
 
-/// Marke: Ring + Horizontlinie (entspricht dem App-Icon). Farben anpassbar,
-/// damit sie auf Akzent-Kacheln (BrandTile) ebenfalls funktioniert.
-struct HorizontMark: View {
-	var size: CGFloat = 40
-	var ring: Color = DS.textPrimary
-	var horizon: Color = DS.accent
-
-	var body: some View {
-		ZStack {
-			Circle()
-				.strokeBorder(ring, lineWidth: size * 0.10)
-				.frame(width: size * 0.62, height: size * 0.62)
-			// Horizontlinie: steht links/rechts über den Ring hinaus.
-			Capsule()
-				.fill(
-					LinearGradient(
-						colors: [horizon, horizon.opacity(0.75)],
-						startPoint: .leading, endPoint: .trailing)
-				)
-				.frame(width: size * 0.92, height: size * 0.11)
-				.offset(y: size * 0.13)
-		}
-		.frame(width: size, height: size)
-	}
-}
-
-/// Abgerundetes Marke-Kachel-Quadrat (Sidebar-Kopf, Login) – Diddy-Pendant.
+/// Marke: das App-Icon (Mondfinsternis über Bergen) als Kachel
+/// (Sidebar-Kopf, Login).
 struct BrandTile: View {
 	var size: CGFloat = 32
 
 	var body: some View {
-		ZStack {
-			RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-				.fill(
-					LinearGradient(
-						colors: [DS.accent, DS.accent.opacity(0.82)],
-						startPoint: .top, endPoint: .bottom)
-				)
-			HorizontMark(size: size * 0.82, ring: .white, horizon: .white.opacity(0.92))
-		}
-		.frame(width: size, height: size)
-		.shadow(color: DS.accent.opacity(0.35), radius: size * 0.18, y: 1)
+		Image("BrandIcon")
+			.resizable()
+			.interpolation(.high)
+			.aspectRatio(contentMode: .fit)
+			.frame(width: size, height: size)
+			.shadow(color: .black.opacity(0.35), radius: size * 0.18, y: 1)
 	}
 }
 
