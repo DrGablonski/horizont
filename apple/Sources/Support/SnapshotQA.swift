@@ -23,6 +23,7 @@ enum SnapshotQA {
 		fputs("[shot] archive=\(store.archive != nil) wfs=\(store.workflows.count)\n", stderr)
 
 		func render<V: View>(_ name: String, _ view: V, width: CGFloat, height: CGFloat, dark: Bool = false, pause: TimeInterval = 1.2) {
+			fputs("[shot] rendering \(name)\n", stderr)
 			let host = NSHostingView(rootView: AnyView(
 				ZStack {
 					DS.background

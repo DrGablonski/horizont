@@ -301,6 +301,9 @@ private struct NotifySection: View {
 
 				if showsTime {
 					VStack(alignment: .leading, spacing: DS.Space.xs) {
+						Text("Sendezeit")
+							.font(DS.Typo.metaStrong)
+							.foregroundStyle(DS.textSecondary)
 						TextField("Zeit (HH:MM)", text: $time)
 							.frame(maxWidth: 140)
 							.autocorrectionDisabled()
@@ -324,15 +327,25 @@ private struct NotifySection: View {
 					Stepper("\(intervalHours) Stunden", value: $intervalHours, in: 1...23)
 				}
 
-				TextField("Webhook-URL", text: $url)
-					.autocorrectionDisabled()
-				Text("HTTPS-Endpunkt, an den die Zusammenfassung gesendet wird.")
-					.font(.caption)
-					.foregroundStyle(DS.textSecondary)
+				VStack(alignment: .leading, spacing: DS.Space.xs) {
+					Text("Webhook-URL")
+						.font(DS.Typo.metaStrong)
+						.foregroundStyle(DS.textSecondary)
+					TextField("https://…", text: $url)
+						.autocorrectionDisabled()
+					Text("HTTPS-Endpunkt, an den die Zusammenfassung gesendet wird.")
+						.font(.caption)
+						.foregroundStyle(DS.textSecondary)
+				}
 
-				TextField("Prompt", text: $prompt, axis: .vertical)
-					.lineLimit(3)
-					.autocorrectionDisabled()
+				VStack(alignment: .leading, spacing: DS.Space.xs) {
+					Text("Nachricht ({{body}} = Aufgaben, {{stand}} = Stand)")
+						.font(DS.Typo.metaStrong)
+						.foregroundStyle(DS.textSecondary)
+					TextField("Prompt", text: $prompt, axis: .vertical)
+						.lineLimit(3)
+						.autocorrectionDisabled()
+				}
 
 				VStack(alignment: .leading, spacing: DS.Space.sm) {
 					Text("Kategorien")

@@ -1,4 +1,12 @@
+import AppKit
 import SwiftUI
+
+/// Notifications zwischen App-Commands (Menü/Shortcuts) und MacMainView.
+/// Eigener State gehört dem View – die Commands posten nur die Absicht.
+enum NavCmd {
+	static let select = Notification.Name("hz.nav.select")   // object = Section-Index (Int)
+	static let reload = Notification.Name("hz.nav.reload")   // object = nil
+}
 
 /// Auth-Gate: Login, Ladezustand oder Haupt-App.
 struct RootView: View {
@@ -37,6 +45,29 @@ struct MacMainView: View {
 			case .einstellungen: return "gearshape"
 			}
 		}
+
+		/// Index für NavCmd.select (Reihenfolge = allCases).
+		var navIndex: Int { Self.allCases.firstIndex(of: self) ?? 0 }
+
+		/// Dezent angezeigter Shortcuts-Hinweis in der Sidebar.
+		var shortcutHint: String {
+			switch self {
+			case .horizont: return "⌘1"
+			case .archiv: return "⌘2"
+			case .workflows: return "⌘3"
+			case .einstellungen: return "⌘4"
+			}
+		}
+
+		/// Shortcuts-Taste für das App-Menü (⌘1…⌘4).
+		var shortcutKey: KeyEquivalent {
+			switch self {
+			case .horizont: return "1"
+			case .archiv: return "2"
+			case .workflows: return "3"
+			case .einstellungen: return "4"
+			}
+		}
 	}
 
 	let client: APIClient
@@ -57,8 +88,14 @@ struct MacMainView: View {
 				List(selection: $section) {
 					SwiftUI.Section("Bereiche") {
 						ForEach(Section.allCases) { s in
-							Label(s.rawValue, systemImage: s.icon)
-								.tag(s)
+							HStack(spacing: DS.Space.xs) {
+								Label(s.rawValue, systemImage: s.icon)
+								Spacer(minLength: DS.Space.sm)
+								Text(s.shortcutHint)
+									.font(DS.Typo.meta)
+									.foregroundStyle(DS.textSecondary)
+							}
+							.tag(s)
 						}
 					}
 				}
@@ -80,7 +117,20 @@ struct MacMainView: View {
 			.frame(maxWidth: .infinity, maxHeight: .infinity)
 		}
 		.environment(store)
-		.background(sectionShortcuts)
+		.onReceive(NotificationCenter.default.publisher(for: NavCmd.select)) { note in
+			// Commands posten den Section-Index (Reihenfolge = allCases).
+			if let index = note.object as? Int,
+			   index >= 0, index < Section.allCases.count {
+				section = Section.allCases[index]
+			}
+		}
+		.onReceive(NotificationCenter.default.publisher(for: NavCmd.reload)) { _ in
+			Task { await reloadCurrentSection() }
+		}
+		// Dock-Badge: Anzahl offener Aufgaben über alle Panels/Tage.
+		.onChange(of: openTaskCount) { _, count in
+			NSApp.dockTile.badgeLabel = count == 0 ? nil : String(count)
+		}
 	}
 
 	// MARK: – Sidebar-Footer (Benutzer + Abmelden)
@@ -115,25 +165,31 @@ struct MacMainView: View {
 		.padding(.vertical, DS.Space.sm)
 	}
 
-	// MARK: – Bereichs-Shortcuts (⌘1…⌘4)
+	// MARK: – Reload & Dock-Badge
 
-	/// Versteckte Buttons, die ⌘1…⌘4 an den Bereichswechsel binden.
-	/// (opacity 0 statt .hidden(): versteckte Views registrieren keine Shortcuts.)
-	private var sectionShortcuts: some View {
-		VStack(spacing: 0) {
-			Button("") { section = .horizont }
-				.keyboardShortcut("1", modifiers: .command)
-			Button("") { section = .archiv }
-				.keyboardShortcut("2", modifiers: .command)
-			Button("") { section = .workflows }
-				.keyboardShortcut("3", modifiers: .command)
-			Button("") { section = .einstellungen }
-				.keyboardShortcut("4", modifiers: .command)
+	/// Lädt die Daten der aktuell angezeigten Sektion (⌘R).
+	private func reloadCurrentSection() async {
+		switch section {
+		case .horizont:
+			await store.loadHome()
+		case .archiv:
+			await store.loadArchive(monthKey: store.archive?.monthKey)
+		case .workflows:
+			await store.loadWorkflows()
+		case .einstellungen:
+			await store.loadConnections()
+			await store.loadNotify()
+			await store.loadCalendars()
+			await store.loadCategories()
 		}
-		.buttonStyle(.plain)
-		.frame(width: 0, height: 0)
-		.opacity(0)
-		.accessibilityHidden(true)
-		.allowsHitTesting(false)
+	}
+
+	/// Offene Aufgaben (kind == "task", nicht erledigt) in allen Panels/Tagen.
+	private var openTaskCount: Int {
+		store.home?.panels
+			.flatMap(\.days)
+			.flatMap(\.events)
+			.filter { $0.kind == "task" && $0.completed != true }
+			.count ?? 0
 	}
 }

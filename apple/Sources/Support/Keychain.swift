@@ -10,11 +10,14 @@ enum Keychain {
 		let query: [String: Any] = [
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,
-			kSecAttrAccount as String: account
+			kSecAttrAccount as String: account,
+			// Moderne Keychain-API: keine ACL-Nachfragen, kein Blockieren bei gesperrtem Bildschirm.
+			kSecUseDataProtectionKeychain as String: true
 		]
 		SecItemDelete(query as CFDictionary)
 		var attributes = query
 		attributes[kSecValueData as String] = data
+		attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 		SecItemAdd(attributes as CFDictionary, nil)
 	}
 
@@ -24,7 +27,8 @@ enum Keychain {
 			kSecAttrService as String: service,
 			kSecAttrAccount as String: account,
 			kSecReturnData as String: true,
-			kSecMatchLimit as String: kSecMatchLimitOne
+			kSecMatchLimit as String: kSecMatchLimitOne,
+			kSecUseDataProtectionKeychain as String: true
 		]
 		var out: AnyObject?
 		guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess,
@@ -36,7 +40,8 @@ enum Keychain {
 		let query: [String: Any] = [
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,
-			kSecAttrAccount as String: account
+			kSecAttrAccount as String: account,
+			kSecUseDataProtectionKeychain as String: true
 		]
 		SecItemDelete(query as CFDictionary)
 	}
