@@ -66,6 +66,17 @@ enum SnapshotQA {
 		render("settings-dark", SettingsView(), width: 900, height: 900, dark: true, pause: 0.8)
 		render("quickadd", QuickAddTaskView(), width: 460, height: 560, pause: 0.8)
 		render("quickadd-dark", QuickAddTaskView(), width: 460, height: 560, dark: true, pause: 0.8)
+
+		// Bearbeiten-Dialog an einem synthetischen Task demonstrieren.
+		if let sample = try? JSONDecoder().decode(EventItem.self, from: Data("""
+		{"id":"s1","uid":"s1","calendarId":"c1","calendarName":"Privat","calendarColor":"#E15759",
+		 "summary":"Router-Firmware prüfen","startMs":1762560000000,"endMs":1762563600000,
+		 "allDay":false,"kind":"task","completed":false,"dueKey":"2026-11-09","category":"Technik",
+		 "categoryColor":"#59A14F","overdue":false}
+		""".utf8)) {
+			render("edit", EditItemView(event: sample), width: 460, height: 620, pause: 0.8)
+			render("edit-dark", EditItemView(event: sample), width: 460, height: 620, dark: true, pause: 0.8)
+		}
 	}
 
 	private static func runLoop(seconds: TimeInterval) {

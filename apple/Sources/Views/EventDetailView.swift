@@ -13,6 +13,7 @@ struct EventDetailView: View {
 	@State private var toggling = false
 	@State private var confirmDelete = false
 	@State private var deleting = false
+	@State private var editing = false
 
 	private var isTask: Bool { event.kind == "task" }
 	private var isDone: Bool { event.completed ?? false }
@@ -45,6 +46,9 @@ struct EventDetailView: View {
 		}
 		.frame(width: 340)
 		.background(DS.card)
+		.sheet(isPresented: $editing) {
+			EditItemView(event: event)
+		}
 	}
 
 	// MARK: – Kopf
@@ -61,16 +65,37 @@ struct EventDetailView: View {
 		}
 	}
 
+	/// Titel + Kalender, rechts ein dezenter Bearbeiten-Button (öffnet EditItemView als Sheet).
 	private var summaryHeader: some View {
-		VStack(alignment: .leading, spacing: DS.Space.xs) {
-			Text(event.summary)
-				.font(.title3.weight(.semibold))
-				.foregroundStyle(isDone ? DS.textSecondary : DS.textPrimary)
-				.strikethrough(isDone)
-			Text(event.calendarName)
-				.font(DS.Typo.meta)
-				.foregroundStyle(DS.textTertiary)
+		HStack(alignment: .top, spacing: DS.Space.sm) {
+			VStack(alignment: .leading, spacing: DS.Space.xs) {
+				Text(event.summary)
+					.font(.title3.weight(.semibold))
+					.foregroundStyle(isDone ? DS.textSecondary : DS.textPrimary)
+					.strikethrough(isDone)
+				Text(event.calendarName)
+					.font(DS.Typo.meta)
+					.foregroundStyle(DS.textTertiary)
+			}
+			Spacer(minLength: DS.Space.xs)
+			Button(action: startEditing) {
+				Image(systemName: "pencil")
+					.font(DS.Typo.metaStrong)
+					.foregroundStyle(DS.textSecondary)
+			}
+			.ghostButton()
+			.help("Bearbeiten")
+			.accessibilityLabel("Bearbeiten")
 		}
+	}
+
+	/// Öffnet den Bearbeiten-Dialog; bei Tasks vorher Kategorien nachladen,
+	/// falls noch keine bekannt sind (für das Kategorie-Menü im Sheet).
+	private func startEditing() {
+		if isTask && store.categories.isEmpty {
+			Task { await store.loadCategories() }
+		}
+		editing = true
 	}
 
 	// MARK: – Datum & Zeit

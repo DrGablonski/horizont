@@ -121,6 +121,34 @@ final class APIClient {
 		                  method: "PATCH", body: ["completed": completed])
 	}
 
+	/// Task-Felder ändern (PATCH /api/tasks/{cal}/{uid}). Nil-Felder bleiben unverändert.
+	@discardableResult
+	func updateTask(calendarId: String, uid: String, summary: String? = nil,
+	                description: String? = nil, category: String?? = nil,
+	                dueKey: String?? = nil) async throws -> OKResponse {
+		var body: [String: Any] = [:]
+		if let summary { body["summary"] = summary }
+		if let description { body["description"] = description }
+		if let category { body["category"] = category ?? NSNull() }
+		if let dueKey { body["due"] = dueKey.map { ["kind": "date", "key": $0] } ?? ["kind": "none"] as Any }
+		return try await send("/api/tasks/\(calendarId)/\(uid)", method: "PATCH", body: body)
+	}
+
+	/// Termin-Felder ändern (PATCH /api/events/{cal}/{uid}).
+	@discardableResult
+	func updateEvent(calendarId: String, uid: String, summary: String,
+	                 allDay: Bool, dayKey: String? = nil, startMs: Int? = nil,
+	                 endMs: Int? = nil, location: String? = nil,
+	                 description: String? = nil) async throws -> EventItem {
+		var body: [String: Any] = ["summary": summary, "allDay": allDay]
+		if let dayKey { body["dayKey"] = dayKey }
+		if let startMs { body["startMs"] = startMs }
+		if let endMs { body["endMs"] = endMs }
+		if let location { body["location"] = location }
+		if let description { body["description"] = description }
+		return try await send("/api/events/\(calendarId)/\(uid)", method: "PATCH", body: body)
+	}
+
 	/// Task anlegen (POST /api/tasks). dueKey = 'YYYY-MM-DD' oder nil.
 	@discardableResult
 	func createTask(summary: String, calendarId: String, category: String? = nil,

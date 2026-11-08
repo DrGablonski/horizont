@@ -76,6 +76,44 @@ final class AppStore {
 		}
 	}
 
+	/// Task bearbeiten und Timeline neu laden. Fehler als String zurück.
+	func updateTaskEdit(_ event: EventItem, summary: String, category: String?,
+	                    dueKey: String?, clearDue: Bool, clearCategory: Bool) async -> String? {
+		// Doppel-Optional: outer nil = unverändert, .some(inner) = explizit setzen (inner nil = entfernen).
+		var catChange: String?? = nil
+		if clearCategory { catChange = .some(nil) }
+		else if category != event.category { catChange = .some(category) }
+		var dueChange: String?? = nil
+		if clearDue { dueChange = .some(nil) }
+		else if dueKey != event.dueKey { dueChange = .some(dueKey) }
+
+		do {
+			_ = try await client.updateTask(
+				calendarId: event.calendarId, uid: event.uid, summary: summary,
+				category: catChange, dueKey: dueChange)
+			await loadHome()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// Termin bearbeiten und Timeline neu laden. Fehler als String zurück.
+	func updateEventEdit(_ event: EventItem, summary: String, allDay: Bool,
+	                     dayKey: String, startMs: Int?, location: String?) async -> String? {
+		do {
+			_ = try await client.updateEvent(
+				calendarId: event.calendarId, uid: event.uid, summary: summary,
+				allDay: allDay, dayKey: dayKey,
+				startMs: allDay ? nil : startMs, endMs: nil,
+				location: location)
+			await loadHome()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
 	/// Event/Task löschen (optimistisch; bei Fehler Neu laden).
 	func deleteItem(_ event: EventItem) async {
 		guard var panels = home?.panels else { return }
