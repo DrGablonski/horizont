@@ -1,0 +1,38 @@
+# XcodeGen-Definition – erzeugt Horizont.xcodeproj via `xcodegen generate`.
+# Phase 1: natives macOS-Ziel. iOS/iPadOS kommen später als Destination dazu.
+name: Horizont
+options:
+  bundleIdPrefix: de.hott
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  Horizont:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+    info:
+      path: Support/Info.plist
+      properties:
+        CFBundleDisplayName: Horizont
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: "14.0"
+        NSHumanReadableCopyright: "MIT-Lizenz — Gabriel Hott"
+        # Selbst gehosteter Server läuft oft über HTTP (LAN/NetBird-IP).
+        # Für produktiven Einsatz: Reverse Proxy mit gültigem TLS-Zertifikat.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: de.hott.horizont
+        INFOPLIST_FILE: Support/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        COMBINE_HIDPI_IMAGES: YES
