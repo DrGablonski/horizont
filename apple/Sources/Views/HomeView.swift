@@ -7,6 +7,7 @@ struct HomeView: View {
 	@Environment(AppStore.self) private var store
 	@State private var openPanels: [String: Bool] = [:]
 	@State private var selectedEvent: EventItem?
+	@State private var showQuickAdd = false
 
 	var body: some View {
 		NavigationStack {
@@ -26,6 +27,27 @@ struct HomeView: View {
 			}
 			.navigationTitle("Horizont")
 			.refreshable { await store.loadHome() }
+			.toolbar {
+				ToolbarItem(placement: .primaryAction) {
+					Button {
+						// Auswahl-Listen für den Dialog bei Bedarf vorladen.
+						if !store.calendarsLoaded || store.categories.isEmpty {
+							Task {
+								await store.loadCalendars()
+								await store.loadCategories()
+							}
+						}
+						showQuickAdd = true
+					} label: {
+						Label("Neue Aufgabe", systemImage: "plus")
+					}
+					.keyboardShortcut("n")
+					.help("Neue Aufgabe (⌘N)")
+				}
+			}
+			.sheet(isPresented: $showQuickAdd) {
+				QuickAddTaskView()
+			}
 		}
 		.task {
 			if store.home == nil { await store.loadHome() }

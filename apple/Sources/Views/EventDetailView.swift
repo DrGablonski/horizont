@@ -7,7 +7,12 @@ struct EventDetailView: View {
 	let event: EventItem
 	var onToggle: () async -> Void = {}
 
+	@Environment(AppStore.self) private var store
+	@Environment(\.dismiss) private var dismiss
+
 	@State private var toggling = false
+	@State private var confirmDelete = false
+	@State private var deleting = false
 
 	private var isTask: Bool { event.kind == "task" }
 	private var isDone: Bool { event.completed ?? false }
@@ -33,6 +38,8 @@ struct EventDetailView: View {
 					Divider()
 					taskActionRow
 				}
+				Divider()
+				deleteRow
 			}
 			.padding(DS.Space.lg)
 		}
@@ -142,6 +149,43 @@ struct EventDetailView: View {
 				      systemImage: isDone ? "circle" : "checkmark.circle.fill")
 			}
 			.disabled(toggling)
+		}
+	}
+
+	/// Dezenter Löschbereich am Ende ( für Events und Tasks ).
+	/// Bestätigung über confirmationDialog mit Destruktiv-Button; nach dem
+	/// Löschen schließt dismiss() das Popover.
+	private var deleteRow: some View {
+		HStack(spacing: DS.Space.sm) {
+			Spacer(minLength: 0)
+			Button {
+				confirmDelete = true
+			} label: {
+				Label(deleting ? "Wird gelöscht …" : "Löschen", systemImage: "trash")
+					.font(.callout)
+					.foregroundStyle(DS.danger)
+			}
+			.ghostButton()
+			.disabled(deleting)
+			.confirmationDialog(
+				"Wirklich löschen?",
+				isPresented: $confirmDelete,
+				titleVisibility: .visible
+			) {
+				Button("Löschen", role: .destructive) { deleteNow() }
+				Button("Abbrechen", role: .cancel) {}
+			} message: {
+				Text("„\(event.summary)“ wird dauerhaft aus dem Kalender entfernt.")
+			}
+		}
+	}
+
+	private func deleteNow() {
+		guard !deleting else { return }
+		deleting = true
+		Task {
+			await store.deleteItem(event)
+			dismiss()
 		}
 	}
 

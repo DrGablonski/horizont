@@ -63,6 +63,19 @@ final class AppStore {
 		}
 	}
 
+	/// Termin anlegen und Timeline neu laden. Fehler als String zurück.
+	func createEvent(summary: String, calendarId: String, dayKey: String,
+	                 allDay: Bool, startMs: Int?) async -> String? {
+		do {
+			_ = try await client.createEvent(summary: summary, calendarId: calendarId,
+			                                dayKey: dayKey, allDay: allDay, startMs: startMs)
+			await loadHome()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
 	/// Event/Task löschen (optimistisch; bei Fehler Neu laden).
 	func deleteItem(_ event: EventItem) async {
 		guard var panels = home?.panels else { return }

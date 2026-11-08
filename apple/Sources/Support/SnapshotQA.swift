@@ -16,6 +16,10 @@ enum SnapshotQA {
 		fputs("[shot] home loaded=\(store.home != nil) err=\(store.homeError ?? "-")\n", stderr)
 		await store.loadArchive()
 		await store.loadWorkflows()
+		await store.loadCalendars()
+		await store.loadCategories()
+		await store.loadConnections()
+		await store.loadNotify()
 		fputs("[shot] archive=\(store.archive != nil) wfs=\(store.workflows.count)\n", stderr)
 
 		func render<V: View>(_ name: String, _ view: V, width: CGFloat, height: CGFloat, dark: Bool = false, pause: TimeInterval = 1.2) {
@@ -57,6 +61,10 @@ enum SnapshotQA {
 		render("archiv-dark", ArchiveView(), width: 900, height: 760, dark: true)
 		render("workflows", WorkflowsView(), width: 900, height: 640)
 		render("workflows-dark", WorkflowsView(), width: 900, height: 640, dark: true)
+		render("settings", SettingsView(), width: 900, height: 900, pause: 0.8)
+		render("settings-dark", SettingsView(), width: 900, height: 900, dark: true, pause: 0.8)
+		render("quickadd", QuickAddTaskView(), width: 460, height: 560, pause: 0.8)
+		render("quickadd-dark", QuickAddTaskView(), width: 460, height: 560, dark: true, pause: 0.8)
 	}
 
 	private static func runLoop(seconds: TimeInterval) {

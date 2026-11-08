@@ -140,6 +140,21 @@ final class APIClient {
 		_ = try await raw("/api/events/\(calendarId)/\(uid)", method: "DELETE")
 	}
 
+	/// Termin anlegen (POST /api/events). dayKey = 'YYYY-MM-DD', startMs optional für Ganztags=false.
+	@discardableResult
+	func createEvent(summary: String, calendarId: String, dayKey: String,
+	                 allDay: Bool, startMs: Int? = nil, location: String? = nil,
+	                 description: String? = nil) async throws -> EventItem {
+		var body: [String: Any] = [
+			"summary": summary, "calendarId": calendarId,
+			"dayKey": dayKey, "allDay": allDay
+		]
+		if let startMs { body["startMs"] = startMs }
+		if let location { body["location"] = location }
+		if let description { body["description"] = description }
+		return try await send("/api/events", method: "POST", body: body)
+	}
+
 	// MARK: – Kalender
 
 	func calendars() async throws -> CalendarsResponse {
