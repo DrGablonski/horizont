@@ -1,11 +1,53 @@
 # Horizont
 
-Minimalistischer, selbst hostbarer Kalender für **genau einen Benutzer** — mit
-drei zusammenklappbaren Zeiträumen — **Vergangenheit**, **Jetzt** und
-**Zukunft** — plus einem **Workflow/Fokus-Modus** für sequenzielle
-Aufgabenlisten. Deine Termine kommen aus **CalDAV**-Backends (Radicale, Baïkal,
-iCal, Nextcloud, …). Alle CalDAV-Verbindungen gehören dem Benutzer und sind
-vollständig verwaltbar (anlegen, bearbeiten, testen, löschen).
+Minimalistischer, selbst hostbarer Kalender-Kern für **genau einen Benutzer**.
+Deine Termine kommen aus **CalDAV**-Backends (Radicale, Baïkal, iCal,
+Nextcloud, …). Alle CalDAV-Verbindungen gehören dem Benutzer und sind
+vollständig über die API verwaltbar (anlegen, bearbeiten, testen, löschen).
+Dazu kommen **Workflows** (sequenzielle Aufgaben-Checklisten) und ein
+täglicher **Benachrichtigungs-Job**.
+
+---
+
+## Branches & Betriebsarten
+
+Der Code ist in **einem Repo**, aber nach Betriebsarten getrennt:
+
+| Branch   | Inhalt                                               | Für wen |
+| -------- | ---------------------------------------------------- | ------- |
+| `main`   | **Headless-Kern**: nur REST-API (`/api/*`), kein UI  | Mac-/iOS-/Android-Apps, MCP, API-Nutzer |
+| `web`    | Kern **+ klassische Web-App** (SvelteKit)            | Wer alles im Browser bedienen will |
+| `mac`    | Kern **+ native macOS-App** (`apple/`)               | Mac-Nutzer (SwiftUI-Client) |
+
+**Wichtig:** Neue Features und Fixes entstehen **nur auf `main`**. Die Branches
+`web` und `mac` mergen `main` und führen darüber je ein eigenes Overlay-Commit
+(UI bzw. `apple/`). Niemals umgekehrt mergen und auf `main` keine
+Overlay-Dateien committen.
+
+### Headless hosten (Branch `main`)
+
+```bash
+docker compose up -d --build   # läuft unter http://localhost:8917
+```
+
+Da es keine Weboberfläche gibt, legst du den Benutzer per API an, verknüpfst
+CalDAV-Server und nutzt dann Mac-/iOS-App oder MCP:
+
+```bash
+# 1. Erster Benutzer (nur möglich, solange keiner existiert)
+curl -X POST http://localhost:8917/api/auth/setup \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"ich", "password":"…"}'
+
+# 2. CalDAV-Verbindung anlegen (Details: API-Doku unten)
+# 3. Mac-App verbinden (Branch `mac`) — sie loggt sich mit demselben Benutzer ein
+```
+
+Die Web-App-Variante startet identisch, nur mit Branch `web`:
+
+```bash
+git checkout web && docker compose up -d --build
+```
 
 ---
 
@@ -14,27 +56,27 @@ vollständig verwaltbar (anlegen, bearbeiten, testen, löschen).
 - **Ein Benutzer pro Instanz**
   - Login/Logout mit Session-Cookie (in-memory — bei Neustart alle Sessions
     beendet), scrypt-gehashte Passwörter.
-  - **Erstes-Setup**: solange kein Benutzer existiert, ist `/setup` öffentlich
-    und legt den Benutzer an (übernimmt dabei die alte
-    Einzel-User-Konfiguration). Danach ist `/setup` geschlossen.
-- **Drei Zeiträume, eine Ansicht**
+  - **Erstes-Setup**: solange kein Benutzer existiert, legt `POST /api/auth/setup`
+    den Benutzer an (headless; in der Web-App zusätzlich die Seite `/setup`).
+    Danach ist der Endpunkt geschlossen.
+- **Arbeits-Modell: drei Zeiträume** *(Darstellung in Web-UI/Mac-App)*
   - *Vergangenheit*: die letzten 14 Tage
   - *Jetzt*: heute + 2 Tage (Heute, Morgen, Übermorgen)
   - *Zukunft*: die nächsten 30 Tage
   - Jeder Abschnitt ist zusammenklappbar und zeigt Tage + Termine.
-- **Archiv**: alle Einträge älter als zwei Wochen (bis zu 365 Tage zurück) als
-  Monatsgrid (Mo–So, wie Apple/Google Calendar); Tap auf einen Tag zeigt die
-  Tagesdetails, per `?monat=YYYY-MM` ist der Monat teilbar.
-- **Workflows**: benutzerdefinierte, sequenzielle Aufgaben-Checklisten.
+- **Archiv**: alle Einträge älter als zwei Wochen (bis zu 365 Tage zurück) —
+  API-seitig abrufbar, in der Web-App als Monatsgrid (Mo–So) mit
+  Tagesdetails pro Tag (`?monat=YYYY-MM` teilbar).
+- **Workflows**: benutzerdefinierte, sequenzielle Aufgaben-Checklisten
+  (serverseitig, für alle Clients gleich).
   - Fortschrittsanzeige, Aktiver-Schritt-Betonung, „Als Nächstes"-Vorschau.
-  - **Fokus-Modus** (`/fokus/<id>`): ablenkungsfreie Vollansicht mit nur dem
-    aktuellen Schritt.
-  - Schrittemitfortschritt wird sofort gespeichert.
+  - **Fokus-Modus**: ablenkungsfreie Vollansicht mit nur dem aktuellen Schritt
+    (Web-UI: `/fokus/<id>`; Mac-App: eigener View).
+  - Schrittfortschritt wird sofort gespeichert.
 - **CalDAV-Anbindung**: beliebig viele Verbindungen (z. B. iCloud, Nextcloud,
   eigene Server), vollständig editierbar/löschbar, Verbindungstest mit
   Kalender-Liste, farbcodierte Kalender.
-- **Dunkel-/Hellmodus** (klassenbasiert, folgt dem System) und dezent, ruhiges UI
-  auf Basis von shadcn-svelte + Tailwind.
+- **Dunkel-/Hellmodus** in der Web-UI (klassenbasiert, folgt dem System).
 
 ## Tech-Stack
 
