@@ -276,6 +276,9 @@ private struct NotifySection: View {
 	@State private var saving = false
 	@State private var saveError: String?
 	@State private var savedFlash = false
+	@State private var testingSend = false
+	@State private var sendTestError: String?
+	@State private var sendTestFlash = false
 
 	private let weekdayNames = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 
@@ -345,8 +348,16 @@ private struct NotifySection: View {
 				if let err = saveError {
 					ErrorBanner(message: err)
 				}
+				if let err = sendTestError {
+					ErrorBanner(message: "Testversand: \(err)")
+				}
 				if savedFlash {
 					Label("Gespeichert.", systemImage: "checkmark.circle.fill")
+						.font(.callout)
+						.foregroundStyle(DS.success)
+				}
+				if sendTestFlash {
+					Label("Test versendet – bitte beim Empfänger prüfen.", systemImage: "paperplane.fill")
 						.font(.callout)
 						.foregroundStyle(DS.success)
 				}
@@ -357,9 +368,26 @@ private struct NotifySection: View {
 						.foregroundStyle(DS.textTertiary)
 				}
 
-				Button("Speichern") { save() }
-					.disabled(saving || (showsTime && !isValidTime(time)))
-					.primaryButton()
+				HStack(spacing: DS.Space.sm) {
+					Button("Speichern") { save() }
+						.disabled(saving || (showsTime && !isValidTime(time)))
+						.primaryButton()
+					// Testet den Webhook mit den Werten aus dem Formular.
+					Button {
+						sendTest()
+					} label: {
+						if testingSend {
+							HStack(spacing: DS.Space.xs) {
+								ProgressView().controlSize(.small)
+								Text("Sende…")
+							}
+						} else {
+							Text("Testversand")
+						}
+					}
+					.buttonStyle(.bordered)
+					.disabled(testingSend)
+				}
 			} else {
 				// Dezenter Ladezustand, bis store.notify vorhanden ist.
 				HStack(spacing: DS.Space.sm) {
@@ -454,9 +482,32 @@ private struct NotifySection: View {
 			if let err {
 				saveError = err
 			} else {
+				sendTestFlash = false
 				savedFlash = true
 				DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
 					savedFlash = false
+				}
+			}
+		}
+	}
+
+	/// Testversand mit den aktuellen Formularwerten (leere Werte: gespeicherte Config).
+	private func sendTest() {
+		guard !testingSend else { return }
+		testingSend = true
+		sendTestError = nil
+		savedFlash = false
+		let u = url.trimmingCharacters(in: .whitespacesAndNewlines)
+		let pr = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+		Task {
+			let err = await store.sendNotifyTest(url: u, prompt: pr)
+			testingSend = false
+			if let err {
+				sendTestError = err
+			} else {
+				sendTestFlash = true
+				DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+					sendTestFlash = false
 				}
 			}
 		}

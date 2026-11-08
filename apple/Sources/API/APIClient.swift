@@ -195,9 +195,12 @@ final class APIClient {
 		try await send("/api/notify", method: "POST", body: input)
 	}
 
-	/// Testversand (nutzt die gespeicherte Konfiguration).
-	func sendNotifyTest() async throws -> OKResponse {
-		try await send("/api/notify/test", method: "POST")
+	/// Testversand (POST /api/notify/test). Leere Werte fallen auf die gespeicherte Config zurück.
+	func sendNotifyTest(url: String = "", prompt: String = "") async throws -> OKResponse {
+		var body: [String: Any] = [:]
+		if !url.isEmpty { body["url"] = url }
+		if !prompt.isEmpty { body["prompt"] = prompt }
+		return try await send("/api/notify/test", method: "POST", body: body)
 	}
 
 	private func get<T: Decodable>(_ type: T.Type, from path: String) async throws -> T {

@@ -238,4 +238,14 @@ final class AppStore {
 			return error.localizedDescription
 		}
 	}
+
+	/// Testversand mit den aktuellen Formularwerten (leer = gespeicherte Config); Erfolg = nil.
+	func sendNotifyTest(url: String = "", prompt: String = "") async -> String? {
+		do {
+			_ = try await client.sendNotifyTest(url: url, prompt: prompt)
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
 }
