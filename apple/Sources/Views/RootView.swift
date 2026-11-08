@@ -197,12 +197,6 @@ struct MacMainView: View {
 					.font(DS.Typo.metaStrong)
 					.foregroundStyle(DS.textPrimary)
 					.lineLimit(1)
-				if let role = auth.user?.role, !role.isEmpty {
-					Text(role)
-						.font(DS.Typo.meta)
-						.foregroundStyle(DS.textSecondary)
-						.lineLimit(1)
-				}
 			}
 			Spacer(minLength: DS.Space.xs)
 			Button {

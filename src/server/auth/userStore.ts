@@ -58,10 +58,28 @@ function writeJsonAtomic(file: string, data: unknown): void {
 
 // ── Lese-/Schreibzugriff ──────────────────────────────────────────────────
 
+/**
+ * Auf bereinigte Speicherform normieren. Alte Multi-User-Versionen haben
+ * Felder wie `role`/`disabled` in users.json hinterlassen — die beim Lesen
+ * abgeschnitten und beim nächsten Schreiben endgültig entfernt werden.
+ */
+function sanitizeUser(u: StoredUser): StoredUser {
+	return {
+		id: u.id,
+		username: u.username,
+		salt: u.salt,
+		passwordHash: u.passwordHash,
+		createdAt: u.createdAt,
+		lastLoginAt: u.lastLoginAt ?? null
+	};
+}
+
 export function listUsers(): StoredUser[] {
 	const file = readJson<UsersFile>(USERS_FILE, { version: 1, users: [] });
 	if (!Array.isArray(file.users)) return [];
-	return file.users.filter((u) => u && typeof u.id === 'string' && typeof u.username === 'string');
+	return file.users
+		.filter((u) => u && typeof u.id === 'string' && typeof u.username === 'string')
+		.map(sanitizeUser);
 }
 
 function saveUsers(users: StoredUser[]): void {

@@ -41,7 +41,6 @@ struct SettingsView: View {
 									Text("Angemeldet als")
 								}
 							}
-							LabeledContent("Rolle", value: auth.user?.role ?? "–")
 						}
 
 						ConnectionsSection()

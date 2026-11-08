@@ -17,6 +17,9 @@ function rmQuietly(p: string): void {
 
 export function removeLegacyAgentFiles(): void {
 	rmQuietly(join(DATA_DIR, 'system', 'agent.json'));
+	// Alte System-CALDAV-Konfiguration (entfernter caldav-admin-Modus):
+	// liest nichts mehr, gehört nicht mehr ins Datenverzeichnis.
+	rmQuietly(join(DATA_DIR, 'system', 'caldav.json'));
 
 	const usersDir = join(DATA_DIR, 'users');
 	if (!existsSync(usersDir)) return;

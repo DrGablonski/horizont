@@ -7,7 +7,6 @@ import Foundation
 struct AppUser: Codable, Identifiable {
 	let id: String
 	let username: String
-	let role: String
 	let createdAt: Int
 	let lastLoginAt: Int?
 }
