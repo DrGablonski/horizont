@@ -1,53 +1,46 @@
 # Horizont
 
-Minimalistischer, selbst hostbarer Kalender-Kern für **genau einen Benutzer**.
-Deine Termine kommen aus **CalDAV**-Backends (Radicale, Baïkal, iCal,
-Nextcloud, …). Alle CalDAV-Verbindungen gehören dem Benutzer und sind
-vollständig über die API verwaltbar (anlegen, bearbeiten, testen, löschen).
-Dazu kommen **Workflows** (sequenzielle Aufgaben-Checklisten) und ein
-täglicher **Benachrichtigungs-Job**.
+Minimalistischer, selbst hostbarer Kalender für **genau einen Benutzer** — mit
+drei zusammenklappbaren Zeiträumen — **Vergangenheit**, **Jetzt** und
+**Zukunft** — plus einem **Workflow/Fokus-Modus** für sequenzielle
+Aufgabenlisten. Deine Termine kommen aus **CalDAV**-Backends (Radicale, Baïkal,
+iCal, Nextcloud, …). Alle CalDAV-Verbindungen gehören dem Benutzer und sind
+vollständig verwaltbar (anlegen, bearbeiten, testen, löschen).
+
+Alles lebt in **einem Branch (`main`)**: Server, Web-App und die native
+macOS-App (`apple/`). Beim **Docker-Build** entscheidest du, welche Variante
+du hostest:
+
+| Variante | Start | Was läuft |
+| -------- | ----- | --------- |
+| **Web-App + API** (Standard) | `docker compose up -d --build` | komplette Web-UI + API |
+| **Headless (nur API)** | `docker compose -f docker-compose.headless.yml up -d --build` | nur `/api/*` — für Mac-/iOS-Apps und MCP |
+
+Der Headless-Build entfernt die UI-Dateien *vor* dem Build — das fertige Image
+enthält schlicht keine Weboberfläche. Die API (Login, Workflows, CalDAV-
+Verwaltung, Token) ist in beiden Varianten identisch; deshalb kann die Mac-App
+oder MCP auch mit einer normalen Web-Instanz verbunden werden.
 
 ---
 
-## Branches & Betriebsarten
+## Headless: ersten Benutzer anlegen
 
-Der Code ist in **einem Repo**, aber nach Betriebsarten getrennt:
-
-| Branch   | Inhalt                                               | Für wen |
-| -------- | ---------------------------------------------------- | ------- |
-| `main`   | **Headless-Kern**: nur REST-API (`/api/*`), kein UI  | Mac-/iOS-/Android-Apps, MCP, API-Nutzer |
-| `web`    | Kern **+ klassische Web-App** (SvelteKit)            | Wer alles im Browser bedienen will |
-| `mac`    | Kern **+ native macOS-App** (`apple/`)               | Mac-Nutzer (SwiftUI-Client) |
-
-**Wichtig:** Neue Features und Fixes entstehen **nur auf `main`**. Die Branches
-`web` und `mac` mergen `main` und führen darüber je ein eigenes Overlay-Commit
-(UI bzw. `apple/`). Niemals umgekehrt mergen und auf `main` keine
-Overlay-Dateien committen.
-
-### Headless hosten (Branch `main`)
+Ohne UI legst du den Benutzer per API an (nur möglich, solange noch keiner
+existiert), danach Mac-App oder MCP verbinden:
 
 ```bash
-docker compose up -d --build   # läuft unter http://localhost:8917
-```
-
-Da es keine Weboberfläche gibt, legst du den Benutzer per API an, verknüpfst
-CalDAV-Server und nutzt dann Mac-/iOS-App oder MCP:
-
-```bash
-# 1. Erster Benutzer (nur möglich, solange keiner existiert)
 curl -X POST http://localhost:8917/api/auth/setup \
   -H 'Content-Type: application/json' \
   -d '{"username":"ich", "password":"…"}'
-
-# 2. CalDAV-Verbindung anlegen (Details: API-Doku unten)
-# 3. Mac-App verbinden (Branch `mac`) — sie loggt sich mit demselben Benutzer ein
 ```
 
-Die Web-App-Variante startet identisch, nur mit Branch `web`:
+CalDAV-Verbindungen danach über `POST /api/settings` (siehe API-Endpunkte unten)
+anlegen.
 
-```bash
-git checkout web && docker compose up -d --build
-```
+## Native macOS-App (`apple/`)
+
+SwiftUI-Client auf derselben API — egal ob Web- oder Headless-Instanz.
+Bauanleitung im [`apple/README.md`](apple/README.md).
 
 ---
 

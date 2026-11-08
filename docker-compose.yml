@@ -1,6 +1,8 @@
 services:
   horizont:
-    build: .
+    build:
+      context: .
+      target: web        # Web-App + API (für Headless: docker-compose.headless.yml)
     image: horizont
     container_name: horizont
     restart: unless-stopped
