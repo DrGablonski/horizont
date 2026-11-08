@@ -126,6 +126,64 @@ struct CalendarsResponse: Codable {
 	var error: String?
 }
 
+// ── CalDAV-Verbindungen (Einstellungen) ───────────────────────────────────
+
+struct ConnectionView: Codable, Identifiable {
+	let id: String
+	let name: String
+	let url: String
+	let username: String
+	let hasPassword: Bool
+}
+
+struct ConnectionsResponse: Codable {
+	let configured: Bool
+	let connections: [ConnectionView]
+}
+
+struct TestResult: Codable {
+	let ok: Bool
+	var error: String?
+	var calendars: [CalDavCalendar]?
+	var eventCount: Int?
+}
+
+// ── Task-Kategorien ───────────────────────────────────────────────────────
+
+struct TaskCategory: Codable, Hashable {
+	let name: String
+	let color: String
+}
+
+struct CategoriesResponse: Codable {
+	let categories: [TaskCategory]
+}
+
+// ── Benachrichtigungen (Webhook) ──────────────────────────────────────────
+
+enum NotifyFrequency: String, Codable, CaseIterable {
+	case manual, daily, weekly, interval
+}
+
+struct NotifyLastRun: Codable {
+	let date: String
+	let status: String        // ok | skipped | error
+	var error: String?
+	var at: Int?
+}
+
+struct NotifyConfigView: Codable {
+	let frequency: NotifyFrequency
+	let time: String          // HH:MM
+	let weekday: Int          // 0=Mo … 6=So
+	let intervalHours: Int
+	var url: String?
+	let hasToken: Bool
+	let prompt: String
+	let categories: [String]
+	var lastRun: NotifyLastRun?
+}
+
 // ── Fehler ────────────────────────────────────────────────────────────────
 
 enum APIError: LocalizedError {

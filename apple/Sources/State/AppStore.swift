@@ -23,6 +23,17 @@ final class AppStore {
 	var workflowsError: String?
 	var workflowsBusy = false
 
+	// Kalender (für Einstellungen + Task-Dialog)
+	var calendars: [CalDavCalendar] = []
+	var calendarsLoaded = false
+
+	// Kategorien
+	var categories: [TaskCategory] = []
+
+	// Einstellungen
+	var connections: [ConnectionView] = []
+	var notify: NotifyConfigView?
+
 	init(client: APIClient) {
 		self.client = client
 	}
@@ -38,6 +49,37 @@ final class AppStore {
 		} catch {
 			homeError = error.localizedDescription
 		}
+	}
+
+	/// Task anlegen und Timeline neu laden. Fehler als String zurück (Dialog zeigt ihn).
+	func createTask(summary: String, calendarId: String, category: String?, dueKey: String?) async -> String? {
+		do {
+			_ = try await client.createTask(summary: summary, calendarId: calendarId,
+			                                category: category, dueKey: dueKey)
+			await loadHome()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// Event/Task löschen (optimistisch; bei Fehler Neu laden).
+	func deleteItem(_ event: EventItem) async {
+		guard var panels = home?.panels else { return }
+		guard let loc = findEvent(event.id, in: &panels) else { return }
+		panels[loc.panel].days[loc.day].events.remove(at: loc.item)
+		home?.panels = panels
+
+		do {
+			if event.kind == "task" {
+				try await client.deleteTask(calendarId: event.calendarId, uid: event.uid)
+			} else {
+				try await client.deleteEvent(calendarId: event.calendarId, uid: event.uid)
+			}
+		} catch {
+			homeError = error.localizedDescription
+		}
+		await loadHome()
 	}
 
 	/// Task in den Timeline-Panels abhaken/anaken (optimistisch).
@@ -126,6 +168,61 @@ final class AppStore {
 			}
 		} catch {
 			workflowsError = error.localizedDescription
+		}
+	}
+
+	// MARK: – Kalender / Kategorien
+
+	func loadCalendars() async {
+		do {
+			let r = try await client.calendars()
+			calendars = r.calendars
+		} catch {}
+		calendarsLoaded = true
+	}
+
+	func loadCategories() async {
+		do {
+			categories = try await client.categories()
+		} catch {}
+	}
+
+	// MARK: – Einstellungen
+
+	func loadConnections() async {
+		do {
+			connections = try await client.connections().connections
+		} catch {}
+	}
+
+	func testConnection(id: String) async -> TestResult? {
+		try? await client.testConnection(id: id)
+	}
+
+	func loadNotify() async {
+		do {
+			notify = try await client.notifyConfig()
+		} catch {}
+	}
+
+	/// Notify-Konfiguration speichern; Erfolg = nil, sonst Fehlertext.
+	func saveNotify(frequency: NotifyFrequency, time: String, weekday: Int,
+	                intervalHours: Int, url: String, prompt: String,
+	                categories: [String]) async -> String? {
+		let body: [String: Any] = [
+			"frequency": frequency.rawValue,
+			"time": time,
+			"weekday": weekday,
+			"intervalHours": intervalHours,
+			"url": url,
+			"prompt": prompt,
+			"categories": categories
+		]
+		do {
+			notify = try await client.saveNotifyConfig(body)
+			return nil
+		} catch {
+			return error.localizedDescription
 		}
 	}
 }

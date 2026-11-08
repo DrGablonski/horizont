@@ -114,16 +114,83 @@ final class APIClient {
 		try await send("/api/workflows/\(workflowId)/reset", method: "POST")
 	}
 
-	// MARK: – Tasks (abhaken)
+	// MARK: – Tasks (abhaken, anlegen, löschen)
 
 	func updateTaskCompleted(calendarId: String, uid: String, completed: Bool) async throws {
 		_ = try await raw("/api/tasks/\(calendarId)/\(uid)",
 		                  method: "PATCH", body: ["completed": completed])
 	}
 
+	/// Task anlegen (POST /api/tasks). dueKey = 'YYYY-MM-DD' oder nil.
+	@discardableResult
+	func createTask(summary: String, calendarId: String, category: String? = nil,
+	                dueKey: String? = nil, description: String? = nil) async throws -> EventItem {
+		var body: [String: Any] = ["summary": summary, "calendarId": calendarId]
+		if let category { body["category"] = category }
+		if let dueKey { body["due"] = ["kind": "date", "key": dueKey] }
+		if let description { body["description"] = description }
+		return try await send("/api/tasks", method: "POST", body: body)
+	}
+
+	func deleteTask(calendarId: String, uid: String) async throws {
+		_ = try await raw("/api/tasks/\(calendarId)/\(uid)", method: "DELETE")
+	}
+
+	func deleteEvent(calendarId: String, uid: String) async throws {
+		_ = try await raw("/api/events/\(calendarId)/\(uid)", method: "DELETE")
+	}
+
 	// MARK: – Kalender
 
 	func calendars() async throws -> CalendarsResponse {
 		try await get("/api/calendars")
+	}
+
+	// MARK: – Einstellungen: CalDAV-Verbindungen
+
+	func connections() async throws -> ConnectionsResponse {
+		try await get("/api/settings")
+	}
+
+	/// Gespeicherte Verbindung per id testen.
+	func testConnection(id: String) async throws -> TestResult {
+		try await send("/api/settings/test", method: "POST", body: ["id": id])
+	}
+
+	// MARK: – Kategorien
+
+	func categories() async throws -> [TaskCategory] {
+		try await get(CategoriesResponse.self, from: "/api/categories").categories
+	}
+
+	/// Ganze Liste ersetzen (wie Web-App).
+	func saveCategories(_ categories: [TaskCategory]) async throws -> [TaskCategory] {
+		let body = ["categories": categories.map { ["name": $0.name, "color": $0.color] }]
+		return try await send(CategoriesResponse.self, from: "/api/categories",
+		                      method: "POST", body: body).categories
+	}
+
+	// MARK: – Benachrichtigungen
+
+	func notifyConfig() async throws -> NotifyConfigView {
+		try await get("/api/notify")
+	}
+
+	func saveNotifyConfig(_ input: [String: Any]) async throws -> NotifyConfigView {
+		try await send("/api/notify", method: "POST", body: input)
+	}
+
+	/// Testversand (nutzt die gespeicherte Konfiguration).
+	func sendNotifyTest() async throws -> OKResponse {
+		try await send("/api/notify/test", method: "POST")
+	}
+
+	private func get<T: Decodable>(_ type: T.Type, from path: String) async throws -> T {
+		try await get(path)
+	}
+
+	private func send<T: Decodable>(_ type: T.Type, from path: String,
+	                                method: String, body: [String: Any]? = nil) async throws -> T {
+		try await send(path, method: method, body: body)
 	}
 }
