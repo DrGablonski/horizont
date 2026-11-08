@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Anmelde-Maske: zentrierte Karte mit Server-, Benutzer- und Passwortfeld.
 struct LoginView: View {
 	@Environment(AuthStore.self) private var auth
 
@@ -8,66 +9,112 @@ struct LoginView: View {
 	@State private var password: String = ""
 	@State private var busy = false
 	@State private var errorText: String?
+	@FocusState private var focusedField: Field?
+
+	private enum Field {
+		case server, user, password
+	}
+
+	private var canSubmit: Bool {
+		!busy && !server.isEmpty && !username.isEmpty && !password.isEmpty
+	}
 
 	var body: some View {
-		ScrollView {
-			VStack(spacing: 20) {
-				Spacer().frame(height: 60)
+		VStack(spacing: 0) {
+			ScrollView {
+				VStack(spacing: DS.Space.xl) {
+					header
 
-				HorizontMark(size: 72)
-				Text("Horizont")
-					.font(.largeTitle.weight(.semibold))
-				Text("Vergangenheit · Jetzt · Zukunft")
-					.font(.subheadline)
-					.foregroundStyle(.secondary)
-
-				VStack(spacing: 12) {
-					TextField("Server-URL (z. B. http://10.10.10.1:3001)", text: $server)
-						.autocorrectionDisabled()
-#if os(iOS)
-						.textInputAutocapitalization(.never)
-#endif
-					TextField("Benutzername", text: $username)
-						.autocorrectionDisabled()
-#if os(iOS)
-						.textInputAutocapitalization(.never)
-#endif
-					SecureField("Passwort", text: $password)
-				}
-				.padding(.horizontal)
-
-				if let errorText {
-					Text(errorText)
-						.font(.callout)
-						.foregroundStyle(.red)
-						.multilineTextAlignment(.center)
-				}
-
-				Button {
-					submit()
-				} label: {
-					if busy {
-						ProgressView().frame(maxWidth: .infinity)
-					} else {
-						Text("Anmelden").frame(maxWidth: .infinity)
+					VStack(spacing: DS.Space.md) {
+						FieldRow(title: "Server", systemImage: "globe") {
+							TextField("http://10.10.10.1:3001", text: $server)
+								.autocorrectionDisabled()
+								#if os(iOS)
+								.textInputAutocapitalization(.never)
+								#endif
+								.focused($focusedField, equals: .server)
+								.onSubmit { focusedField = .user }
+						}
+						FieldRow(title: "Benutzername", systemImage: "person") {
+							TextField("Benutzername", text: $username)
+								.autocorrectionDisabled()
+								#if os(iOS)
+								.textInputAutocapitalization(.never)
+								#endif
+								.focused($focusedField, equals: .user)
+								.onSubmit { focusedField = .password }
+						}
+						FieldRow(title: "Passwort", systemImage: "lock") {
+							SecureField("Passwort", text: $password)
+								.focused($focusedField, equals: .password)
+								.onSubmit { submit() }
+						}
 					}
-				}
-				.buttonStyle(.borderedProminent)
-				.controlSize(.large)
-				.disabled(busy || server.isEmpty || username.isEmpty || password.isEmpty)
-				.padding(.horizontal)
 
-				Spacer()
+					if let errorText {
+						ErrorBanner(message: errorText)
+					}
+
+					Button {
+						submit()
+					} label: {
+						if busy {
+							ProgressView()
+								.controlSize(.regular)
+								.tint(.white)
+								.frame(maxWidth: .infinity, minHeight: 20)
+						} else {
+							Text("Anmelden")
+						}
+					}
+					.primaryButton()
+					.disabled(!canSubmit)
+				}
+				.padding(DS.Space.xl)
+				.frame(maxWidth: 380)
+				.dsCard()
+				.frame(maxWidth: 380)
 			}
-			.padding()
+			.frame(maxWidth: .infinity, maxHeight: .infinity)
+
+			footnote
+				.padding(.bottom, DS.Space.lg)
 		}
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.background(DS.background)
 		.onAppear {
 			server = auth.serverURL
 			username = auth.lastUsername
 		}
 	}
 
+	// MARK: – Teilstücke
+
+	private var header: some View {
+		VStack(spacing: DS.Space.sm) {
+			HorizontMark(size: 64)
+				.padding(.bottom, DS.Space.xs)
+			Text("Horizont")
+				.font(DS.Typo.pageTitle)
+				.foregroundStyle(DS.textPrimary)
+			Text("Vergangenheit · Jetzt · Zukunft")
+				.font(DS.Typo.meta)
+				.foregroundStyle(DS.textSecondary)
+		}
+	}
+
+	private var footnote: some View {
+		Text("Selbst gehosteter CalDAV-Kalender")
+			.font(DS.Typo.chip)
+			.foregroundStyle(DS.textTertiary)
+			.accessibilityHidden(true)
+	}
+
+	// MARK: – Aktionen
+
 	private func submit() {
+		guard canSubmit else { return }
+		focusedField = nil
 		busy = true
 		errorText = nil
 		Task {
@@ -78,6 +125,40 @@ struct LoginView: View {
 			}
 			busy = false
 		}
+	}
+}
+
+/// Beschriftetes Eingabefeld mit Icon im Karten-Look (Login).
+private struct FieldRow<Content: View>: View {
+	let title: String
+	let systemImage: String
+	@ViewBuilder var content: () -> Content
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: DS.Space.xs) {
+			Text(title)
+				.font(DS.Typo.metaStrong)
+				.foregroundStyle(DS.textSecondary)
+			HStack(spacing: DS.Space.sm) {
+				Image(systemName: systemImage)
+					.font(.system(size: 12, weight: .medium))
+					.foregroundStyle(DS.textTertiary)
+					.frame(width: 14)
+				content()
+					.textFieldStyle(.plain)
+			}
+			.padding(.horizontal, DS.Space.md)
+			.padding(.vertical, 9)
+			.background(
+				RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+					.fill(DS.background)
+			)
+			.overlay(
+				RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+					.strokeBorder(DS.border, lineWidth: 1)
+			)
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
 	}
 }
 

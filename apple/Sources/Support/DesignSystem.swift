@@ -56,7 +56,7 @@ enum DS {
 
 	// MARK: – Typografie
 
-	enum Type {
+	enum Typo {
 		static let pageTitle = Font.title2.weight(.semibold)      // Bereichs-Titel
 		static let cardTitle = Font.headline                       // Panel-/Workflow-Titel
 		static let rowTitle = Font.body                            // Event-/Schritt-Titel
@@ -73,11 +73,14 @@ extension Color {
 	static func dynamic(light: UInt64, dark: UInt64) -> Color {
 		Color(nsColor: NSColor(name: nil) { appearance in
 			let darkMode = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-			return NSColor.srgb(light: darkMode ? dark : light)
+			return NSColor.dsSRGB(darkMode ? dark : light)
 		})
 	}
 
-	fileprivate static func srgb(_ hex: UInt64) -> NSColor {
+}
+
+extension NSColor {
+	fileprivate static func dsSRGB(_ hex: UInt64) -> NSColor {
 		NSColor(
 			srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
 			green: CGFloat((hex >> 8) & 0xFF) / 255,
@@ -93,7 +96,7 @@ extension Color {
 struct CardStyle: ViewModifier {
 	@Environment(\.colorScheme) private var scheme
 
-	var body: some View {
+	func body(content: Content) -> some View {
 		content
 			.background(
 				RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
@@ -125,7 +128,7 @@ struct Chip: View {
 			if let systemImage {
 				Image(systemName: systemImage).font(.system(size: 9, weight: .semibold))
 			}
-			Text(text).font(DS.Type.chip)
+			Text(text).font(DS.Typo.chip)
 		}
 		.foregroundStyle(color)
 		.padding(.horizontal, 7)

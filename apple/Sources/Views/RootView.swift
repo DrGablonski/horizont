@@ -55,7 +55,7 @@ struct MacMainView: View {
 				// Explizites .tag(s): sonst taggt die List nach Section.ID (String),
 				// der Binding-Typ ist aber Section → Klicks tun nichts.
 				List(selection: $section) {
-					Section("Bereiche") {
+					SwiftUI.Section("Bereiche") {
 						ForEach(Section.allCases) { s in
 							Label(s.rawValue, systemImage: s.icon)
 								.tag(s)
@@ -90,12 +90,12 @@ struct MacMainView: View {
 			HorizontMark(size: 24)
 			VStack(alignment: .leading, spacing: 1) {
 				Text(auth.user?.username ?? "–")
-					.font(DS.Type.metaStrong)
+					.font(DS.Typo.metaStrong)
 					.foregroundStyle(DS.textPrimary)
 					.lineLimit(1)
 				if let role = auth.user?.role, !role.isEmpty {
 					Text(role)
-						.font(DS.Type.meta)
+						.font(DS.Typo.meta)
 						.foregroundStyle(DS.textSecondary)
 						.lineLimit(1)
 				}

@@ -7,19 +7,35 @@ struct ArchiveView: View {
 
 	var body: some View {
 		NavigationStack {
-			Group {
-				if store.archiveBusy && store.archive == nil {
-					ProgressView("Lade Archiv …")
-						.frame(maxWidth: .infinity, maxHeight: .infinity)
-				} else if let archive = store.archive {
-					content(archive)
-				} else {
-					ContentUnavailableView(
-						"Archiv nicht verfügbar",
-						systemImage: "tray.and.arrow.down",
-						description: Text(store.archiveError ?? "Server nicht erreichbar."))
+			ScrollView {
+				VStack(alignment: .leading, spacing: DS.Space.lg) {
+					if let err = store.archiveError {
+						ErrorBanner(message: err, retry: {
+							Task { await store.loadArchive(monthKey: store.archive?.monthKey) }
+						})
+					}
+
+					if store.archiveBusy && store.archive == nil {
+						TimelineSkeleton()
+					} else if let archive = store.archive {
+						monthCard(archive)
+						if let dayKey = selectedDay {
+							dayCard(archive: archive, dayKey: dayKey)
+						}
+					} else if !store.archiveBusy {
+						EmptyStateView(
+							title: "Archiv nicht verfügbar",
+							systemImage: "tray.and.arrow.down",
+							description: store.archiveError ?? "Server nicht erreichbar.")
+							.frame(minHeight: 320)
+							.frame(maxWidth: .infinity)
+					}
 				}
+				.padding(DS.Space.xl)
+				.frame(maxWidth: 720, alignment: .leading)
+				.frame(maxWidth: .infinity, alignment: .top)
 			}
+			.background(DS.background)
 			.navigationTitle("Archiv")
 			.task {
 				if store.archive == nil { await store.loadArchive() }
@@ -27,87 +43,105 @@ struct ArchiveView: View {
 		}
 	}
 
+	// MARK: – Monatskarte
+
 	@ViewBuilder
-	private func content(_ archive: ArchiveMonth) -> some View {
-		VStack(alignment: .leading, spacing: 14) {
-			// Monat kopple + Blättern
+	private func monthCard(_ archive: ArchiveMonth) -> some View {
+		VStack(spacing: DS.Space.md) {
+			// Zähler rechts oben
 			HStack {
+				Spacer(minLength: 0)
+				Chip(text: "\(archive.eventCount) Einträge", color: DS.textSecondary)
+			}
+
+			// Monatsnavigation: Pfeile links/rechts, Titel Mitte
+			HStack(spacing: DS.Space.sm) {
 				Button {
 					if let prev = Fmt.shiftMonth(archive.monthKey, by: -1) {
 						selectedDay = nil
 						Task { await store.loadArchive(monthKey: prev) }
 					}
-				} label: { Image(systemName: "chevron.left") }
+				} label: {
+					Image(systemName: "chevron.left")
+				}
+				.ghostButton()
 				.disabled(!archive.canPrev)
 
+				Spacer(minLength: DS.Space.sm)
 				Text(monthTitle(archive.monthKey))
 					.font(.title3.weight(.semibold))
+					.foregroundStyle(DS.textPrimary)
+					.contentTransition(.numericText())
+				Spacer(minLength: DS.Space.sm)
 
 				Button {
 					if let next = Fmt.shiftMonth(archive.monthKey, by: 1) {
 						selectedDay = nil
 						Task { await store.loadArchive(monthKey: next) }
 					}
-				} label: { Image(systemName: "chevron.right") }
+				} label: {
+					Image(systemName: "chevron.right")
+				}
+				.ghostButton()
 				.disabled(!archive.canNext)
-
-				Spacer()
-				Text("\(archive.eventCount) Einträge")
-					.font(.callout)
-					.foregroundStyle(.secondary)
 			}
 
-			// Monatsraster
-			let lookup = Dictionary(uniqueKeysWithValues: archive.days.map { ($0.dayKey, $0) })
-			LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
+			// Monatsraster (Mo–So)
+			let lookup = archive.days.reduce(into: [String: DayGroup]()) { $0[$1.dayKey] = $1 }
+			let todayKey = Fmt.dayKeyFormatter.string(from: .now)
+			LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: DS.Space.xs) {
 				ForEach(Fmt.weekdayHeaders, id: \.self) { h in
 					Text(h)
-						.font(.caption.weight(.semibold))
-						.foregroundStyle(.secondary)
+						.font(DS.Typo.metaStrong)
+						.foregroundStyle(DS.textSecondary)
+						.frame(maxWidth: .infinity)
 				}
 				ForEach(gridCells(archive.monthKey), id: \.self) { cell in
 					if let dayKey = cell {
-						let day = lookup[dayKey]
-						let count = day?.events.count ?? 0
-						Button {
-							selectedDay = (selectedDay == dayKey && count > 0) ? nil : (count > 0 ? dayKey : nil)
-						} label: {
-							VStack(spacing: 3) {
-								Text("\(dayOfMonth(dayKey))")
-									.font(.callout.monospacedDigit())
-								Circle()
-									.fill(count > 0 ? Color.accentColor : Color.clear)
-									.frame(width: 5, height: 5)
-							}
-							.padding(6)
-							.frame(maxWidth: .infinity)
-							.background(
-								RoundedRectangle(cornerRadius: 8)
-									.fill(selectedDay == dayKey ? Color.accentColor.opacity(0.22) : Color.clear)
-							)
+						DayCellView(
+							dayText: dayOfMonth(dayKey),
+							isToday: dayKey == todayKey,
+							hasEvents: (lookup[dayKey]?.events.count ?? 0) > 0,
+							isSelected: selectedDay == dayKey
+						) {
+							selectedDay = (selectedDay == dayKey) ? nil : dayKey
 						}
-						.buttonStyle(.plain)
 					} else {
-						Color.clear.frame(height: 34)
+						Color.clear.frame(height: 42)
 					}
 				}
 			}
-
-			// Tagesdetails
-			if let dayKey = selectedDay, let day = lookup[dayKey] {
-				Divider()
-				Text(day.label).font(.headline)
-				List(day.events) { event in
-					EventRowView(event: event) {}
-				}
-			}
-
-			if let err = store.archiveError {
-				Text(err).font(.callout).foregroundStyle(.red)
-			}
-			Spacer()
+			.animation(.easeInOut, value: archive.monthKey)
 		}
-		.padding()
+		.padding(DS.Space.lg)
+		.dsCard()
+	}
+
+	// MARK: – Tagesdetail
+
+	@ViewBuilder
+	private func dayCard(archive: ArchiveMonth, dayKey: String) -> some View {
+		let day = archive.days.first { $0.dayKey == dayKey }
+		VStack(alignment: .leading, spacing: DS.Space.md) {
+			Text(day?.label ?? dayLabel(dayKey))
+				.font(DS.Typo.cardTitle)
+				.foregroundStyle(DS.textPrimary)
+
+			if let events = day?.events, !events.isEmpty {
+				VStack(spacing: DS.Space.xs) {
+					ForEach(events) { event in
+						HoverableEventRow(event: event)
+					}
+				}
+			} else {
+				Text("Keine Einträge an diesem Tag.")
+					.font(DS.Typo.meta)
+					.foregroundStyle(DS.textTertiary)
+			}
+		}
+		.padding(DS.Space.lg)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.dsCard()
 	}
 
 	// MARK: – Raster-Helfer
@@ -139,5 +173,82 @@ struct ArchiveView: View {
 		f.locale = Locale(identifier: "de_DE")
 		f.dateFormat = "MMMM yyyy"
 		return f.string(from: d)
+	}
+
+	private func dayLabel(_ dayKey: String) -> String {
+		guard let d = Fmt.dayKey(dayKey) else { return dayKey }
+		let f = DateFormatter()
+		f.locale = Locale(identifier: "de_DE")
+		f.dateFormat = "EEEE, d. MMMM yyyy"
+		return f.string(from: d)
+	}
+}
+
+// MARK: – Tageszelle
+
+/// Kreiszelle im Kalender: Zahl, Eintrag-Punkt, Heute-Ring, Auswahl-Füllung, Hover.
+private struct DayCellView: View {
+	let dayText: String
+	let isToday: Bool
+	let hasEvents: Bool
+	let isSelected: Bool
+	let onSelect: () -> Void
+
+	@State private var hovering = false
+
+	var body: some View {
+		Button(action: onSelect) {
+			VStack(spacing: 3) {
+				Text(dayText)
+					.font(.callout.weight(isToday ? .semibold : .regular).monospacedDigit())
+					.foregroundStyle(isSelected ? .white : DS.textPrimary)
+					.frame(height: 17)
+				Circle()
+					.fill(isSelected ? AnyShapeStyle(.white)
+						: hasEvents ? AnyShapeStyle(Color.accentColor)
+						: AnyShapeStyle(Color.clear))
+					.frame(width: 5, height: 5)
+			}
+			.frame(width: 42, height: 42)
+			.background(
+				Circle().fill(isSelected
+				              ? AnyShapeStyle(Color.accentColor)
+				              : AnyShapeStyle(Color.primary.opacity(hovering ? 0.07 : 0)))
+			)
+			.overlay(
+				Circle().strokeBorder(
+					isToday && !isSelected ? Color.accentColor : Color.clear,
+					lineWidth: 1.5)
+			)
+			.contentShape(Circle())
+			.onHover { hovering = $0 }
+		}
+		.buttonStyle(.plain)
+		.animation(.easeOut(duration: 0.12), value: hovering)
+	}
+}
+
+// MARK: – Event-Zeile mit Hover-Aufhellung
+
+/// Archiv-Event mit dezenter Hover-Aufhellung; Abhaken von Aufgaben wie in der Timeline.
+private struct HoverableEventRow: View {
+	let event: EventItem
+
+	@Environment(AppStore.self) private var store
+	@State private var hovering = false
+
+	var body: some View {
+		EventRowView(event: event) {
+			await store.toggleTask(event)
+		}
+		.padding(.horizontal, DS.Space.sm)
+		.padding(.vertical, DS.Space.xs)
+		.background(
+			RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+				.fill(Color.primary.opacity(hovering ? 0.05 : 0))
+		)
+		.contentShape(Rectangle())
+		.onHover { hovering = $0 }
+		.animation(.easeOut(duration: 0.12), value: hovering)
 	}
 }

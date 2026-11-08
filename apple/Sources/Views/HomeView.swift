@@ -1,24 +1,27 @@
 import SwiftUI
 
 /// Startseite: die drei zusammenklappbaren Zeiträume wie im Web –
-/// Panels als Karten (bg-card + border), Tage mit Header, Events als Zeilen.
+/// Panels als Karten, Tage mit Kopfzeile und Trennlinie, Events als
+/// klickbare Zeilen (Detail-Popover) mit Abhaken für Tasks.
 struct HomeView: View {
 	@Environment(AppStore.self) private var store
 	@State private var openPanels: [String: Bool] = [:]
+	@State private var selectedEvent: EventItem?
 
 	var body: some View {
 		NavigationStack {
 			Group {
 				if store.homeBusy && store.home == nil {
-					ProgressView("Lade Horizonte …")
-						.frame(maxWidth: .infinity, maxHeight: .infinity)
+					TimelineSkeleton()
 				} else if let home = store.home {
 					content(home)
 				} else {
-					ContentUnavailableView(
-						"Keine Verbindung",
+					EmptyStateView(
+						title: "Keine Verbindung",
 						systemImage: "wifi.exclamationmark",
-						description: Text(store.homeError ?? "Server nicht erreichbar."))
+						description: store.homeError ?? "Server nicht erreichbar.",
+						actionTitle: "Erneut versuchen",
+						action: { Task { await store.loadHome() } })
 				}
 			}
 			.navigationTitle("Horizont")
@@ -35,97 +38,126 @@ struct HomeView: View {
 	@ViewBuilder
 	private func content(_ home: MainEventsResponse) -> some View {
 		ScrollView {
-			VStack(alignment: .leading, spacing: 12) {
+			VStack(alignment: .leading, spacing: DS.Space.lg) {
 				if let err = store.homeError {
-					Label(err, systemImage: "exclamationmark.triangle")
-						.font(.callout).foregroundStyle(.red)
+					ErrorBanner(message: err, retry: { Task { await store.loadHome() } })
 				}
 				if !home.configured {
-					Text("CalDAV ist auf dem Server noch nicht eingerichtet.")
-						.font(.callout).foregroundStyle(.secondary)
+					Label(
+						"CalDAV ist auf dem Server noch nicht eingerichtet.",
+						systemImage: "exclamationmark.triangle")
+						.font(.callout)
+						.foregroundStyle(DS.textSecondary)
 				}
-				ForEach(home.panels) { panel in
-					panelCard(panel)
+				if home.panels.allSatisfy({ $0.eventCount == 0 }) {
+					EmptyStateView(
+						title: "Keine Einträge",
+						systemImage: "calendar.day.timeline.left",
+						description: "In deinem Kalender liegen aktuell keine Termine oder Aufgaben.")
+				} else {
+					ForEach(home.panels) { panel in
+						panelCard(panel)
+					}
 				}
 			}
-			.padding(.horizontal, 20)
-			.padding(.vertical, 16)
+			.padding(.horizontal, DS.Space.xl)
+			.padding(.vertical, DS.Space.lg)
 			.frame(maxWidth: 780)
 			.frame(maxWidth: .infinity)
 		}
-		.background(Color(nsColor: .windowBackgroundColor))
+		.background(DS.background)
 	}
 
-	/// Panel als Karte: Klickbarer Header (Titel, Subtitle, Zähler, Chevron) + Tage.
+	/// Panel als Karte: klickbarer Header (Titel, Subtitle, Zähler, Chevron) + Tage.
 	@ViewBuilder
 	private func panelCard(_ panel: TimePanel) -> some View {
 		VStack(alignment: .leading, spacing: 0) {
 			Button {
 				togglePanel(panel)
 			} label: {
-				HStack(spacing: 10) {
-					VStack(alignment: .leading, spacing: 2) {
-						Text(panel.title).font(.headline)
+				HStack(spacing: DS.Space.sm) {
+					VStack(alignment: .leading, spacing: DS.Space.xxs) {
+						Text(panel.title).font(DS.Typo.cardTitle)
 						Text(panel.subtitle)
-							.font(.caption)
-							.foregroundStyle(.secondary)
+							.font(DS.Typo.meta)
+							.foregroundStyle(DS.textSecondary)
 					}
-					Spacer(minLength: 8)
+					Spacer(minLength: DS.Space.sm)
 					if panel.eventCount > 0 {
-						Text("\(panel.eventCount)")
-							.font(.caption.weight(.medium).monospacedDigit())
-							.foregroundStyle(.secondary)
-							.padding(.horizontal, 8)
-							.padding(.vertical, 3)
-							.background(
-								Capsule().fill(Color(nsColor: .quaternaryLabelColor).opacity(0.6)))
+						Chip(text: "\(panel.eventCount)", color: DS.textSecondary)
 					}
 					Image(systemName: "chevron.down")
 						.font(.caption.weight(.semibold))
-						.foregroundStyle(.secondary)
+						.foregroundStyle(DS.textSecondary)
 						.rotationEffect(.degrees(isOpen(panel) ? 180 : 0))
 				}
-				.padding(.horizontal, 14)
-				.padding(.vertical, 11)
+				.padding(.horizontal, DS.Space.lg)
+				.padding(.vertical, DS.Space.md)
 				.contentShape(Rectangle())
 			}
 			.buttonStyle(.plain)
-			.animation(.easeOut(duration: 0.18), value: isOpen(panel))
 
 			if isOpen(panel) {
 				Divider()
-				VStack(alignment: .leading, spacing: 18) {
+				VStack(alignment: .leading, spacing: DS.Space.lg) {
 					if panel.days.isEmpty {
 						Text("Keine Einträge in diesem Zeitraum.")
 							.font(.subheadline)
-							.foregroundStyle(.secondary)
+							.foregroundStyle(DS.textSecondary)
+							.padding(.vertical, DS.Space.xs)
 					}
 					ForEach(panel.days) { day in
 						dayBlock(day)
 					}
 				}
-				.padding(.horizontal, 14)
-				.padding(.vertical, 14)
+				.padding(.horizontal, DS.Space.lg)
+				.padding(.vertical, DS.Space.lg)
 			}
 		}
-		.cardStyle()
+		.dsCard()
 	}
 
-	/// Tag-Block wie im Web: Header (heute hervorgehoben), darunter die Events.
+	/// Tag-Block wie im Web: Kopfzeile mit Trennlinie (heute hervorgehoben,
+	/// überfällige Tage im Danger-Ton), darunter die klickbaren Events.
 	@ViewBuilder
 	private func dayBlock(_ day: DayGroup) -> some View {
-		VStack(alignment: .leading, spacing: 8) {
-			Text(day.label)
-				.font(.subheadline.weight(.semibold))
-				.foregroundStyle(day.isToday
-				                 ? Color(nsColor: .labelColor)
-				                 : Color(nsColor: .secondaryLabelColor))
-			ForEach(day.events) { event in
-				EventRowView(event: event) {
-					await store.toggleTask(event)
+		let hasOverdue = day.events.contains { $0.overdue == true }
+		VStack(alignment: .leading, spacing: DS.Space.sm) {
+			HStack(spacing: DS.Space.sm) {
+				Text(day.label)
+					.font(.subheadline.weight(.semibold))
+					.foregroundStyle(dayLabelColor(day, hasOverdue: hasOverdue))
+				if day.isToday {
+					Chip(text: "Heute", color: .accentColor)
 				}
+				Rectangle()
+					.fill(DS.border)
+					.frame(height: 1)
+			}
+			eventRows(day)
+		}
+	}
+
+	/// Events eines Tages als klickbare Zeilen mit Detail-Popover.
+	@ViewBuilder
+	private func eventRows(_ day: DayGroup) -> some View {
+		ForEach(day.events) { event in
+			EventRowView(
+				event: event,
+				onToggle: { await store.toggleTask(event) },
+				onSelect: { selectedEvent = event })
+			.popover(item: $selectedEvent) { ev in
+				EventDetailView(
+					event: ev,
+					onToggle: { await store.toggleTask(ev) })
 			}
 		}
+	}
+
+	private func dayLabelColor(_ day: DayGroup, hasOverdue: Bool) -> Color {
+		if day.isToday { return DS.textPrimary }
+		if hasOverdue { return DS.danger }
+		return DS.textSecondary
 	}
 
 	// MARK: – Klapp-Zustand
@@ -135,7 +167,9 @@ struct HomeView: View {
 	}
 
 	private func togglePanel(_ panel: TimePanel) {
-		openPanels[panel.id] = !isOpen(panel)
+		withAnimation(.easeInOut(duration: 0.2)) {
+			openPanels[panel.id] = !isOpen(panel)
+		}
 	}
 
 	private func initOpenPanels() {
