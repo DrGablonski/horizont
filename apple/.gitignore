@@ -1,6 +1,0 @@
-# XcodeGen erzeugt das Projekt – nicht einchecken
-Horizont.xcodeproj/
-build/
-DerivedData/
-xcuserdata/
-*.xcuserstate
