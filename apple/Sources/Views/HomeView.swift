@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Startseite: die drei zusammenklappbaren Zeiträume wie im Web –
-/// Panels als Karten, Tage mit Kopfzeile und Trennlinie, Events als
-/// klickbare Zeilen (Detail-Popover) mit Abhaken für Tasks.
+/// eigener Bereichskopf mit Aktion, Panels als Karten, Tage mit Kopfzeile
+/// und Trennlinie, Events als klickbare Zeilen (Detail-Popover).
 struct HomeView: View {
 	@Environment(AppStore.self) private var store
 	@State private var openPanels: [String: Bool] = [:]
@@ -10,7 +10,15 @@ struct HomeView: View {
 	@State private var showQuickAdd = false
 
 	var body: some View {
-		NavigationStack {
+		VStack(spacing: 0) {
+			SectionHeader("Horizont", subtitle: "Vergangenheit · Jetzt · Zukunft") {
+				AccentPillButton(title: "Neue Aufgabe", systemImage: "plus") {
+					openQuickAdd()
+				}
+				.keyboardShortcut("n")
+				.help("Neue Aufgabe (⌘N)")
+			}
+
 			Group {
 				if store.homeBusy && store.home == nil {
 					TimelineSkeleton()
@@ -25,29 +33,9 @@ struct HomeView: View {
 						action: { Task { await store.loadHome() } })
 				}
 			}
-			.navigationTitle("Horizont")
-			.refreshable { await store.loadHome() }
-			.toolbar {
-				ToolbarItem(placement: .primaryAction) {
-					Button {
-						// Auswahl-Listen für den Dialog bei Bedarf vorladen.
-						if !store.calendarsLoaded || store.categories.isEmpty {
-							Task {
-								await store.loadCalendars()
-								await store.loadCategories()
-							}
-						}
-						showQuickAdd = true
-					} label: {
-						Label("Neue Aufgabe", systemImage: "plus")
-					}
-					.keyboardShortcut("n")
-					.help("Neue Aufgabe (⌘N)")
-				}
-			}
-			.sheet(isPresented: $showQuickAdd) {
-				QuickAddTaskView()
-			}
+		}
+		.sheet(isPresented: $showQuickAdd) {
+			QuickAddTaskView()
 		}
 		.task {
 			if store.home == nil { await store.loadHome() }
@@ -87,7 +75,7 @@ struct HomeView: View {
 			.frame(maxWidth: 780)
 			.frame(maxWidth: .infinity)
 		}
-		.background(DS.background)
+		.refreshable { await store.loadHome() }
 	}
 
 	/// Panel als Karte: klickbarer Header (Titel, Subtitle, Zähler, Chevron) + Tage.
@@ -98,8 +86,11 @@ struct HomeView: View {
 				togglePanel(panel)
 			} label: {
 				HStack(spacing: DS.Space.sm) {
+					panelIcon(panel)
 					VStack(alignment: .leading, spacing: DS.Space.xxs) {
-						Text(panel.title).font(DS.Typo.cardTitle)
+						Text(panel.title)
+							.font(.system(size: 15, weight: .semibold))
+							.foregroundStyle(DS.textPrimary)
 						Text(panel.subtitle)
 							.font(DS.Typo.meta)
 							.foregroundStyle(DS.textSecondary)
@@ -120,7 +111,7 @@ struct HomeView: View {
 			.buttonStyle(.plain)
 
 			if isOpen(panel) {
-				Divider()
+				Divider().overlay(DS.border)
 				VStack(alignment: .leading, spacing: DS.Space.lg) {
 					if panel.days.isEmpty {
 						Text("Keine Einträge in diesem Zeitraum.")
@@ -139,6 +130,25 @@ struct HomeView: View {
 		.dsCard()
 	}
 
+	/// Kleine Bereichs-Icons (Vergangenheit/Jetzt/Zukunft) im Panel-Kopf.
+	private func panelIcon(_ panel: TimePanel) -> some View {
+		let (symbol, color): (String, Color) = {
+			switch panel.id {
+			case "past": return ("clock.arrow.circlepath", DS.textSecondary)
+			case "now": return ("sparkles", DS.accent)
+			default: return ("clock", DS.textSecondary)
+			}
+		}()
+		return Image(systemName: symbol)
+			.font(.system(size: 13, weight: .medium))
+			.foregroundStyle(color)
+			.frame(width: 26, height: 26)
+			.background(
+				RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+					.fill(DS.fillSubtle)
+			)
+	}
+
 	/// Tag-Block wie im Web: Kopfzeile mit Trennlinie (heute hervorgehoben,
 	/// überfällige Tage im Danger-Ton), darunter die klickbaren Events.
 	@ViewBuilder
@@ -150,7 +160,7 @@ struct HomeView: View {
 					.font(.subheadline.weight(.semibold))
 					.foregroundStyle(dayLabelColor(day, hasOverdue: hasOverdue))
 				if day.isToday {
-					Chip(text: "Heute", color: .accentColor)
+					Chip(text: "Heute", color: DS.accent)
 				}
 				Rectangle()
 					.fill(DS.border)
@@ -182,7 +192,18 @@ struct HomeView: View {
 		return DS.textSecondary
 	}
 
-	// MARK: – Klapp-Zustand
+	// MARK: – Aktionen & Klapp-Zustand
+
+	private func openQuickAdd() {
+		// Auswahl-Listen für den Dialog bei Bedarf vorladen.
+		if !store.calendarsLoaded || store.categories.isEmpty {
+			Task {
+				await store.loadCalendars()
+				await store.loadCategories()
+			}
+		}
+		showQuickAdd = true
+	}
 
 	private func isOpen(_ panel: TimePanel) -> Bool {
 		openPanels[panel.id] ?? panel.defaultOpen

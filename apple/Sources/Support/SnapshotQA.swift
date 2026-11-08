@@ -22,12 +22,16 @@ enum SnapshotQA {
 		await store.loadNotify()
 		fputs("[shot] archive=\(store.archive != nil) wfs=\(store.workflows.count)\n", stderr)
 
-		func render<V: View>(_ name: String, _ view: V, width: CGFloat, height: CGFloat, dark: Bool = false, pause: TimeInterval = 1.2) {
+		func render<V: View>(_ name: String, _ view: V, width: CGFloat, height: CGFloat, dark: Bool = false, pause: TimeInterval = 1.2, hasOwnBackground: Bool = false) {
 			fputs("[shot] rendering \(name)\n", stderr)
+			// Echtes Fenster + cacheDisplay: rendert auch NSViewRepresentables
+			// (ImageRenderer kann die nicht und zeigt Platzhalter).
 			let host = NSHostingView(rootView: AnyView(
 				ZStack {
-					DS.background
-					view.environment(store).environment(auth)
+					// Views außerhalb der Shell haben keinen eigenen Hintergrund –
+					// nur MacMainView (shell) bringt AmbientBackground selbst mit.
+					if !hasOwnBackground { AmbientBackground() }
+					view.environment(store).environment(auth).environment(ThemeStore.shared)
 				}
 				.frame(width: width, height: height)))
 			let win = NSWindow(
@@ -54,8 +58,8 @@ enum SnapshotQA {
 			win.close()
 		}
 
-		render("login", LoginView(), width: 520, height: 640, pause: 0.6)
-		render("login-dark", LoginView(), width: 520, height: 640, dark: true, pause: 0.6)
+		render("login", LoginView(), width: 520, height: 640, pause: 0.6, hasOwnBackground: true)
+		render("login-dark", LoginView(), width: 520, height: 640, dark: true, pause: 0.6, hasOwnBackground: true)
 		render("home", HomeView(), width: 900, height: 760)
 		render("home-dark", HomeView(), width: 900, height: 760, dark: true)
 		render("archiv", ArchiveView(), width: 900, height: 760)
@@ -66,6 +70,11 @@ enum SnapshotQA {
 		render("settings-dark", SettingsView(), width: 900, height: 900, dark: true, pause: 0.8)
 		render("quickadd", QuickAddTaskView(), width: 460, height: 560, pause: 0.8)
 		render("quickadd-dark", QuickAddTaskView(), width: 460, height: 560, dark: true, pause: 0.8)
+
+		// Gesamte Shell (Sidebar + Detail) wie im echten Fenster – mit den
+		// bereits geladenen Daten des QA-Stores (kein zweiter Netzwerkzyklus).
+		render("shell", MacMainView(client: client, store: store), width: 1100, height: 720, pause: 4.0, hasOwnBackground: true)
+		render("shell-dark", MacMainView(client: client, store: store), width: 1100, height: 720, dark: true, pause: 4.0, hasOwnBackground: true)
 
 		// Bearbeiten-Dialog an einem synthetischen Task demonstrieren.
 		if let sample = try? JSONDecoder().decode(EventItem.self, from: Data("""

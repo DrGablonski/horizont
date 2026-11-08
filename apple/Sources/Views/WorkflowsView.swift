@@ -6,41 +6,44 @@ struct WorkflowsView: View {
 
 	var body: some View {
 		NavigationStack {
-			Group {
-				if store.workflowsBusy && store.workflows.isEmpty {
-					TimelineSkeleton()
-						.frame(maxWidth: .infinity, maxHeight: .infinity)
-				} else if store.workflows.isEmpty {
-					EmptyStateView(
-						title: "Keine Workflows",
-						systemImage: "checklist",
-						description: store.workflowsError ?? "Legt die Web-App an – die App zeigt sie hier.")
-				} else {
-					ScrollView {
-						VStack(spacing: DS.Space.md) {
-							if let err = store.workflowsError {
-								ErrorBanner(message: err, retry: {
-									Task { await store.loadWorkflows() }
-								})
-							}
-							ForEach(store.workflows) { wf in
-								NavigationLink(value: wf.id) {
-									WorkflowCard(workflow: wf)
+			VStack(spacing: 0) {
+				SectionHeader("Workflows", subtitle: "Schrittpläne im Fokus-Modus")
+
+				Group {
+					if store.workflowsBusy && store.workflows.isEmpty {
+						TimelineSkeleton()
+							.frame(maxWidth: .infinity, maxHeight: .infinity)
+					} else if store.workflows.isEmpty {
+						EmptyStateView(
+							title: "Keine Workflows",
+							systemImage: "checklist",
+							description: store.workflowsError ?? "Legt die Web-App an – die App zeigt sie hier.")
+					} else {
+						ScrollView {
+							VStack(spacing: DS.Space.md) {
+								if let err = store.workflowsError {
+									ErrorBanner(message: err, retry: {
+										Task { await store.loadWorkflows() }
+									})
 								}
-								.buttonStyle(.plain)
+								ForEach(store.workflows) { wf in
+									NavigationLink(value: wf.id) {
+										WorkflowCard(workflow: wf)
+									}
+									.buttonStyle(.plain)
+								}
 							}
+							.padding(DS.Space.xl)
+							.frame(maxWidth: 640, alignment: .leading)
+							.frame(maxWidth: .infinity, alignment: .topLeading)
 						}
-						.padding(DS.Space.xl)
-						.frame(maxWidth: 640, alignment: .leading)
-						.frame(maxWidth: .infinity, alignment: .topLeading)
-					}
-					.navigationDestination(for: String.self) { id in
-						WorkflowDetailView(workflowId: id)
+						.refreshable { await store.loadWorkflows() }
 					}
 				}
 			}
-			.navigationTitle("Workflows")
-			.refreshable { await store.loadWorkflows() }
+			.navigationDestination(for: String.self) { id in
+				WorkflowDetailView(workflowId: id)
+			}
 		}
 		.task {
 			if store.workflows.isEmpty { await store.loadWorkflows() }
@@ -74,7 +77,7 @@ private struct WorkflowCard: View {
 
 			ProgressView(value: workflow.progress)
 				.progressViewStyle(.linear)
-				.tint(workflow.completedAt != nil ? DS.success : Color.accentColor)
+				.tint(workflow.completedAt != nil ? DS.success : DS.accent)
 
 			HStack(spacing: DS.Space.sm) {
 				Text("\(doneCount)/\(workflow.steps.count) Schritte")
@@ -91,7 +94,7 @@ private struct WorkflowCard: View {
 		.dsCard()
 		.overlay(
 			RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
-				.fill(Color.primary.opacity(hovering ? 0.045 : 0))
+				.fill(DS.rowHover.opacity(hovering ? 1 : 0))
 		)
 		.contentShape(Rectangle())
 		.onHover { hovering = $0 }
@@ -103,40 +106,59 @@ private struct WorkflowCard: View {
 
 struct WorkflowDetailView: View {
 	@Environment(AppStore.self) private var store
+	@Environment(\.dismiss) private var dismiss
 	let workflowId: String
 
 	var body: some View {
 		Group {
 			if let wf = store.workflow(workflowId) {
-				ScrollView {
-					VStack(alignment: .leading, spacing: DS.Space.md) {
-						headerCard(wf)
-
-						if !wf.notes.isEmpty {
-							notesCard(wf.notes)
+				VStack(spacing: 0) {
+					// Eigener Kopf statt Default-Back-Button (Titelzeile ist versteckt).
+					HStack(spacing: DS.Space.sm) {
+						Button {
+							dismiss()
+						} label: {
+							HStack(spacing: DS.Space.xs) {
+								Image(systemName: "chevron.left")
+								Text("Workflows")
+							}
+							.font(.callout)
+							.foregroundStyle(DS.textSecondary)
 						}
-
-						ForEach(Array(wf.steps.enumerated()), id: \.element.id) { idx, step in
-							stepRow(workflow: wf, index: idx, step: step)
-						}
-
-						if let next = wf.steps.first(where: { !$0.done }) {
-							nextStepCard(next)
-						} else {
-							completionBanner
-						}
-					}
-					.padding(DS.Space.xl)
-					.frame(maxWidth: 640, alignment: .leading)
-					.frame(maxWidth: .infinity, alignment: .topLeading)
-				}
-				.navigationTitle(wf.title)
-				.toolbar {
-					ToolbarItem(placement: .automatic) {
+						.ghostButton()
+						Spacer()
 						Button("Zurücksetzen") {
 							Task { await store.resetWorkflow(wf.id) }
 						}
+						.buttonStyle(.bordered)
 					}
+					.padding(.horizontal, DS.Space.xl)
+					.padding(.top, DS.Space.lg)
+					.padding(.bottom, DS.Space.sm)
+
+					ScrollView {
+						VStack(alignment: .leading, spacing: DS.Space.md) {
+							headerCard(wf)
+
+							if !wf.notes.isEmpty {
+								notesCard(wf.notes)
+							}
+
+							ForEach(Array(wf.steps.enumerated()), id: \.element.id) { idx, step in
+								stepRow(workflow: wf, index: idx, step: step)
+							}
+
+							if let next = wf.steps.first(where: { !$0.done }) {
+								nextStepCard(next)
+							} else {
+								completionBanner
+							}
+						}
+						.padding(DS.Space.xl)
+						.frame(maxWidth: 640, alignment: .leading)
+						.frame(maxWidth: .infinity, alignment: .topLeading)
+					}
+					.refreshable { await store.loadWorkflows() }
 				}
 			} else {
 				EmptyStateView(
@@ -160,11 +182,11 @@ struct WorkflowDetailView: View {
 					.foregroundStyle(DS.textPrimary)
 				Spacer(minLength: DS.Space.sm)
 				Chip(text: "\(Int((wf.progress * 100).rounded())) %",
-				     color: isDone ? DS.success : Color.accentColor)
+				     color: isDone ? DS.success : DS.accent)
 			}
 			ProgressView(value: wf.progress)
 				.progressViewStyle(.linear)
-				.tint(isDone ? DS.success : Color.accentColor)
+				.tint(isDone ? DS.success : DS.accent)
 		}
 		.padding(DS.Space.lg)
 		.frame(maxWidth: .infinity, alignment: .leading)
@@ -197,7 +219,7 @@ struct WorkflowDetailView: View {
 		HStack(spacing: DS.Space.md) {
 			if isActive {
 				RoundedRectangle(cornerRadius: DS.Radius.pill)
-					.fill(Color.accentColor)
+					.fill(DS.accent)
 					.frame(width: 3)
 			}
 
@@ -218,7 +240,7 @@ struct WorkflowDetailView: View {
 			Spacer(minLength: DS.Space.sm)
 
 			if isActive {
-				Chip(text: "Aktiv", color: Color.accentColor)
+				Chip(text: "Aktiv", color: DS.accent)
 			}
 		}
 		.padding(DS.Space.md)
@@ -235,7 +257,7 @@ struct WorkflowDetailView: View {
 	private func nextStepCard(_ step: WorkflowStep) -> some View {
 		HStack(spacing: DS.Space.sm) {
 			Image(systemName: "arrow.right.circle.fill")
-				.foregroundStyle(Color.accentColor)
+				.foregroundStyle(DS.accent)
 			VStack(alignment: .leading, spacing: DS.Space.xxs) {
 				Text("Als Nächstes")
 					.font(DS.Typo.metaStrong)

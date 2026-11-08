@@ -68,7 +68,7 @@ struct EventRowView: View {
 		.padding(.horizontal, DS.Space.sm)
 		.padding(.vertical, DS.Space.xs + 2)
 		.background(
-			Color.primary.opacity(hovering ? 0.045 : 0),
+			DS.rowHover.opacity(hovering ? 1 : 0),
 			in: RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
 		)
 		.animation(.easeOut(duration: 0.12), value: hovering)

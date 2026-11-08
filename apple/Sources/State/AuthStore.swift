@@ -30,29 +30,31 @@ final class AuthStore {
 	/// Versucht, die gespeicherte Session (Cookie) wiederzuverwenden,
 	/// sonst Still-Login mit den Keychain-Zugangsdaten.
 	func restore() async {
-		guard !serverURL.isEmpty,
-		      let url = Self.normalize(serverURL),
-		      let username = Keychain.get("username"),
-		      let password = Keychain.get("password") else {
+		guard !serverURL.isEmpty, let url = Self.normalize(serverURL) else {
 			status = .guest
 			return
 		}
 		let api = APIClient(serverURL: url)
-		do {
-			let me = try await api.me()
+		// 1.) Session-Cookie reicht, wenn der Server die Session noch kennt.
+		if let me = try? await api.me() {
 			self.client = api
 			self.user = me
 			self.status = .authenticated
+			return
+		}
+		// 2.) Still-Login mit gespeicherten Zugangsdaten.
+		guard let username = Keychain.get("username"),
+		      let password = Keychain.get("password") else {
+			status = .guest
+			return
+		}
+		do {
+			let u = try await api.login(username: username, password: password)
+			self.client = api
+			self.user = u
+			self.status = .authenticated
 		} catch {
-			// Session abgelaufen → neu einloggen.
-			do {
-				let u = try await api.login(username: username, password: password)
-				self.client = api
-				self.user = u
-				self.status = .authenticated
-			} catch {
-				self.status = .guest
-			}
+			self.status = .guest
 		}
 	}
 

@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Anmelde-Maske: zentrierte Karte mit Server-, Benutzer- und Passwortfeld.
+/// Anmelde-Maske: Ambient-Hintergrund + zentrierte Marke-Karte mit
+/// Server-, Benutzer- und Passwortfeld (Fokusringe in Akzentfarbe).
 struct LoginView: View {
 	@Environment(AuthStore.self) private var auth
 
@@ -20,68 +21,76 @@ struct LoginView: View {
 	}
 
 	var body: some View {
-		VStack(spacing: 0) {
-			ScrollView {
-				VStack(spacing: DS.Space.xl) {
-					header
+		ZStack {
+			AmbientBackground()
 
-					VStack(spacing: DS.Space.md) {
-						FieldRow(title: "Server", systemImage: "globe") {
-							TextField("http://10.10.10.1:3001", text: $server)
-								.autocorrectionDisabled()
-								#if os(iOS)
-								.textInputAutocapitalization(.never)
-								#endif
-								.focused($focusedField, equals: .server)
-								.onSubmit { focusedField = .user }
-						}
-						FieldRow(title: "Benutzername", systemImage: "person") {
-							TextField("Benutzername", text: $username)
-								.autocorrectionDisabled()
-								#if os(iOS)
-								.textInputAutocapitalization(.never)
-								#endif
-								.focused($focusedField, equals: .user)
-								.onSubmit { focusedField = .password }
-						}
-						FieldRow(title: "Passwort", systemImage: "lock") {
-							SecureField("Passwort", text: $password)
-								.focused($focusedField, equals: .password)
-								.onSubmit { submit() }
-						}
-					}
+			VStack(spacing: 0) {
+				ScrollView {
+					VStack(spacing: DS.Space.xl) {
+						header
 
-					if let errorText {
-						ErrorBanner(message: errorText)
-					}
-
-					Button {
-						submit()
-					} label: {
-						if busy {
-							ProgressView()
-								.controlSize(.regular)
-								.tint(.white)
-								.frame(maxWidth: .infinity, minHeight: 20)
-						} else {
-							Text("Anmelden")
+						VStack(spacing: DS.Space.md) {
+							FieldRow(title: "Server", systemImage: "globe",
+							         focused: focusedField == .server) {
+								TextField("http://10.10.10.1:3001", text: $server)
+									.autocorrectionDisabled()
+									#if os(iOS)
+									.textInputAutocapitalization(.never)
+									#endif
+									.focused($focusedField, equals: .server)
+									.onSubmit { focusedField = .user }
+							}
+							FieldRow(title: "Benutzername", systemImage: "person",
+							         focused: focusedField == .user) {
+								TextField("Benutzername", text: $username)
+									.autocorrectionDisabled()
+									#if os(iOS)
+									.textInputAutocapitalization(.never)
+									#endif
+									.focused($focusedField, equals: .user)
+									.onSubmit { focusedField = .password }
+							}
+							FieldRow(title: "Passwort", systemImage: "lock",
+							         focused: focusedField == .password) {
+								SecureField("Passwort", text: $password)
+									.focused($focusedField, equals: .password)
+									.onSubmit { submit() }
+							}
 						}
+
+						if let errorText {
+							ErrorBanner(message: errorText)
+						}
+
+						Button {
+							submit()
+						} label: {
+							if busy {
+								ProgressView()
+									.controlSize(.regular)
+									.tint(.white)
+									.frame(maxWidth: .infinity, minHeight: 20)
+							} else {
+								Text("Anmelden")
+							}
+						}
+						.primaryButton()
+						.disabled(!canSubmit)
 					}
-					.primaryButton()
-					.disabled(!canSubmit)
+					.padding(DS.Space.xxl)
+					.padding(.top, DS.Space.lg)
+					.frame(maxWidth: 380)
+					.dsCard()
+					.frame(maxWidth: 380)
+					.padding(.vertical, DS.Space.xl)
 				}
-				.padding(DS.Space.xl)
-				.frame(maxWidth: 380)
-				.dsCard()
-				.frame(maxWidth: 380)
-			}
-			.frame(maxWidth: .infinity, maxHeight: .infinity)
+				.frame(maxWidth: .infinity, maxHeight: .infinity)
 
-			footnote
-				.padding(.bottom, DS.Space.lg)
+				footnote
+					.padding(.bottom, DS.Space.lg)
+			}
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
-		.background(DS.background)
 		.onAppear {
 			server = auth.serverURL
 			username = auth.lastUsername
@@ -92,10 +101,10 @@ struct LoginView: View {
 
 	private var header: some View {
 		VStack(spacing: DS.Space.sm) {
-			HorizontMark(size: 64)
-				.padding(.bottom, DS.Space.xs)
+			BrandTile(size: 60)
+				.padding(.bottom, DS.Space.sm)
 			Text("Horizont")
-				.font(DS.Typo.pageTitle)
+				.font(.system(size: 26, weight: .bold))
 				.foregroundStyle(DS.textPrimary)
 			Text("Vergangenheit · Jetzt · Zukunft")
 				.font(DS.Typo.meta)
@@ -128,10 +137,11 @@ struct LoginView: View {
 	}
 }
 
-/// Beschriftetes Eingabefeld mit Icon im Karten-Look (Login).
+/// Beschriftetes Eingabefeld mit Icon und Akzent-Fokusring (Login).
 private struct FieldRow<Content: View>: View {
 	let title: String
 	let systemImage: String
+	var focused: Bool = false
 	@ViewBuilder var content: () -> Content
 
 	var body: some View {
@@ -142,43 +152,13 @@ private struct FieldRow<Content: View>: View {
 			HStack(spacing: DS.Space.sm) {
 				Image(systemName: systemImage)
 					.font(.system(size: 12, weight: .medium))
-					.foregroundStyle(DS.textTertiary)
+					.foregroundStyle(focused ? DS.accent : DS.textTertiary)
 					.frame(width: 14)
 				content()
 					.textFieldStyle(.plain)
 			}
-			.padding(.horizontal, DS.Space.md)
-			.padding(.vertical, 9)
-			.background(
-				RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-					.fill(DS.background)
-			)
-			.overlay(
-				RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-					.strokeBorder(DS.border, lineWidth: 1)
-			)
+			.fieldChrome(focused: focused)
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
-	}
-}
-
-/// Dezente Wortmarke (Punkt + Horizonte), angelehnt ans Web-Logo.
-struct HorizontMark: View {
-	var size: CGFloat = 40
-
-	var body: some View {
-		ZStack {
-			Circle()
-				.fill(Color.accentColor)
-				.frame(width: size * 0.34, height: size * 0.34)
-				.offset(x: -size * 0.28)
-			ForEach(0..<3) { i in
-				Capsule()
-					.fill(Color.accentColor.opacity(0.85 - Double(i) * 0.22))
-					.frame(width: size * (0.9 - CGFloat(i) * 0.18), height: size * 0.08)
-					.offset(x: size * 0.12, y: CGFloat(i - 1) * size * 0.16)
-			}
-		}
-		.frame(width: size, height: size)
 	}
 }

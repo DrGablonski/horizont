@@ -6,7 +6,9 @@ struct ArchiveView: View {
 	@State private var selectedDay: String?
 
 	var body: some View {
-		NavigationStack {
+		VStack(spacing: 0) {
+			SectionHeader("Archiv", subtitle: store.archive.map { monthTitle($0.monthKey) } ?? "Monate mit Einträgen durchblättern")
+
 			ScrollView {
 				VStack(alignment: .leading, spacing: DS.Space.lg) {
 					if let err = store.archiveError {
@@ -35,11 +37,10 @@ struct ArchiveView: View {
 				.frame(maxWidth: 720, alignment: .leading)
 				.frame(maxWidth: .infinity, alignment: .top)
 			}
-			.background(DS.background)
-			.navigationTitle("Archiv")
-			.task {
-				if store.archive == nil { await store.loadArchive() }
-			}
+			.refreshable { await store.loadArchive(monthKey: store.archive?.monthKey) }
+		}
+		.task {
+			if store.archive == nil { await store.loadArchive() }
 		}
 	}
 
@@ -205,19 +206,19 @@ private struct DayCellView: View {
 					.frame(height: 17)
 				Circle()
 					.fill(isSelected ? AnyShapeStyle(.white)
-						: hasEvents ? AnyShapeStyle(Color.accentColor)
+						: hasEvents ? AnyShapeStyle(DS.accent)
 						: AnyShapeStyle(Color.clear))
 					.frame(width: 5, height: 5)
 			}
 			.frame(width: 42, height: 42)
 			.background(
 				Circle().fill(isSelected
-				              ? AnyShapeStyle(Color.accentColor)
+				              ? AnyShapeStyle(DS.accent)
 				              : AnyShapeStyle(Color.primary.opacity(hovering ? 0.07 : 0)))
 			)
 			.overlay(
 				Circle().strokeBorder(
-					isToday && !isSelected ? Color.accentColor : Color.clear,
+					isToday && !isSelected ? DS.accent : Color.clear,
 					lineWidth: 1.5)
 			)
 			.contentShape(Circle())

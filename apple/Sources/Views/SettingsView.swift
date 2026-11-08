@@ -25,55 +25,60 @@ struct SettingsView: View {
 
 	var body: some View {
 		NavigationStack {
-			ScrollView {
-				VStack(spacing: DS.Space.lg) {
-					SettingsSectionCard(title: "Konto") {
-						LabeledContent {
-							Text(auth.user?.username ?? "–")
-						} label: {
-							HStack(spacing: DS.Space.md) {
-								avatar
-								Text("Angemeldet als")
+			VStack(spacing: 0) {
+				SectionHeader("Einstellungen", subtitle: "Konto, Verbindungen & Benachrichtigungen")
+
+				ScrollView {
+					VStack(spacing: DS.Space.lg) {
+						AppearanceSection()
+
+						SettingsSectionCard(title: "Konto") {
+							LabeledContent {
+								Text(auth.user?.username ?? "–")
+							} label: {
+								HStack(spacing: DS.Space.md) {
+									avatar
+									Text("Angemeldet als")
+								}
 							}
+							LabeledContent("Rolle", value: auth.user?.role ?? "–")
 						}
-						LabeledContent("Rolle", value: auth.user?.role ?? "–")
-					}
 
-					ConnectionsSection()
-					CalendarsSection()
-					NotifySection()
+						ConnectionsSection()
+						CalendarsSection()
+						NotifySection()
 
-					SettingsSectionCard(title: "Server") {
-						TextField("Server-URL", text: $serverDraft)
-							.autocorrectionDisabled()
-						Text("Nach dem Speichern abmelden und wieder anmelden, damit die App neue Daten lädt.")
-							.font(.caption)
-							.foregroundStyle(DS.textSecondary)
-						Button("Speichern") {
-							auth.serverURL = trimmedDraft
+						SettingsSectionCard(title: "Server") {
+							TextField("Server-URL", text: $serverDraft)
+								.autocorrectionDisabled()
+							Text("Nach dem Speichern abmelden und wieder anmelden, damit die App neue Daten lädt.")
+								.font(.caption)
+								.foregroundStyle(DS.textSecondary)
+							Button("Speichern") {
+								auth.serverURL = trimmedDraft
+							}
+							.disabled(!canSave)
+							.primaryButton()
 						}
-						.disabled(!canSave)
-						.primaryButton()
-					}
 
-					SettingsSectionCard(title: "Info") {
-						LabeledContent("Version", value: appVersion)
-					}
+						SettingsSectionCard(title: "Info") {
+							LabeledContent("Version", value: appVersion)
+						}
 
-					// Abmelden ohne Sektionstitel (wie bisher).
-					Button("Abmelden", role: .destructive) {
-						Task { await auth.logout() }
+						// Abmelden ohne Sektionstitel (wie bisher).
+						Button("Abmelden", role: .destructive) {
+							Task { await auth.logout() }
+						}
+						.frame(maxWidth: .infinity)
+						.padding(DS.Space.md)
+						.dsCard()
 					}
+					.padding(DS.Space.xl)
+					.frame(maxWidth: 640)
 					.frame(maxWidth: .infinity)
-					.padding(DS.Space.md)
-					.dsCard()
+					}
 				}
-				.padding(DS.Space.xl)
-				.frame(maxWidth: 640)
-				.frame(maxWidth: .infinity)
 			}
-			.navigationTitle("Einstellungen")
-		}
 		.onAppear { serverDraft = auth.serverURL }
 	}
 
@@ -85,9 +90,107 @@ struct SettingsView: View {
 				.fill(DS.tintSoft)
 			Text(initial)
 				.font(DS.Typo.metaStrong)
-				.foregroundStyle(Color.accentColor)
+				.foregroundStyle(DS.accent)
 		}
 		.frame(width: 28, height: 28)
+	}
+}
+
+// MARK: – Erscheinungsbild
+
+/// Appearance-Modus (System/Hell/Dunkel) + Akzent-Presets – Bedienung wie die
+/// Theme-Kacheln bei Diddy, wirkt sofort im ganzen Fenster.
+private struct AppearanceSection: View {
+	@Environment(ThemeStore.self) private var theme
+
+	var body: some View {
+		SettingsSectionCard(title: "Erscheinungsbild") {
+			HStack(spacing: DS.Space.sm) {
+				ForEach(AppearanceMode.allCases) { mode in
+					ModePill(mode: mode, isActive: theme.mode == mode) {
+						theme.mode = mode
+					}
+				}
+				Spacer()
+			}
+
+			VStack(alignment: .leading, spacing: DS.Space.sm) {
+				Text("Akzentfarbe")
+					.font(DS.Typo.meta)
+					.foregroundStyle(DS.textSecondary)
+				HStack(spacing: DS.Space.sm) {
+					ForEach(AccentPreset.all) { preset in
+						AccentDot(preset: preset, isActive: theme.accentPreset.id == preset.id) {
+							theme.accentPreset = preset
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+/// Umschalt-Pille für die Appearance-Modi.
+private struct ModePill: View {
+	let mode: AppearanceMode
+	let isActive: Bool
+	let action: () -> Void
+
+	@State private var hovering = false
+
+	var body: some View {
+		Button(action: action) {
+			HStack(spacing: DS.Space.xs) {
+				Image(systemName: mode.icon).font(.system(size: 11, weight: .medium))
+				Text(mode.label).font(.callout.weight(isActive ? .semibold : .medium))
+			}
+			.foregroundStyle(isActive ? DS.accent : DS.textSecondary)
+			.padding(.horizontal, DS.Space.md)
+			.padding(.vertical, 7)
+			.background(
+				Capsule().fill(isActive ? DS.tintSoft : hovering ? DS.rowHover : DS.fillSubtle)
+			)
+			.overlay(
+				Capsule().strokeBorder(isActive ? DS.accent.opacity(0.5) : DS.border, lineWidth: 1)
+			)
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
+	}
+}
+
+/// Farbpunkt mit Auswahl-Ring (Akzent-Presets).
+private struct AccentDot: View {
+	let preset: AccentPreset
+	let isActive: Bool
+	let action: () -> Void
+
+	@State private var hovering = false
+
+	var body: some View {
+		Button(action: action) {
+			ZStack {
+				Circle()
+					.fill(Color.dynamic(light: preset.light, dark: preset.dark))
+					.frame(width: 26, height: 26)
+				if isActive {
+					Image(systemName: "checkmark")
+						.font(.system(size: 11, weight: .bold))
+						.foregroundStyle(.white)
+				}
+			}
+			.overlay(
+				Circle().strokeBorder(
+					isActive ? DS.textPrimary : hovering ? DS.borderStrong : Color.clear,
+					lineWidth: isActive ? 2 : 1.5)
+					.padding(-4)
+			)
+			.help(preset.name)
+			.accessibilityLabel(preset.name)
+		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
 	}
 }
 
@@ -433,7 +536,7 @@ private struct NotifySection: View {
 
 	/// Togglebarer Kategorien-Chip im Chip-Look des Design-Systems.
 	private func categoryChip(_ cat: TaskCategory) -> some View {
-		let color = dsColor(hex: cat.color) ?? Color.accentColor
+		let color = dsColor(hex: cat.color) ?? DS.accent
 		let on = selectedCategories.contains(cat.name)
 		return Button {
 			if on {

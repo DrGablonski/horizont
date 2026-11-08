@@ -29,30 +29,48 @@ enum DS {
 		static let pill: CGFloat = 999
 	}
 
-	// MARK: – Farben (systemadaptiv)
+	// MARK: – Farben (eigene Palette, nicht Systemfarben)
 
 	/// Karten-/Popover-Fläche.
-	static let card = Color(nsColor: .controlBackgroundColor)
-	/// Fensterhintergrund.
-	static let background = Color(nsColor: .windowBackgroundColor)
-	/// Standard-Trennlinie.
-	static let border = Color(nsColor: .separatorColor)
+	static let card = Color.dynamic(light: 0xFFFFFF, dark: 0x1C1E25)
+	/// Erhöhte Fläche (Popover, Sheet-inhalt).
+	static let cardElevated = Color.dynamic(light: 0xFFFFFF, dark: 0x24272F)
+	/// Fensterhintergrund (Graphite-Dark / Paper-Light).
+	static let background = Color.dynamic(light: 0xF4F5F7, dark: 0x14151A)
+	/// Sidebar-Fläche (eigenständig getönt, wie im Diddy-Look).
+	static let sidebar = Color.dynamic(light: 0xFAFAFC, dark: 0x0E0F13)
+	/// Standard-Trennlinie (Hell: Schwarz 10 %, Dunkel: Weiß 9 %).
+	static let border = Color.dynamicAlpha(light: (0x000000, 0.10), dark: (0xFFFFFF, 0.09))
+	/// Kräftigere Kontur (Fokus, aktive Elemente).
+	static let borderStrong = Color.dynamicAlpha(light: (0x000000, 0.16), dark: (0xFFFFFF, 0.16))
 	/// Primaertext.
-	static let textPrimary = Color(nsColor: .labelColor)
+	static let textPrimary = Color.dynamic(light: 0x1B1D22, dark: 0xEEF0F4)
 	/// Sekundärtext.
-	static let textSecondary = Color(nsColor: .secondaryLabelColor)
+	static let textSecondary = Color.dynamic(light: 0x5B606B, dark: 0xA8ACB8)
 	/// Gedämpfter Text (Platzhalter, Meta).
-	static let textTertiary = Color(nsColor: .tertiaryLabelColor)
+	static let textTertiary = Color.dynamic(light: 0x8A8F9B, dark: 0x767B88)
 	/// Sehr dezente Füllfläche (Chips, Zeilen-Background).
-	static let fillSubtle = Color(nsColor: .quaternaryLabelColor).opacity(0.45)
+	static let fillSubtle = Color.dynamicAlpha(light: (0x000000, 0.05), dark: (0xFFFFFF, 0.06))
+	/// Hover-Aufhellung für Zeilen/Buttons.
+	static let rowHover = Color.dynamicAlpha(light: (0x000000, 0.045), dark: (0xFFFFFF, 0.06))
 
 	/// Erfolgs-/Erledigt-Grün (Web: emerald-600 / emerald-400).
 	static let success = Color.dynamic(light: 0x059669, dark: 0x34D399)
 	/// Warn-/Überfällig-Rot (Web: red-600 / red-400).
 	static let danger = Color.dynamic(light: 0xDC2626, dark: 0xF87171)
-	/// Akzent-Tönung für aktive Elemente (nutzt die Systemakzentfarbe).
-	static let tintSoft = Color.accentColor.opacity(0.14)
-	static let tintMedium = Color.accentColor.opacity(0.28)
+
+	/// Akzentfarbe aus dem gewählten Theme-Preset.
+	static var accent: Color { ThemeStore.shared.accent }
+	/// Akzent-Tönung für aktive Elemente.
+	static var tintSoft: Color { accent.opacity(0.16) }
+	static var tintMedium: Color { accent.opacity(0.30) }
+
+	/// Ambient-Glows für den Fensterhintergrund (warm in Akzentfarbe, kühl gegenüber).
+	static var glowWarm: Color {
+		Color.dynamicAlpha(light: (ThemeStore.shared.accentPreset.light, 0.12),
+		                   dark: (ThemeStore.shared.accentPreset.dark, 0.16))
+	}
+	static let glowCool = Color.dynamicAlpha(light: (0x3E5C76, 0.10), dark: (0x3E5C76, 0.14))
 
 	// MARK: – Typografie
 
@@ -77,6 +95,15 @@ extension Color {
 		})
 	}
 
+	/// Hell/Dunkel-Paar mit Alpha (Konturen, Füllflächen).
+	static func dynamicAlpha(light: (UInt64, CGFloat), dark: (UInt64, CGFloat)) -> Color {
+		Color(nsColor: NSColor(name: nil) { appearance in
+			let darkMode = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+			let (hex, alpha) = darkMode ? dark : light
+			return NSColor.dsSRGB(hex).withAlphaComponent(alpha)
+		})
+	}
+
 }
 
 extension NSColor {
@@ -91,8 +118,8 @@ extension NSColor {
 
 // MARK: – Karten
 
-/// Karten-Look wie im Web (`bg-card + border + rounded-xl`):
-/// dezente Schwebe nur im Light-Mode, klare Kontur in beiden Modi.
+/// Karten-Look wie im Web / Diddy: eigene Fläche, feine Kontur in beiden Modi,
+/// sanfte Schwebe (stärker im Dark-Mode).
 struct CardStyle: ViewModifier {
 	@Environment(\.colorScheme) private var scheme
 
@@ -106,7 +133,8 @@ struct CardStyle: ViewModifier {
 				RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
 					.strokeBorder(DS.border, lineWidth: 1)
 			)
-			.shadow(color: .black.opacity(scheme == .light ? 0.06 : 0), radius: 8, y: 2)
+			.shadow(color: .black.opacity(scheme == .light ? 0.05 : 0.28),
+			        radius: scheme == .light ? 6 : 10, y: scheme == .light ? 2 : 4)
 	}
 }
 
@@ -140,9 +168,10 @@ struct Chip: View {
 
 // MARK: – Buttons
 
-/// Füllter Primärbutton (Anmelden, Speichern) – Kante 10px, volle Breite möglich.
+/// Gefüllter Primärbutton (Anmelden, Speichern) in der Akzentfarbe des Themes.
 struct PrimaryButtonStyle: ButtonStyle {
 	@Environment(\.isEnabled) private var isEnabled
+	@State private var hovering = false
 
 	func makeBody(configuration: Configuration) -> some View {
 		configuration.label
@@ -150,12 +179,18 @@ struct PrimaryButtonStyle: ButtonStyle {
 			.frame(maxWidth: .infinity)
 			.padding(.vertical, 10)
 			.background(
-				RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-					.fill(Color.accentColor.opacity(isEnabled ? 1 : 0.4))
+				ZStack {
+					RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+						.fill(DS.accent.opacity(isEnabled ? 1 : 0.4))
+					RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+						.fill(Color.white.opacity(isEnabled && hovering ? 0.10 : 0))
+				}
 			)
 			.foregroundStyle(.white)
 			.scaleEffect(configuration.isPressed ? 0.985 : 1)
 			.animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+			.animation(.easeOut(duration: 0.12), value: hovering)
+			.onHover { hovering = $0 }
 	}
 }
 
