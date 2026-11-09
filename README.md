@@ -7,9 +7,9 @@ Aufgabenlisten. Deine Termine kommen aus **CalDAV**-Backends (Radicale, Baïkal,
 iCal, Nextcloud, …). Alle CalDAV-Verbindungen gehören dem Benutzer und sind
 vollständig verwaltbar (anlegen, bearbeiten, testen, löschen).
 
-Alles lebt in **einem Branch (`main`)**: Server, Web-App und die native
-macOS-App (`apple/`). Beim **Docker-Build** entscheidest du, welche Variante
-du hostest:
+Alles lebt in **einem Branch (`main`)**: Server, Web-App und die nativen
+Apple-Apps (`apple/` = macOS, `ipad/` = iPadOS + Widgets, jeweils eigener
+Code-Ordner). Beim **Docker-Build** entscheidest du, welche Variante du hostest:
 
 | Variante | Start | Was läuft |
 | -------- | ----- | --------- |
@@ -41,6 +41,12 @@ anlegen.
 
 SwiftUI-Client auf derselben API — egal ob Web- oder Headless-Instanz.
 Bauanleitung im [`apple/README.md`](apple/README.md).
+
+## Native iPadOS-App + Widgets (`ipad/`)
+
+Eigenständiges XcodeGen-Projekt (iPad, iOS 17+) mit „Heute“-Widgets (Home-Screen +
+Sperrbildschirm) und Gesten (Wischen = Erledigen). Eigener Code-Ordner, getrennt
+von `apple/`. Bauanleitung im [`ipad/README.md`](ipad/README.md).
 
 ---
 
