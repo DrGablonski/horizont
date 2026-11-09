@@ -34,8 +34,43 @@ final class AppStore {
 	var connections: [ConnectionView] = []
 	var notify: NotifyConfigView?
 
+	private let serverBase: String
+	private var prefetchStarted = false
+
 	init(client: APIClient) {
 		self.client = client
+		self.serverBase = client.baseURL.absoluteString
+		loadSnapshots()
+	}
+
+	// MARK: – Snapshot (sofortiger Start aus lokalen Dateien)
+
+	/// Zuerst geladene Antworten von der Disk laden → Views zeigen beim Start
+	/// sofort Inhalte, prefetchIfNeeded aktualisiert sie im Hintergrund.
+	private func loadSnapshots() {
+		home = SnapshotStore.load(MainEventsResponse.self, name: "home", serverBase: serverBase)
+		archive = SnapshotStore.load(ArchiveMonth.self, name: "archive", serverBase: serverBase)
+		workflows = SnapshotStore.load([Workflow].self, name: "workflows", serverBase: serverBase) ?? []
+		calendars = SnapshotStore.load([CalDavCalendar].self, name: "calendars", serverBase: serverBase) ?? []
+		categories = SnapshotStore.load([TaskCategory].self, name: "categories", serverBase: serverBase) ?? []
+	}
+
+	private func saveSnapshot<T: Encodable>(_ value: T, name: String) {
+		SnapshotStore.save(value, name: name, serverBase: serverBase)
+	}
+
+	/// Alle Bereiche einmal parallel laden (einmal pro App-Lebenszeit).
+	/// Läuft nach dem Login; dank Snapshots sind die Views derweil schon gefüllt.
+	func prefetchIfNeeded() async {
+		guard !prefetchStarted else { return }
+		prefetchStarted = true
+		await withTaskGroup(of: Void.self) { group in
+			group.addTask { await self.loadHome() }
+			group.addTask { await self.loadArchive() }
+			group.addTask { await self.loadWorkflows() }
+			group.addTask { await self.loadCalendars() }
+			group.addTask { await self.loadCategories() }
+		}
 	}
 
 	// MARK: – Start
@@ -46,6 +81,7 @@ final class AppStore {
 		do {
 			home = try await client.mainEvents()
 			homeError = home?.error
+			if let home { saveSnapshot(home, name: "home") }
 		} catch {
 			homeError = error.localizedDescription
 		}
@@ -144,6 +180,7 @@ final class AppStore {
 		do {
 			try await client.updateTaskCompleted(
 				calendarId: event.calendarId, uid: event.uid, completed: newValue)
+			if let home { saveSnapshot(home, name: "home") }
 		} catch {
 			// Rollback
 			if var p = home?.panels, let l = findEvent(event.id, in: &p) {
@@ -175,6 +212,7 @@ final class AppStore {
 		do {
 			archive = try await client.archiveMonth(monthKey)
 			archiveError = archive?.error
+			if let archive { saveSnapshot(archive, name: "archive") }
 		} catch {
 			archiveError = error.localizedDescription
 		}
@@ -188,6 +226,7 @@ final class AppStore {
 		do {
 			workflows = try await client.workflows()
 			workflowsError = nil
+			saveSnapshot(workflows, name: "workflows")
 		} catch {
 			workflowsError = error.localizedDescription
 		}
@@ -300,6 +339,7 @@ final class AppStore {
 		do {
 			let r = try await client.calendars()
 			calendars = r.calendars
+			saveSnapshot(calendars, name: "calendars")
 		} catch {}
 		calendarsLoaded = true
 	}
@@ -307,6 +347,7 @@ final class AppStore {
 	func loadCategories() async {
 		do {
 			categories = try await client.categories()
+			saveSnapshot(categories, name: "categories")
 		} catch {}
 	}
 

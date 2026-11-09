@@ -118,6 +118,7 @@ struct MacMainView: View {
 		}
 		.environment(store)
 		.background(WindowChromeAccessor().frame(width: 0, height: 0))
+		.task { await store.prefetchIfNeeded() }
 		.onReceive(NotificationCenter.default.publisher(for: NavCmd.select)) { note in
 			// Commands posten den Section-Index (Reihenfolge = allCases).
 			if let index = note.object as? Int,
