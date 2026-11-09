@@ -41,8 +41,8 @@ struct RootView: View {
 	}
 }
 
-/// Mac-Shell: eigene Sidebar (Marke, Pill-Navigation, Benutzer-Karte) statt
-/// Default-List – Look wie bei Diddy, Farben aus der eigenen Palette.
+/// Mac-Shell: obere Navigationsleiste (Marke, Pill-Navigation, Benutzer)
+/// wie in der Web-App – Look wie bei Diddy, Farben aus der eigenen Palette.
 struct MacMainView: View {
 	enum Section: String, CaseIterable, Identifiable {
 		case horizont = "Horizont"
@@ -98,6 +98,7 @@ struct MacMainView: View {
 
 	let client: APIClient
 	@Environment(AuthStore.self) private var auth
+	@Environment(ThemeStore.self) private var theme
 	@State private var store: AppStore
 	@State private var section: Section
 
@@ -110,10 +111,9 @@ struct MacMainView: View {
 	}
 
 	var body: some View {
-		NavigationSplitView {
-			sidebar
-				.navigationSplitViewColumnWidth(min: 220, ideal: 240)
-		} detail: {
+		VStack(spacing: 0) {
+			topBar
+			Divider().overlay(DS.border)
 			detail
 		}
 		.environment(store)
@@ -134,87 +134,91 @@ struct MacMainView: View {
 		}
 	}
 
-	// MARK: – Sidebar
+	// MARK: – Obere Navigationsleiste
 
-	private var sidebar: some View {
-		VStack(spacing: 0) {
-			brandHeader
-			navList
-			Spacer(minLength: 0)
-			Divider().overlay(DS.border)
-			userFooter
-		}
-		.background(SidebarBackground())
-	}
-
-	/// Marke + Wortmarke oben (Lichtschalter-Aussparung durch Padding).
-	private var brandHeader: some View {
-		HStack(spacing: DS.Space.sm) {
-			BrandTile(size: 30)
-			VStack(alignment: .leading, spacing: 0) {
-				Text("Horizont")
-					.font(.system(size: 15, weight: .semibold))
-					.foregroundStyle(DS.textPrimary)
-				Text("Kalender")
-					.font(.system(size: 11))
-					.foregroundStyle(DS.textTertiary)
-			}
-			Spacer(minLength: 0)
-		}
-		.padding(.horizontal, DS.Space.md)
-		.padding(.top, 40)
-		.padding(.bottom, DS.Space.md)
-	}
-
-	private var navList: some View {
-		VStack(spacing: DS.Space.xxs) {
-			ForEach(Section.allCases) { s in
-				NavRow(
-					section: s,
-					isSelected: section == s
-				) {
-					section = s
-					UserDefaults.standard.set(s.rawValue, forKey: Self.sectionKey)
+	/// Leiste wie im Web-Header: links Marke, mittig die Pill-Navigation,
+	/// rechts Theme-Schalter + Benutzer + Abmelden. Amperschalter bekommen
+	/// links Platz (fullSizeContentView).
+	private var topBar: some View {
+		HStack(spacing: DS.Space.md) {
+			HStack(spacing: DS.Space.sm) {
+				BrandTile(size: 28)
+				VStack(alignment: .leading, spacing: 0) {
+					Text("Horizont")
+						.font(.system(size: 14, weight: .semibold))
+						.foregroundStyle(DS.textPrimary)
+					Text("Kalender")
+						.font(.system(size: 10))
+						.foregroundStyle(DS.textTertiary)
 				}
 			}
-		}
-		.padding(.horizontal, DS.Space.sm)
-	}
 
-	/// Benutzer-Karte im Fuß (Avatar + Abmelden), wie bei Diddy.
-	private var userFooter: some View {
-		HStack(spacing: DS.Space.sm) {
-			ZStack {
-				Circle().fill(DS.tintSoft)
-				Text(String((auth.user?.username ?? "?").prefix(1)).uppercased())
-					.font(DS.Typo.metaStrong)
-					.foregroundStyle(DS.accent)
+			Spacer(minLength: DS.Space.md)
+
+			HStack(spacing: DS.Space.xxs) {
+				ForEach(Section.allCases) { s in
+					NavPill(
+						section: s,
+						isSelected: section == s,
+						help: "\(s.rawValue) (\(s.shortcutHint))"
+					) {
+						select(s)
+					}
+				}
 			}
-			.frame(width: 30, height: 30)
 
-			VStack(alignment: .leading, spacing: 1) {
+			Spacer(minLength: DS.Space.md)
+
+			HStack(spacing: DS.Space.xs) {
+				Button {
+					cycleAppearance()
+				} label: {
+					Image(systemName: theme.mode.icon)
+						.foregroundStyle(DS.textSecondary)
+				}
+				.ghostButton()
+				.help("Erscheinungsbild: \(theme.mode.label)")
+				.accessibilityLabel("Erscheinungsbild wechseln")
+
+				ZStack {
+					Circle().fill(DS.tintSoft)
+					Text(String((auth.user?.username ?? "?").prefix(1)).uppercased())
+						.font(DS.Typo.metaStrong)
+						.foregroundStyle(DS.accent)
+				}
+				.frame(width: 26, height: 26)
+
 				Text(auth.user?.username ?? "–")
 					.font(DS.Typo.metaStrong)
-					.foregroundStyle(DS.textPrimary)
-					.lineLimit(1)
-			}
-			Spacer(minLength: DS.Space.xs)
-			Button {
-				Task { await auth.logout() }
-			} label: {
-				Image(systemName: "rectangle.portrait.and.arrow.right")
 					.foregroundStyle(DS.textSecondary)
+					.lineLimit(1)
+
+				Button {
+					Task { await auth.logout() }
+				} label: {
+					Image(systemName: "rectangle.portrait.and.arrow.right")
+						.foregroundStyle(DS.textSecondary)
+				}
+				.ghostButton()
+				.help("Abmelden")
+				.accessibilityLabel("Abmelden")
 			}
-			.ghostButton()
-			.help("Abmelden")
-			.accessibilityLabel("Abmelden")
 		}
-		.padding(DS.Space.sm)
-		.background(
-			RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-				.fill(DS.fillSubtle)
-		)
-		.padding(DS.Space.sm)
+		.padding(.leading, 80) // Platz für die Amperschalter
+		.padding(.trailing, DS.Space.md)
+		.frame(height: 52)
+	}
+
+	private func select(_ s: Section) {
+		section = s
+		UserDefaults.standard.set(s.rawValue, forKey: Self.sectionKey)
+	}
+
+	/// System → Hell → Dunkel durchschalten (Parität zum Web-ThemeToggle).
+	/// ThemeStore.mode wendet die Änderung automatisch an (didSet).
+	private func cycleAppearance() {
+		let all = AppearanceMode.allCases
+		theme.mode = all[((all.firstIndex(of: theme.mode) ?? 0) + 1) % all.count]
 	}
 
 	// MARK: – Detail
@@ -262,34 +266,30 @@ struct MacMainView: View {
 	}
 }
 
-// MARK: – Sidebar-Navigationszeile
+// MARK: – Navigations-Pille (obere Leiste)
 
-/// Pillenzeile mit Icon, Titel und Shortcut-Hinweis (ausgwählt: Akzent-Pille).
-private struct NavRow: View {
+/// Pille mit Icon + Titel (ausgwählt: Akzent-Pille); Shortcut-Hinweis als Tooltip.
+private struct NavPill: View {
 	let section: MacMainView.Section
 	let isSelected: Bool
+	let help: String
 	let action: () -> Void
 
 	@State private var hovering = false
 
 	var body: some View {
 		Button(action: action) {
-			HStack(spacing: DS.Space.sm) {
+			HStack(spacing: DS.Space.xs) {
 				Image(systemName: section.icon)
-					.font(.system(size: 13, weight: .medium))
+					.font(.system(size: 12, weight: .medium))
 					.foregroundStyle(isSelected ? DS.accent : DS.textSecondary)
-					.frame(width: 18)
 				Text(section.rawValue)
 					.font(.callout.weight(isSelected ? .semibold : .medium))
-					.foregroundStyle(isSelected ? DS.accent : DS.textPrimary)
+					.foregroundStyle(isSelected ? DS.textPrimary : DS.textSecondary)
 					.lineLimit(1)
-				Spacer(minLength: DS.Space.sm)
-				Text(section.shortcutHint)
-					.font(DS.Typo.meta.monospacedDigit())
-					.foregroundStyle(DS.textTertiary)
 			}
 			.padding(.horizontal, DS.Space.sm)
-			.padding(.vertical, 7)
+			.padding(.vertical, 6)
 			.background(
 				RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
 					.fill(isSelected ? DS.tintSoft
@@ -298,6 +298,7 @@ private struct NavRow: View {
 			.contentShape(Rectangle())
 		}
 		.buttonStyle(.plain)
+		.help(help)
 		.onHover { hovering = $0 }
 		.animation(.easeOut(duration: 0.12), value: hovering)
 		.animation(.easeOut(duration: 0.12), value: isSelected)
@@ -307,12 +308,16 @@ private struct NavRow: View {
 // MARK: – Fenster-Chrome
 
 /// Macht die Titelzeile transparent und die Fensterfarbe palettenkonform,
-/// damit Sidebar + Ambient bis zum oberen Rand reichen (Diddy-Look).
+/// damit Leiste + Ambient bis zum oberen Rand reichen (Diddy-Look).
 private struct WindowChromeAccessor: NSViewRepresentable {
 	func makeNSView(context: Context) -> NSView {
 		let v = NSView()
-		DispatchQueue.main.async {
-			guard let win = v.window else { return }
+		// Das Fenster existiert beim ersten Aufbau noch nicht → kurz nachsuchen.
+		func attach(_ tries: Int) {
+			guard let win = v.window else {
+				if tries > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { attach(tries - 1) } }
+				return
+			}
 			win.titleVisibility = .hidden
 			win.titlebarAppearsTransparent = true
 			win.styleMask.insert(.fullSizeContentView)
@@ -325,6 +330,7 @@ private struct WindowChromeAccessor: NSViewRepresentable {
 				               alpha: 1)
 			}
 		}
+		DispatchQueue.main.async { attach(20) }
 		return v
 	}
 
