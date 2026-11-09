@@ -37,9 +37,10 @@ import {
 	PAST_DAYS
 } from '$server/lib/constants';
 import { fetchCalendarIcs } from '$server/caldav/client';
-import { resolveAllCalendars } from '$server/caldav/multi';
+import { resolveAllCalendars, type ResolvedCalendar } from '$server/caldav/multi';
 import { icalToEventItems } from '$server/caldav/ical';
-import { listAllTasks } from '$server/lib/write';
+import { listAllTasksForItems } from '$server/lib/write';
+import { cached } from '$server/lib/panelCache';
 import { getCategories } from '$server/store/categories';
 import type { TaskItem } from '$lib/types';
 
@@ -118,27 +119,33 @@ function categoryColorMap(userId?: string): Map<string, string> {
 
 // ── Hauptansicht ──────────────────────────────────────────────────────────
 
-async function fetchEventsInRange(
-	connections: CalDavConnection[],
+/** Events aus bereits aufgelösten Kalendern holen — pro Kalender parallel. */
+async function fetchEventsForItems(
+	items: ResolvedCalendar[],
+	resolveErrors: string[],
 	rangeStart: number,
 	rangeEnd: number
 ): Promise<{ events: EventItem[]; error: string | null; errors: string[] }> {
-	try {
-		const { items, errors } = await resolveAllCalendars(connections);
-		const events: EventItem[] = [];
-		for (const { connection, calendar } of items) {
-			const icsList = await fetchCalendarIcs(connection, calendar, toIcsUtc(rangeStart), toIcsUtc(rangeEnd));
-			events.push(...icalToEventItems(icsList, calendar, rangeStart, rangeEnd));
-		}
-		events.sort((a, b) => a.startMs - b.startMs || a.summary.localeCompare(b.summary, 'de'));
-		return {
-			events,
-			error: errors.length > 0 ? errors.join(' | ') : null,
-			errors
-		};
-	} catch (e) {
-		return { events: [], error: e instanceof Error ? e.message : String(e), errors: [] };
-	}
+	const errors: string[] = [...resolveErrors];
+	const perCalendar = await Promise.all(
+		items.map(async ({ connection, calendar }) => {
+			try {
+				const icsList = await fetchCalendarIcs(
+					connection,
+					calendar,
+					toIcsUtc(rangeStart),
+					toIcsUtc(rangeEnd)
+				);
+				return icalToEventItems(icsList, calendar, rangeStart, rangeEnd);
+			} catch (e) {
+				errors.push(`${calendar.connectionName}: ${e instanceof Error ? e.message : String(e)}`);
+				return [] as EventItem[];
+			}
+		})
+	);
+	const events = perCalendar.flat();
+	events.sort((a, b) => a.startMs - b.startMs || a.summary.localeCompare(b.summary, 'de'));
+	return { events, error: errors.length > 0 ? errors.join(' | ') : null, errors };
 }
 
 // ── Tasks in die Timeline einbetten ──────────────────────────────────────
@@ -182,11 +189,20 @@ function tasksForDay(tasks: EventItem[], dayStart: number, dayEnd: number): Even
 		);
 }
 
-export async function buildMainResponse(
+export function buildMainResponse(
 	connections: CalDavConnection[],
 	userId?: string
 ): Promise<MainEventsResponse> {
 	const today = todayKey();
+	// Kurzer TTL + Invalidierung bei jeder Schreiboperation (panelCache).
+	return cached(`main:${userId ?? ''}:${today}`, () => buildMain(connections, userId, today));
+}
+
+async function buildMain(
+	connections: CalDavConnection[],
+	userId: string | undefined,
+	today: string
+): Promise<MainEventsResponse> {
 	const todayStart = msFromKey(today);
 	const base: Omit<MainEventsResponse, 'panels'> = {
 		todayKey: today,
@@ -197,9 +213,11 @@ export async function buildMainResponse(
 	if (connections.length === 0) return emptyResponse(base);
 
 	const { startMs, endMs } = mainRange(todayStart);
+	// Kalender nur einmal auflösen, Events und Tasks parallel davon ableiten.
+	const { items, errors } = await resolveAllCalendars(connections);
 	const [{ events, error }, rawTasks] = await Promise.all([
-		fetchEventsInRange(connections, startMs, endMs),
-		listAllTasks(connections).catch(() => [] as TaskItem[])
+		fetchEventsForItems(items, errors, startMs, endMs),
+		listAllTasksForItems(items).catch(() => [] as TaskItem[])
 	]);
 
 	// Aufgaben mitten unter die Kalender-Ereignisse mischen.
@@ -275,7 +293,7 @@ export function archiveWindow(todayStart: number): ArchiveWindow {
 	return { oldest, newest };
 }
 
-export async function buildArchiveMonthResponse(
+export function buildArchiveMonthResponse(
 	connections: CalDavConnection[],
 	requestedMonthKey: string | null,
 	userId?: string
@@ -306,14 +324,30 @@ export async function buildArchiveMonthResponse(
 		configured: connections.length > 0
 	};
 
+	// Gleicher Mechanismus wie die Hauptansicht (TTL + Invalidierung).
+	return cached(`archive:${userId ?? ''}:${monthKey}:${today}`, () =>
+		buildArchive(connections, out, userId, today)
+	);
+}
+
+async function buildArchive(
+	connections: CalDavConnection[],
+	out: Omit<ArchiveMonth, 'days' | 'eventCount'>,
+	userId: string | undefined,
+	today: string
+): Promise<ArchiveMonth> {
 	if (connections.length === 0) {
 		return { ...out, days: [], eventCount: 0 };
 	}
+
+	const todayStart = msFromKey(today);
+	const win = archiveWindow(todayStart);
 
 	// Events für das ganze Monatsraster holen, aber nur innerhalb des
 	// Archivbereichs (außerhalb liegen Tage der Hauptansicht).
 	// Dazu die Aufgaben (VTODOs): sie erscheinen im Archiv an ihrem
 	// Fälligkeitstag — erledigte mit Haken/Durchstrich.
+	const monthKey = out.monthKey;
 	const grid = monthGridDays(monthKey);
 	const gridStart = msFromKey(grid[0]);
 	const gridEnd = addDaysMs(msFromKey(grid[grid.length - 1]), 1);
@@ -321,11 +355,13 @@ export async function buildArchiveMonthResponse(
 	const endMs = Math.min(gridEnd, addDaysMs(msFromKey(win.newest), 1));
 	let events: EventItem[] = [];
 	let error: string | null = null;
+	// Kalender nur einmal auflösen, Events + Tasks parallel ableiten.
+	const { items, errors } = await resolveAllCalendars(connections);
 	const [fetched, rawTasks] = await Promise.all([
 		startMs < endMs
-			? fetchEventsInRange(connections, startMs, endMs)
+			? fetchEventsForItems(items, errors, startMs, endMs)
 			: Promise.resolve({ events: [] as EventItem[], error: null, errors: [] as string[] }),
-		listAllTasks(connections).catch(() => [] as TaskItem[])
+		listAllTasksForItems(items).catch(() => [] as TaskItem[])
 	]);
 	events = fetched.events;
 	error = fetched.error;

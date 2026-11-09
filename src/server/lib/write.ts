@@ -29,6 +29,24 @@ import {
 	updateTaskIcs
 } from '$server/caldav/icswriter';
 import { icalToTaskItems } from '$server/caldav/ical';
+import { invalidatePanelCache } from '$server/lib/panelCache';
+import type { ResolvedCalendar } from '$server/caldav/multi';
+
+// ── Helfer ────────────────────────────────────────────────────────────────
+
+/** Parallellimitierte Map (CalDAV-Server mögen keine hundert offenen Sockets). */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+	const out: R[] = new Array(items.length);
+	let next = 0;
+	const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+		while (next < items.length) {
+			const i = next++;
+			out[i] = await fn(items[i]);
+		}
+	});
+	await Promise.all(workers);
+	return out;
+}
 
 // ── Fehler-Typen ──────────────────────────────────────────────────────────
 
@@ -145,6 +163,7 @@ export async function createEvent(
 	const { ics } = buildEventIcs(uid, input);
 	const url = `${calendar.url.replace(/\/?$/, '/')}${uid}.ics`;
 	await putIcs(connection, url, ics);
+	invalidatePanelCache();
 
 	return buildEventItemFromInput(calendar, uid, input);
 }
@@ -167,6 +186,7 @@ export async function mutateEvent(
 
 	const { ics } = updateEventIcs(found.ics, uid, input);
 	await putIcs(connection, found.url, ics, found.etag);
+	invalidatePanelCache();
 
 	return buildEventItemFromInput(calendar, uid, input);
 }
@@ -186,6 +206,7 @@ export async function removeEvent(
 	if (!found) throw new NotFoundError('Kalendereintrag nicht gefunden.');
 
 	await deleteIcs(connection, found.url, found.etag);
+	invalidatePanelCache();
 }
 
 // ── Task: Create ──────────────────────────────────────────────────────────
@@ -247,6 +268,7 @@ export async function createTask(
 	const { ics } = buildTaskIcs(uid, input);
 	const url = `${calendar.url.replace(/\/?$/, '/')}${uid}.ics`;
 	await putIcs(connection, url, ics);
+	invalidatePanelCache();
 
 	return buildTaskItemFromInput(calendar, uid, input);
 }
@@ -269,6 +291,7 @@ export async function mutateTask(
 
 	const { ics } = updateTaskIcs(found.ics, uid, input);
 	await putIcs(connection, found.url, ics, found.etag);
+	invalidatePanelCache();
 
 	const items = icalToTaskItems(ics, calendar);
 	const item = items.find((t) => t.uid === uid);
@@ -291,32 +314,42 @@ export async function removeTask(
 	if (!found) throw new NotFoundError('Aufgabe nicht gefunden.');
 
 	await deleteIcs(connection, found.url, found.etag);
+	invalidatePanelCache();
 }
 
 // ── Tasks: Read (für API GET) ─────────────────────────────────────────────
 
-export async function listAllTasks(connections: CalDavConnection[]): Promise<TaskItem[]> {
-	const { items } = await resolveAllCalendars(connections);
-	const tasks: TaskItem[] = [];
-
-	for (const { connection, calendar: cal } of items) {
+/**
+ * Tasks aus bereits aufgelösten Kalendern lesen (Roundtrips der
+ * Kalenderauflösung werden nicht doppelt bezahlt). Objekt-GETs laufen
+ * parallellimitiert — die serielle Kette war der Hauptkostentreiber.
+ */
+export async function listAllTasksForItems(items: ResolvedCalendar[]): Promise<TaskItem[]> {
+	const perCalendar = await mapLimit(items, 6, async ({ connection, calendar }) => {
+		const local: TaskItem[] = [];
 		try {
-			const objects = await listCalendarObjects(connection, cal.url);
-			for (const obj of objects) {
+			const objects = await listCalendarObjects(connection, calendar.url);
+			const chunks = await mapLimit(objects, 8, async (obj) => {
 				const ics = await getObjectIcs(connection, obj.url);
-				if (!ics) continue;
-				const items = icalToTaskItems(ics, cal);
-				tasks.push(...items);
-			}
+				return ics ? icalToTaskItems(ics, calendar) : ([] as TaskItem[]);
+			});
+			for (const chunk of chunks) local.push(...chunk);
 		} catch {
 			// skip failed calendar
 		}
-	}
+		return local;
+	});
 
+	const tasks = perCalendar.flat();
 	return tasks.sort((a, b) => {
 		if (a.completed !== b.completed) return a.completed ? 1 : -1;
 		const aDue = a.dueMs ?? (a.dueKey ? msFromKey(a.dueKey) : Infinity);
 		const bDue = b.dueMs ?? (b.dueKey ? msFromKey(b.dueKey) : Infinity);
 		return aDue - bDue;
 	});
+}
+
+export async function listAllTasks(connections: CalDavConnection[]): Promise<TaskItem[]> {
+	const { items } = await resolveAllCalendars(connections);
+	return listAllTasksForItems(items);
 }

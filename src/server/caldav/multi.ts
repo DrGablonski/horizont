@@ -27,17 +27,23 @@ async function resolveConnectionCalendars(conn: CalDavConnection): Promise<CalDa
  * eine defekte externe Verbindung die anderen nicht blockiert.
  */
 export async function resolveAllCalendars(connections: CalDavConnection[]): Promise<ResolvedAll> {
+	// Alle Verbindungen parallel auflösen (Roundtrips summieren sich sonst).
+	const settled = await Promise.all(
+		connections.map(async (conn): Promise<{ conn: CalDavConnection; calendars: CalDavCalendar[]; error?: string }> => {
+			try {
+				return { conn, calendars: await resolveConnectionCalendars(conn) };
+			} catch (e) {
+				return { conn, calendars: [], error: `${conn.name}: ${e instanceof Error ? e.message : String(e)}` };
+			}
+		})
+	);
+
 	const items: ResolvedCalendar[] = [];
 	const errors: string[] = [];
-
-	for (const conn of connections) {
-		try {
-			const calendars = await resolveConnectionCalendars(conn);
-			for (const cal of calendars) {
-				items.push({ connection: conn, calendar: { ...cal, connectionName: conn.name } });
-			}
-		} catch (e) {
-			errors.push(`${conn.name}: ${e instanceof Error ? e.message : String(e)}`);
+	for (const { conn, calendars, error } of settled) {
+		if (error) errors.push(error);
+		for (const cal of calendars) {
+			items.push({ connection: conn, calendar: { ...cal, connectionName: conn.name } });
 		}
 	}
 
