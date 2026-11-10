@@ -34,7 +34,7 @@ struct SettingsView: View {
 			case .account: return "Profil, Server & Abmelden"
 			case .caldav: return "CalDAV-Verbindungen & Kalender"
 			case .kategorien: return "Namen & Farben für Aufgaben"
-			case .notify: return "Aufgaben-Zusammenfassung per Webhook"
+			case .notify: return "Webhook für Aufgaben + Meldungen auf diesem Mac"
 			case .token: return "Zugriff für MCP & externe Tools"
 			}
 		}
@@ -54,9 +54,8 @@ struct SettingsView: View {
 			VStack(spacing: 0) {
 				SectionHeader("Einstellungen", subtitle: area.subtitle)
 
-				HStack(spacing: 0) {
+				HStack(spacing: DS.Space.lg) {
 					areaSidebar
-					Divider().overlay(DS.border)
 					Group {
 						switch area {
 						case .appearance: AppearancePage()
@@ -69,6 +68,9 @@ struct SettingsView: View {
 					}
 					.frame(maxWidth: .infinity, maxHeight: .infinity)
 				}
+				.padding(.horizontal, DS.Space.xl)
+				.padding(.top, DS.Space.xs)
+				.padding(.bottom, DS.Space.lg)
 			}
 		}
 	}
@@ -81,10 +83,10 @@ struct SettingsView: View {
 			}
 			Spacer()
 		}
-		.padding(DS.Space.md)
-		.frame(width: 190)
+		.padding(DS.Space.sm)
+		.frame(width: 194)
 		.frame(maxHeight: .infinity, alignment: .top)
-		.background(DS.sidebar)
+		.sidebarPanel()
 	}
 
 	private func select(_ a: Area) {
@@ -351,10 +353,12 @@ private struct CalDAVPage: View {
 
 // MARK: – Bereich „Mitteilungen“
 
-/// Aufgaben-Benachrichtigungen (Webhook-Formular).
+/// Meldungen: zuerst die lokalen macOS-Meldungen, darunter das
+/// Webhook-Formular der Web-App (Aufgaben-Zusammenfassung).
 private struct NotifyPage: View {
 	var body: some View {
 		SettingsPage {
+			MacNotifySection()
 			NotifySection()
 		}
 	}
@@ -1196,6 +1200,321 @@ private struct NotifySection: View {
 		if parts.isEmpty { return fallback }
 		return parts.joined(separator: " · ")
 	}
+}
+
+// MARK: – Meldungen auf diesem Mac
+
+/// macOS-Systemmeldungen (lokal, ohne Server): Erinnerung vor Terminen,
+/// Tagesplan, überfällige Aufgaben – inkl. Kalender- und Kategoriefilter.
+/// Jede Änderung wird sofort gespeichert und wirkt ab dem nächsten Prüftick.
+private struct MacNotifySection: View {
+	@Environment(AppStore.self) private var store
+	/// Beobachtete Einzelstücke (Status + letzter Prüflauf).
+	@State private var notifier = Notifier.shared
+	@State private var engine = ReminderEngine.shared
+	@State private var s = MacNotifyStore.load()
+	@State private var busy = false
+	@State private var result: (ok: Bool, text: String, detail: String?)?
+
+	/// Vorlauf-Abstufungen für Terminerinnerungen (Minuten).
+	private let leads = [0, 1, 5, 10, 15, 30, 60]
+
+	var body: some View {
+		SettingsSectionCard(title: "Meldungen auf diesem Mac") {
+			Toggle(isOn: $s.master) {
+				Text("Systemmeldungen")
+					.font(.callout.weight(.medium))
+			}
+			.toggleStyle(.switch)
+			Text("Erinnerungen erscheinen im Mitteilungszentrum deines Mac – ohne Umweg über den Server. Die App muss laufen, das Fenster darf zu sein.")
+				.font(.caption)
+				.foregroundStyle(DS.textSecondary)
+
+			permissionRow
+
+			if s.master {
+				Divider().overlay(DS.border)
+
+				toggleRow(systemImage: "calendar.badge.clock",
+				          title: "Vor Terminen erinnern",
+				          hint: "Meldung vor Beginn eines Termins mit Uhrzeit (ganztägige bleiben aus).",
+				          isOn: $s.eventsOn)
+				if s.eventsOn {
+					Picker("Vorlauf", selection: $s.eventLead) {
+						ForEach(leads, id: \.self) { minutes in
+							Text(Self.leadLabel(minutes)).tag(minutes)
+						}
+					}
+					.frame(maxWidth: 280)
+				}
+
+				toggleRow(systemImage: "sunrise",
+				          title: "Tagesplan",
+				          hint: "Termine und offene Aufgaben des Tages, einmal zu fester Uhrzeit.",
+				          isOn: $s.dayPlanOn)
+				if s.dayPlanOn {
+					timeField("Uhrzeit", text: $s.dayPlanTime)
+				}
+
+				toggleRow(systemImage: "exclamationmark.arrow.circlepath",
+				          title: "Überfällige Aufgaben",
+				          hint: "Erinnerung an Aufgaben mit verpasstem Fälligkeitstag, einmal täglich.",
+				          isOn: $s.overdueOn)
+				if s.overdueOn {
+					timeField("Uhrzeit", text: $s.overdueTime)
+				}
+
+				Toggle("Ton abspielen", isOn: $s.sound)
+					.font(.callout)
+
+				filterBlock(
+					title: "Nur diese Kalender",
+					hint: "Nichts ausgewählt heißt: alle Kalender.",
+					available: store.calendars.map { ($0.name, Color(hex: $0.color)) },
+					selection: $s.calendars
+				)
+				filterBlock(
+					title: "Nur diese Kategorien",
+					hint: "Gilt für Aufgaben. Nichts ausgewählt heißt: alle Kategorien.",
+					available: store.categories.map { ($0.name, Color(hex: $0.color)) },
+					selection: $s.categories
+				)
+			}
+
+			if let err = notifier.lastError {
+				ErrorBanner(message: err)
+			}
+			if let res = result {
+				ResultBanner(ok: res.ok, title: res.text, detail: res.detail)
+			}
+
+			HStack(spacing: DS.Space.sm) {
+				Button {
+					run(.test)
+				} label: {
+					if busy {
+						HStack(spacing: DS.Space.xs) {
+							ProgressView().controlSize(.small)
+							Text("Sende…")
+						}
+					} else {
+						Text("Test melden")
+					}
+				}
+				.buttonStyle(.bordered)
+				.disabled(busy)
+
+				Menu("Vorschau") {
+					Button("Nächster Termin") { run(.event) }
+					Button("Tagesplan") { run(.dayPlan) }
+					Button("Überfällige Aufgaben") { run(.overdue) }
+				}
+				.disabled(busy)
+
+				Spacer(minLength: DS.Space.sm)
+
+				Button("Erinnerungen zurücksetzen") {
+					NotifyLog.clearFired()
+					result = (true, "Erinnerungen freigegeben.",
+					          "Schon gemeldete Termine können heute noch einmal melden.")
+				}
+				.ghostButton()
+				.help("Vergessene Meldungen erlauben schon gemeldete Termine erneut zu senden")
+			}
+
+			Text(footer)
+				.font(DS.Typo.meta)
+				.foregroundStyle(DS.textTertiary)
+		}
+		.task {
+			await Notifier.shared.refresh()
+			if !store.calendarsLoaded { await store.loadCalendars() }
+			if store.categories.isEmpty { await store.loadCategories() }
+		}
+		.onChange(of: s) { _, new in
+			MacNotifyStore.save(new)
+			// Erster Einschalt-Moment: Systemdialog holen (passiert nur einmal).
+			if new.master { Task { await Notifier.shared.ensurePermission() } }
+		}
+	}
+
+	// MARK: Berechtigung
+
+	@ViewBuilder
+	private var permissionRow: some View {
+		HStack(spacing: DS.Space.sm) {
+			Chip(text: permissionText, color: permissionColor, systemImage: "bell.badge")
+			if notifier.status == .denied {
+				Text("Mac → Einstellungen → Mitteilungen → Horizont erlauben.")
+					.font(.caption)
+					.foregroundStyle(DS.textSecondary)
+			}
+			Spacer(minLength: DS.Space.sm)
+			if notifier.status == .denied {
+				Button("Systemeinstellungen") { Notifier.openSystemSettings() }
+					.buttonStyle(.bordered)
+			} else if notifier.status != .authorized && notifier.status != .provisional {
+				Button("Berechtigung erlauben") {
+					Task { await Notifier.shared.requestPermission() }
+				}
+				.buttonStyle(.bordered)
+			}
+		}
+	}
+
+	private var permissionText: String {
+		switch notifier.status {
+		case .authorized: return "Meldungen erlaubt"
+		case .provisional: return "Meldungen erlaubt (still)"
+		case .denied: return "Vom Mac blockiert"
+		case .notDetermined: return "Berechtigung offen"
+		default: return "Status unbekannt"
+		}
+	}
+
+	private var permissionColor: Color {
+		if notifier.canSend { return DS.success }
+		return notifier.status == .denied ? DS.danger : DS.textSecondary
+	}
+
+	private var footer: String {
+		var parts: [String] = ["Prüft alle \(Int(engine.tickSeconds)) Sekunden"]
+		if let at = engine.lastCheck {
+			parts.append("zuletzt geprüft \(Fmt.time(Int(at.timeIntervalSince1970 * 1000)))")
+		}
+		if let last = NotifyLog.lastSent() {
+			parts.append("letzte Meldung „\(last.title)“ \(Self.sentFormatter.string(from: last.at))")
+		}
+		return parts.joined(separator: " · ")
+	}
+
+	// MARK: Zeilen
+
+	/// Zeile mit Icon, Titel, Hinweis und Schalter rechts.
+	private func toggleRow(systemImage: String, title: String, hint: String,
+	                       isOn: Binding<Bool>) -> some View {
+		HStack(alignment: .top, spacing: DS.Space.sm) {
+			Image(systemName: systemImage)
+				.font(.system(size: 12, weight: .medium))
+				.foregroundStyle(DS.textTertiary)
+				.frame(width: 16)
+				.padding(.top, 2)
+			VStack(alignment: .leading, spacing: 2) {
+				Text(title)
+					.font(.callout.weight(.medium))
+					.foregroundStyle(DS.textPrimary)
+				Text(hint)
+					.font(.caption)
+					.foregroundStyle(DS.textSecondary)
+			}
+			Spacer(minLength: DS.Space.md)
+			Toggle("", isOn: isOn)
+				.labelsHidden()
+				.toggleStyle(.switch)
+		}
+	}
+
+	/// Zeitfeld HH:MM mit Format-Hinweis.
+	private func timeField(_ label: String, text: Binding<String>) -> some View {
+		VStack(alignment: .leading, spacing: DS.Space.xs) {
+			Text(label)
+				.font(DS.Typo.metaStrong)
+				.foregroundStyle(DS.textSecondary)
+			TextField("HH:MM", text: text)
+				.frame(maxWidth: 140)
+				.autocorrectionDisabled()
+			if !isValidTime(text.wrappedValue) {
+				Text("Format: HH:MM (z. B. 07:30)")
+					.font(.caption)
+					.foregroundStyle(DS.danger)
+			}
+		}
+	}
+
+	/// Chip-Zeile zum Einschränken von Kalendern/Kategorien (leer = alles).
+	private func filterBlock(title: String, hint: String,
+	                         available: [(name: String, color: Color)],
+	                         selection: Binding<[String]>) -> some View {
+		VStack(alignment: .leading, spacing: DS.Space.sm) {
+			Text(title)
+				.font(DS.Typo.metaStrong)
+				.foregroundStyle(DS.textSecondary)
+			if available.isEmpty {
+				Text("Noch keine Einträge geladen.")
+					.font(.caption)
+					.foregroundStyle(DS.textTertiary)
+			} else {
+				FlowLayout(spacing: DS.Space.sm) {
+					ForEach(available, id: \.name) { item in
+						filterChip(item.name, color: item.color,
+						           on: selection.wrappedValue.contains(item.name)) {
+							if selection.wrappedValue.contains(item.name) {
+								selection.wrappedValue.removeAll { $0 == item.name }
+							} else {
+								selection.wrappedValue.append(item.name)
+							}
+						}
+					}
+				}
+			}
+			Text(hint)
+				.font(.caption)
+				.foregroundStyle(DS.textSecondary)
+		}
+	}
+
+	/// Umschaltbarer Filter-Chip im Chip-Look des Design-Systems.
+	private func filterChip(_ name: String, color: Color, on: Bool, action: @escaping () -> Void) -> some View {
+		Button(action: action) {
+			HStack(spacing: DS.Space.xs) {
+				if on {
+					Image(systemName: "checkmark")
+						.font(.system(size: 9, weight: .semibold))
+				}
+				Text(name).font(DS.Typo.chip)
+			}
+			.foregroundStyle(on ? color : DS.textSecondary)
+			.padding(.horizontal, 7)
+			.padding(.vertical, 3)
+			.background(Capsule().fill(on ? color.opacity(0.16) : DS.fillSubtle))
+			.overlay(Capsule().strokeBorder(on ? color.opacity(0.5) : Color.clear, lineWidth: 1))
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+	}
+
+	// MARK: Aktionen
+
+	/// Eine der Meldungen sofort senden (Knopf „Test melden" / „Vorschau").
+	private func run(_ kind: ReminderEngine.Preview) {
+		guard !busy else { return }
+		busy = true
+		result = nil
+		Task {
+			let err = await ReminderEngine.shared.sendPreview(kind)
+			busy = false
+			if let err {
+				result = (ok: false, text: "Nichts gesendet.", detail: err)
+			} else {
+				result = (ok: true, text: "Meldung gesendet – schau oben rechts.", detail: nil)
+			}
+		}
+	}
+
+	private static func leadLabel(_ minutes: Int) -> String {
+		switch minutes {
+		case 0: return "Genau zum Beginn"
+		case 1: return "1 Minute vorher"
+		default: return "\(minutes) Minuten vorher"
+		}
+	}
+
+	private static let sentFormatter: DateFormatter = {
+		let f = DateFormatter()
+		f.locale = Locale(identifier: "de_DE")
+		f.dateFormat = "dd.MM. HH:mm"
+		return f
+	}()
 }
 
 // MARK: – Aufgaben-Kategorien

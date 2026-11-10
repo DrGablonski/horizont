@@ -29,12 +29,40 @@ struct AmbientBackground: View {
 
 /// Sidebar-Fläche: unten minimal dunkler als oben (tieferer Raum-Eindruck).
 struct SidebarBackground: View {
+	/// Der Verlauf auch als ShapeStyle (für abgerundete Panels).
+	static let gradient = LinearGradient(
+		colors: [DS.sidebar, DS.sidebar.opacity(0.92)],
+		startPoint: .top, endPoint: .bottom
+	)
+
 	var body: some View {
-		LinearGradient(
-			colors: [DS.sidebar, DS.sidebar.opacity(0.92)],
-			startPoint: .top, endPoint: .bottom
-		)
+		Self.gradient
 	}
+}
+
+/// Abgerundetes Sidebar-Panel (z. B. Einstellungs-Navigation): weicher Verlauf
+/// mit feiner Kontur und dezenter Schwebe – hebt sich klar, aber sanft vom
+/// Ambient-Hintergrund ab statt als eckige Volltonfläche zu wirken.
+struct SidebarPanelStyle: ViewModifier {
+	@Environment(\.colorScheme) private var scheme
+
+	func body(content: Content) -> some View {
+		content
+			.background(
+				RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
+					.fill(SidebarBackground.gradient)
+			)
+			.overlay(
+				RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
+					.strokeBorder(DS.border, lineWidth: 1)
+			)
+			.shadow(color: .black.opacity(scheme == .light ? 0.05 : 0.28),
+			        radius: scheme == .light ? 6 : 10, y: scheme == .light ? 2 : 4)
+	}
+}
+
+extension View {
+	func sidebarPanel() -> some View { modifier(SidebarPanelStyle()) }
 }
 
 // MARK: – Wortmarke

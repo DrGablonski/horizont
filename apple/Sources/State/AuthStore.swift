@@ -40,6 +40,7 @@ final class AuthStore {
 			self.client = api
 			self.user = me
 			self.status = .authenticated
+			ReminderEngine.shared.start(client: api)
 			return
 		}
 		// 2.) Still-Login mit gespeicherten Zugangsdaten.
@@ -53,6 +54,7 @@ final class AuthStore {
 			self.client = api
 			self.user = u
 			self.status = .authenticated
+			ReminderEngine.shared.start(client: api)
 		} catch {
 			self.status = .guest
 		}
@@ -70,9 +72,11 @@ final class AuthStore {
 		self.client = api
 		self.user = u
 		self.status = .authenticated
+		ReminderEngine.shared.start(client: api)
 	}
 
 	func logout() async {
+		ReminderEngine.shared.stop()
 		try? await client?.logout()
 		Keychain.delete("username")
 		Keychain.delete("password")
