@@ -1,9 +1,268 @@
 import SwiftUI
 
-/// Einstellungen: Konto, CalDAV-Verbindungen, Kalender, Aufgaben-Benachrichtigungen,
-/// Server, Version und Abmelden – Kartenlayout nach Web-Vorbild.
-/// Verbindungen und Kalender werden nur angezeigt (CRUD bleibt in der Web-App).
+/// Einstellungen: Sidebar-Navigation wie die Systemeinstellungen –
+/// Darstellung, Konto, CalDAV, Kategorien, Mitteilungen, API-Zugang
+/// (je eine Seite, kein Gesamt-Scroll). Volle Parität zur Server-API:
+/// CalDAV-CRUD, Kategorien, Webhook inkl. Token, API-Token-Verwaltung.
 struct SettingsView: View {
+	/// Bereiche der Einstellungs-Sidebar.
+	enum Area: String, CaseIterable, Identifiable {
+		case appearance = "Darstellung"
+		case account = "Konto"
+		case caldav = "CalDAV"
+		case kategorien = "Kategorien"
+		case notify = "Mitteilungen"
+		case token = "API-Zugang"
+
+		var id: String { rawValue }
+
+		var icon: String {
+			switch self {
+			case .appearance: return "paintpalette"
+			case .account: return "person.crop.circle"
+			case .caldav: return "calendar"
+			case .kategorien: return "tag"
+			case .notify: return "bell"
+			case .token: return "key"
+			}
+		}
+
+		/// Subtitle im Bereichskopf.
+		var subtitle: String {
+			switch self {
+			case .appearance: return "Feste Designs – Helligkeit & Akzent"
+			case .account: return "Profil, Server & Abmelden"
+			case .caldav: return "CalDAV-Verbindungen & Kalender"
+			case .kategorien: return "Namen & Farben für Aufgaben"
+			case .notify: return "Aufgaben-Zusammenfassung per Webhook"
+			case .token: return "Zugriff für MCP & externe Tools"
+			}
+		}
+	}
+
+	static let areaKey = "hz.settingsArea"   // Snapshot-QA setzt den Bereich vorab
+
+	@State private var area: Area
+
+	init() {
+		let raw = UserDefaults.standard.string(forKey: Self.areaKey) ?? Area.appearance.rawValue
+		_area = State(initialValue: Area(rawValue: raw) ?? .appearance)
+	}
+
+	var body: some View {
+		NavigationStack {
+			VStack(spacing: 0) {
+				SectionHeader("Einstellungen", subtitle: area.subtitle)
+
+				HStack(spacing: 0) {
+					areaSidebar
+					Divider().overlay(DS.border)
+					Group {
+						switch area {
+						case .appearance: AppearancePage()
+						case .account: AccountPage()
+						case .caldav: CalDAVPage()
+						case .kategorien: CategoriesPage()
+						case .notify: NotifyPage()
+						case .token: ApiTokenPage()
+						}
+					}
+					.frame(maxWidth: .infinity, maxHeight: .infinity)
+				}
+			}
+		}
+	}
+
+	/// Linke Bereichsliste (Auswahl bleibt über Bereichs-/App-Wechsel erhalten).
+	private var areaSidebar: some View {
+		VStack(spacing: DS.Space.xs) {
+			ForEach(Area.allCases) { a in
+				AreaRow(area: a, isActive: area == a) { select(a) }
+			}
+			Spacer()
+		}
+		.padding(DS.Space.md)
+		.frame(width: 190)
+		.frame(maxHeight: .infinity, alignment: .top)
+		.background(DS.sidebar)
+	}
+
+	private func select(_ a: Area) {
+		area = a
+		UserDefaults.standard.set(a.rawValue, forKey: Self.areaKey)
+	}
+}
+
+// MARK: – Sidebar-Zeile
+
+/// Einstellungs-Bereich in der Sidebar (Auswahl: Akzent-Pille wie NavPill).
+private struct AreaRow: View {
+	let area: SettingsView.Area
+	let isActive: Bool
+	let action: () -> Void
+
+	@State private var hovering = false
+
+	var body: some View {
+		Button(action: action) {
+			HStack(spacing: DS.Space.sm) {
+				Image(systemName: area.icon)
+					.font(.system(size: 12, weight: .medium))
+					.foregroundStyle(isActive ? DS.accent : DS.textSecondary)
+				Text(area.rawValue)
+					.font(.callout.weight(isActive ? .semibold : .medium))
+					.foregroundStyle(isActive ? DS.textPrimary : DS.textSecondary)
+					.lineLimit(1)
+				Spacer(minLength: 0)
+			}
+			.padding(.horizontal, DS.Space.md)
+			.padding(.vertical, 8)
+			.background(
+				RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+					.fill(isActive ? DS.tintSoft : hovering ? DS.rowHover : Color.clear)
+			)
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
+		.animation(.easeOut(duration: 0.12), value: hovering)
+		.animation(.easeOut(duration: 0.12), value: isActive)
+	}
+}
+
+// MARK: – Seitenrahmen
+
+/// Einheitlicher Seitenrahmen: Karten mittig, scrollt nur wenn nötig.
+private struct SettingsPage<Content: View>: View {
+	@ViewBuilder var content: Content
+
+	var body: some View {
+		ScrollView {
+			VStack(spacing: DS.Space.lg) {
+				content
+			}
+			.padding(DS.Space.xl)
+			.frame(maxWidth: 640)
+			.frame(maxWidth: .infinity)
+		}
+	}
+}
+
+// MARK: – Bereich „Darstellung“
+
+/// Feste Designs als wählbare Kacheln (je kompletter Look inkl. Hell/Dunkel).
+private struct AppearancePage: View {
+	@Environment(ThemeStore.self) private var theme
+
+	var body: some View {
+		SettingsPage {
+			SettingsSectionCard(title: "Design") {
+				Text("Vier feste Designs – sie legen Helligkeit und Akzentfarbe gemeinsam fest. Die Wahl wirkt sofort im ganzen Fenster.")
+					.font(.callout)
+					.foregroundStyle(DS.textSecondary)
+
+				LazyVGrid(
+					columns: [GridItem(.adaptive(minimum: 180, maximum: 240), spacing: DS.Space.md)],
+					spacing: DS.Space.md
+				) {
+					ForEach(AppDesign.allCases) { design in
+						DesignCard(design: design, isActive: theme.design == design) {
+							theme.design = design
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+/// Design-Kachel mit Mini-Fenster-Vorschau (farben fix, unabhängig vom aktiven Design).
+private struct DesignCard: View {
+	let design: AppDesign
+	let isActive: Bool
+	let action: () -> Void
+
+	@State private var hovering = false
+
+	var body: some View {
+		Button(action: action) {
+			VStack(alignment: .leading, spacing: DS.Space.sm) {
+				mockup
+				HStack(alignment: .top, spacing: DS.Space.xs) {
+					VStack(alignment: .leading, spacing: DS.Space.xxs) {
+						Text(design.name)
+							.font(.callout.weight(isActive ? .semibold : .medium))
+							.foregroundStyle(DS.textPrimary)
+						Text(design.subtitle)
+							.font(DS.Typo.meta)
+							.foregroundStyle(DS.textSecondary)
+					}
+					Spacer(minLength: DS.Space.xs)
+					if isActive {
+						Image(systemName: "checkmark.circle.fill")
+							.foregroundStyle(DS.accent)
+					}
+				}
+			}
+			.padding(DS.Space.md)
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.background(
+				RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
+					.fill(DS.card)
+			)
+			.overlay(
+				RoundedRectangle(cornerRadius: DS.Radius.lg, style: .continuous)
+					.strokeBorder(
+						isActive ? DS.accent : hovering ? DS.borderStrong : DS.border,
+						lineWidth: isActive ? 2 : 1)
+			)
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.onHover { hovering = $0 }
+		.accessibilityLabel("\(design.name) – \(design.subtitle)")
+	}
+
+	/// Mini-Fenster: Titelzeile mit Ampel-Punkten + Inhalt in Design-Farben.
+	private var mockup: some View {
+		let bg = staticRGB(design.isDark ? 0x14151A : 0xF4F5F7)
+		let surface = staticRGB(design.isDark ? 0x1C1E25 : 0xFFFFFF)
+		let bar = staticRGB(design.isDark ? 0x2A2D36 : 0xE4E6EC)
+		let edge = staticRGB(design.isDark ? 0x2A2D36 : 0xD8DAE0)
+		let accent = staticRGB(design.accentRGB)
+		return VStack(spacing: 0) {
+			HStack(spacing: 3) {
+				ForEach(0..<3, id: \.self) { _ in
+					Circle().fill(bar).frame(width: 5, height: 5)
+				}
+				Spacer()
+			}
+			.padding(6)
+			VStack(alignment: .leading, spacing: 5) {
+				RoundedRectangle(cornerRadius: 2).fill(accent)
+					.frame(width: 44, height: 7)
+				RoundedRectangle(cornerRadius: 2).fill(bar)
+					.frame(width: 120, height: 5)
+				RoundedRectangle(cornerRadius: 2).fill(bar)
+					.frame(width: 90, height: 5)
+			}
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.padding(8)
+			.background(surface)
+		}
+		.background(bg)
+		.clipShape(RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous))
+		.overlay(
+			RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+				.strokeBorder(edge, lineWidth: 1)
+		)
+	}
+}
+
+// MARK: – Bereich „Konto“
+
+/// Profil, Server-URL, Version und Abmelden auf einer Seite.
+private struct AccountPage: View {
 	@Environment(AuthStore.self) private var auth
 	@State private var serverDraft = ""
 
@@ -24,60 +283,43 @@ struct SettingsView: View {
 	}
 
 	var body: some View {
-		NavigationStack {
-			VStack(spacing: 0) {
-				SectionHeader("Einstellungen", subtitle: "Konto, Verbindungen & Benachrichtigungen")
-
-				ScrollView {
-					VStack(spacing: DS.Space.lg) {
-						AppearanceSection()
-
-						SettingsSectionCard(title: "Konto") {
-							LabeledContent {
-								Text(auth.user?.username ?? "–")
-							} label: {
-								HStack(spacing: DS.Space.md) {
-									avatar
-									Text("Angemeldet als")
-								}
-							}
-						}
-
-						ConnectionsSection()
-						CalendarsSection()
-						NotifySection()
-
-						SettingsSectionCard(title: "Server") {
-							TextField("Server-URL", text: $serverDraft)
-								.autocorrectionDisabled()
-							Text("Nach dem Speichern abmelden und wieder anmelden, damit die App neue Daten lädt.")
-								.font(.caption)
-								.foregroundStyle(DS.textSecondary)
-							Button("Speichern") {
-								auth.serverURL = trimmedDraft
-							}
-							.disabled(!canSave)
-							.primaryButton()
-						}
-
-						SettingsSectionCard(title: "Info") {
-							LabeledContent("Version", value: appVersion)
-						}
-
-						// Abmelden ohne Sektionstitel (wie bisher).
-						Button("Abmelden", role: .destructive) {
-							Task { await auth.logout() }
-						}
-						.frame(maxWidth: .infinity)
-						.padding(DS.Space.md)
-						.dsCard()
-					}
-					.padding(DS.Space.xl)
-					.frame(maxWidth: 640)
-					.frame(maxWidth: .infinity)
+		SettingsPage {
+			SettingsSectionCard(title: "Profil") {
+				LabeledContent {
+					Text(auth.user?.username ?? "–")
+				} label: {
+					HStack(spacing: DS.Space.md) {
+						avatar
+						Text("Angemeldet als")
 					}
 				}
 			}
+
+			SettingsSectionCard(title: "Server") {
+				TextField("Server-URL", text: $serverDraft)
+					.autocorrectionDisabled()
+				Text("Nach dem Speichern abmelden und wieder anmelden, damit die App neue Daten lädt.")
+					.font(.caption)
+					.foregroundStyle(DS.textSecondary)
+				Button("Speichern") {
+					auth.serverURL = trimmedDraft
+				}
+				.disabled(!canSave)
+				.primaryButton()
+			}
+
+			SettingsSectionCard(title: "Info") {
+				LabeledContent("Version", value: appVersion)
+			}
+
+			// Abmelden ohne Sektionstitel (wie bisher).
+			Button("Abmelden", role: .destructive) {
+				Task { await auth.logout() }
+			}
+			.frame(maxWidth: .infinity)
+			.padding(DS.Space.md)
+			.dsCard()
+		}
 		.onAppear { serverDraft = auth.serverURL }
 	}
 
@@ -95,101 +337,48 @@ struct SettingsView: View {
 	}
 }
 
-// MARK: – Erscheinungsbild
+// MARK: – Bereich „CalDAV“
 
-/// Appearance-Modus (System/Hell/Dunkel) + Akzent-Presets – Bedienung wie die
-/// Theme-Kacheln bei Diddy, wirkt sofort im ganzen Fenster.
-private struct AppearanceSection: View {
-	@Environment(ThemeStore.self) private var theme
-
+/// CalDAV-Verbindungen + Kalenderübersicht untereinander.
+private struct CalDAVPage: View {
 	var body: some View {
-		SettingsSectionCard(title: "Erscheinungsbild") {
-			HStack(spacing: DS.Space.sm) {
-				ForEach(AppearanceMode.allCases) { mode in
-					ModePill(mode: mode, isActive: theme.mode == mode) {
-						theme.mode = mode
-					}
-				}
-				Spacer()
-			}
-
-			VStack(alignment: .leading, spacing: DS.Space.sm) {
-				Text("Akzentfarbe")
-					.font(DS.Typo.meta)
-					.foregroundStyle(DS.textSecondary)
-				HStack(spacing: DS.Space.sm) {
-					ForEach(AccentPreset.all) { preset in
-						AccentDot(preset: preset, isActive: theme.accentPreset.id == preset.id) {
-							theme.accentPreset = preset
-						}
-					}
-				}
-			}
+		SettingsPage {
+			ConnectionsSection()
+			CalendarsSection()
 		}
 	}
 }
 
-/// Umschalt-Pille für die Appearance-Modi.
-private struct ModePill: View {
-	let mode: AppearanceMode
-	let isActive: Bool
-	let action: () -> Void
+// MARK: – Bereich „Mitteilungen“
 
-	@State private var hovering = false
-
+/// Aufgaben-Benachrichtigungen (Webhook-Formular).
+private struct NotifyPage: View {
 	var body: some View {
-		Button(action: action) {
-			HStack(spacing: DS.Space.xs) {
-				Image(systemName: mode.icon).font(.system(size: 11, weight: .medium))
-				Text(mode.label).font(.callout.weight(isActive ? .semibold : .medium))
-			}
-			.foregroundStyle(isActive ? DS.accent : DS.textSecondary)
-			.padding(.horizontal, DS.Space.md)
-			.padding(.vertical, 7)
-			.background(
-				Capsule().fill(isActive ? DS.tintSoft : hovering ? DS.rowHover : DS.fillSubtle)
-			)
-			.overlay(
-				Capsule().strokeBorder(isActive ? DS.accent.opacity(0.5) : DS.border, lineWidth: 1)
-			)
-			.contentShape(Rectangle())
+		SettingsPage {
+			NotifySection()
 		}
-		.buttonStyle(.plain)
-		.onHover { hovering = $0 }
 	}
 }
 
-/// Farbpunkt mit Auswahl-Ring (Akzent-Presets).
-private struct AccentDot: View {
-	let preset: AccentPreset
-	let isActive: Bool
-	let action: () -> Void
+// MARK: – Bereich „Kategorien"
 
-	@State private var hovering = false
-
+/// Aufgaben-Kategorien (Name + Farbe), voll verwaltbar.
+private struct CategoriesPage: View {
 	var body: some View {
-		Button(action: action) {
-			ZStack {
-				Circle()
-					.fill(Color.dynamic(light: preset.light, dark: preset.dark))
-					.frame(width: 26, height: 26)
-				if isActive {
-					Image(systemName: "checkmark")
-						.font(.system(size: 11, weight: .bold))
-						.foregroundStyle(.white)
-				}
-			}
-			.overlay(
-				Circle().strokeBorder(
-					isActive ? DS.textPrimary : hovering ? DS.borderStrong : Color.clear,
-					lineWidth: isActive ? 2 : 1.5)
-					.padding(-4)
-			)
-			.help(preset.name)
-			.accessibilityLabel(preset.name)
+		SettingsPage {
+			CategoriesSection()
 		}
-		.buttonStyle(.plain)
-		.onHover { hovering = $0 }
+	}
+}
+
+// MARK: – Bereich „API-Zugang"
+
+/// API-Token für externe Tools (MCP).
+private struct ApiTokenPage: View {
+	var body: some View {
+		SettingsPage {
+			ApiTokenSection()
+		}
 	}
 }
 
@@ -215,7 +404,7 @@ private struct SettingsSectionCard<Content: View>: View {
 
 // MARK: – CalDAV-Verbindungen
 
-/// Anzeige der CalDAV-Verbindungen mit Test-Button (ohne CRUD – Web-App ist Source of Truth).
+/// CalDAV-Verbindungen mit voller Verwaltung (CRUD + Test) wie in der Web-App.
 private struct ConnectionsSection: View {
 	@Environment(AppStore.self) private var store
 
@@ -223,24 +412,63 @@ private struct ConnectionsSection: View {
 	@State private var errors: [String: String] = [:]
 	@State private var testing: Set<String> = []
 
+	// Inline-Bearbeitung (id der gerade bearbeiteten Verbindung).
+	@State private var editingId: String?
+	@State private var editName = ""
+	@State private var editUrl = ""
+	@State private var editUsername = ""
+	@State private var editPassword = ""
+	@State private var editSaving = false
+	@State private var editError: String?
+
+	// Löschen mit Bestätigung.
+	@State private var deleteCandidate: ConnectionView?
+	@State private var deleting = false
+
+	// Neues Formular (aufklappbar).
+	@State private var showNew = false
+	@State private var newName = ""
+	@State private var newUrl = ""
+	@State private var newUsername = ""
+	@State private var newPassword = ""
+	@State private var newSaving = false
+	@State private var newTesting = false
+	@State private var newError: String?
+	@State private var newFormResult: TestResult?
+
 	var body: some View {
 		SettingsSectionCard(title: "CalDAV-Verbindungen") {
-			if store.connections.isEmpty {
-				Text("Keine Verbindungen konfiguriert – anlegen in der Web-App.")
+			if store.connections.isEmpty && !showNew {
+				Text("Noch keine CalDAV-Quelle eingerichtet.")
 					.font(.callout)
 					.foregroundStyle(DS.textSecondary)
-			} else {
+			} else if !store.connections.isEmpty {
 				VStack(alignment: .leading, spacing: DS.Space.sm) {
 					ForEach(store.connections) { conn in
 						connectionBlock(conn)
 					}
 				}
 			}
+			newSourceCard
 		}
 		.task { await store.loadConnections() }
+		.confirmationDialog(
+			"„\(deleteCandidate?.name ?? "")“ wirklich löschen?",
+			isPresented: Binding(
+				get: { deleteCandidate != nil },
+				set: { presenting in if !presenting { deleteCandidate = nil } }
+			),
+			titleVisibility: .visible
+		) {
+			Button("Löschen", role: .destructive) { confirmDelete() }
+		} message: {
+			Text("Die Verbindung wird aus Horizont entfernt; in CalDAV bleiben die Daten unverändert.")
+		}
 	}
 
-	/// Karte pro Verbindung; Fehlerbanner steht direkt unter der Karte.
+	// MARK: Karte pro Verbindung
+
+	/// Karte pro Verbindung; Bearbeiten zeigt Inline-Formular, Fehlerbanner darunter.
 	@ViewBuilder
 	private func connectionBlock(_ conn: ConnectionView) -> some View {
 		VStack(alignment: .leading, spacing: DS.Space.sm) {
@@ -251,7 +479,16 @@ private struct ConnectionsSection: View {
 						.foregroundStyle(DS.textPrimary)
 						.lineLimit(1)
 					Spacer(minLength: DS.Space.sm)
-					testButton(conn)
+					if editingId == conn.id {
+						// (Formular folgt unten – Buttons hier ausblenden.)
+					} else {
+						testButton(conn)
+						Button("Bearbeiten") { beginEdit(conn) }
+							.buttonStyle(.bordered)
+						Button("Löschen", role: .destructive) { deleteCandidate = conn }
+							.buttonStyle(.bordered)
+							.disabled(deleting)
+					}
 				}
 				Text(conn.url)
 					.font(DS.Typo.meta)
@@ -269,6 +506,10 @@ private struct ConnectionsSection: View {
 						     color: DS.success, systemImage: "checkmark.circle.fill")
 					}
 				}
+
+				if editingId == conn.id {
+					editForm(for: conn)
+				}
 			}
 			.padding(DS.Space.md)
 			.frame(maxWidth: .infinity, alignment: .leading)
@@ -279,6 +520,205 @@ private struct ConnectionsSection: View {
 			}
 		}
 	}
+
+	// MARK: Inline-Bearbeitung
+
+	/// Bearbeitungsformular innerhalb der Karte (leeres Passwort = gespeichertes behalten).
+	@ViewBuilder
+	private func editForm(for conn: ConnectionView) -> some View {
+		Divider()
+		VStack(alignment: .leading, spacing: DS.Space.sm) {
+			settingsField("Name", text: $editName)
+			settingsField("URL", text: $editUrl, placeholder: "https://…")
+			settingsField("Benutzername", text: $editUsername)
+			settingsField("Passwort", text: $editPassword, secure: true,
+			              placeholder: "●●●● (leer lassen = behalten)")
+			if let err = editError {
+				Text(err).font(.caption).foregroundStyle(DS.danger)
+			}
+			HStack(spacing: DS.Space.sm) {
+				Button("Speichern") { saveEdit(conn) }
+					.disabled(editSaving || editName.trimmed.isEmpty || editUrl.trimmed.isEmpty)
+					.primaryButton()
+				Button("Abbrechen") { cancelEdit() }
+					.buttonStyle(.bordered)
+					.disabled(editSaving)
+			}
+		}
+	}
+
+	private func beginEdit(_ conn: ConnectionView) {
+		editingId = conn.id
+		editName = conn.name
+		editUrl = conn.url
+		editUsername = conn.username
+		editPassword = ""
+		editError = nil
+	}
+
+	private func cancelEdit() {
+		editingId = nil
+		editError = nil
+	}
+
+	private func saveEdit(_ conn: ConnectionView) {
+		guard !editSaving else { return }
+		editSaving = true
+		editError = nil
+		let name = editName.trimmed
+		let urlValue = editUrl.trimmed
+		let username = editUsername.trimmed
+		let password = editPassword
+		Task {
+			let err = await store.updateConnection(
+				id: conn.id, name: name, url: urlValue, username: username, password: password)
+			editSaving = false
+			if let err {
+				editError = err
+			} else {
+				editingId = nil
+				results.removeValue(forKey: conn.id)
+			}
+		}
+	}
+
+	// MARK: Löschen
+
+	private func confirmDelete() {
+		guard let conn = deleteCandidate, !deleting else { return }
+		deleting = true
+		Task {
+			let err = await store.deleteConnection(id: conn.id)
+			deleting = false
+			deleteCandidate = nil
+			results.removeValue(forKey: conn.id)
+			errors.removeValue(forKey: conn.id)
+			if let err {
+				errors[conn.id] = err
+			}
+		}
+	}
+
+	// MARK: Neu anlegen
+
+	/// Aufklappbare „CalDAV-Quelle anlegen"-Karte mit Feldern + „Erst testen".
+	@ViewBuilder
+	private var newSourceCard: some View {
+		if showNew {
+			VStack(alignment: .leading, spacing: DS.Space.sm) {
+				HStack {
+					Text("CalDAV-Quelle anlegen")
+						.font(DS.Typo.rowTitle)
+						.foregroundStyle(DS.textPrimary)
+					Spacer()
+					Button {
+						showNew = false
+						newError = nil
+						newFormResult = nil
+					} label: {
+						Image(systemName: "xmark")
+					}
+					.buttonStyle(.borderless)
+					.help("Abbrechen")
+				}
+				settingsField("Name", text: $newName, placeholder: "z. B. iCloud")
+				settingsField("URL", text: $newUrl, placeholder: "https://caldav.icloud.com/")
+				settingsField("Benutzername", text: $newUsername, placeholder: "E-Mail")
+				settingsField("Passwort", text: $newPassword, secure: true,
+				              placeholder: "App-spezifisches Passwort")
+				if let res = newFormResult {
+					ResultBanner(
+						ok: res.ok,
+						title: res.ok
+							? "Verbindung funktioniert."
+							: "Verbindungstest fehlgeschlagen.",
+						detail: res.ok
+							? "Gefundene Kalender: \(res.calendars?.count ?? 0)"
+							: res.error)
+				}
+				if let err = newError {
+					ErrorBanner(message: err)
+				}
+				HStack(spacing: DS.Space.sm) {
+					Button("Speichern") { createConnection() }
+						.disabled(newSaving || newTesting
+						          || newName.trimmed.isEmpty || newUrl.trimmed.isEmpty
+						          || newUsername.trimmed.isEmpty || newPassword.isEmpty)
+						.primaryButton()
+					Button {
+						testNewForm()
+					} label: {
+						if newTesting {
+							HStack(spacing: DS.Space.xs) {
+								ProgressView().controlSize(.small)
+								Text("Teste…")
+							}
+						} else {
+							Text("Erst testen")
+						}
+					}
+					.buttonStyle(.bordered)
+					.disabled(newSaving || newTesting
+					          || newUrl.trimmed.isEmpty || newUsername.trimmed.isEmpty
+					          || newPassword.isEmpty)
+				}
+			}
+			.padding(DS.Space.md)
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.dsCard()
+		} else {
+			Button {
+				showNew = true
+			} label: {
+				Label("CalDAV-Quelle anlegen", systemImage: "plus")
+			}
+			.buttonStyle(.bordered)
+		}
+	}
+
+	private func createConnection() {
+		guard !newSaving else { return }
+		newSaving = true
+		newError = nil
+		newFormResult = nil
+		let name = newName.trimmed
+		let urlValue = newUrl.trimmed
+		let username = newUsername.trimmed
+		let password = newPassword
+		Task {
+			let err = await store.createConnection(
+				name: name, url: urlValue, username: username, password: password)
+			newSaving = false
+			if let err {
+				newError = err
+			} else {
+				showNew = false
+				newName = ""
+				newUrl = ""
+				newUsername = ""
+				newPassword = ""
+				newFormResult = nil
+			}
+		}
+	}
+
+	/// Testet die Formularwerte, ohne sie zu speichern.
+	private func testNewForm() {
+		guard !newTesting else { return }
+		newTesting = true
+		newError = nil
+		newFormResult = nil
+		let urlValue = newUrl.trimmed
+		let username = newUsername.trimmed
+		let password = newPassword
+		Task {
+			newFormResult = await store.testConnection(
+				url: urlValue, username: username, password: password)
+			newTesting = false
+		}
+	}
+
+	// MARK: Testen (bestehend)
 
 	private func testButton(_ conn: ConnectionView) -> some View {
 		Button {
@@ -316,6 +756,24 @@ private struct ConnectionsSection: View {
 	}
 }
 
+/// Beschriftiertes Formularfeld (Label über Eingabe) für Settings-Formulare.
+@ViewBuilder
+private func settingsField(_ label: String, text: Binding<String>,
+                           secure: Bool = false, placeholder: String = "") -> some View {
+	VStack(alignment: .leading, spacing: DS.Space.xs) {
+		Text(label)
+			.font(DS.Typo.metaStrong)
+			.foregroundStyle(DS.textSecondary)
+		if secure {
+			SecureField(placeholder, text: text)
+				.autocorrectionDisabled()
+		} else {
+			TextField(placeholder, text: text)
+				.autocorrectionDisabled()
+		}
+	}
+}
+
 // MARK: – Kalender
 
 /// Übersicht aller CalDAV-Kalender (Farbpunkt + Name + Verbindung).
@@ -329,7 +787,7 @@ private struct CalendarsSection: View {
 					title: "Keine Kalender gefunden.",
 					systemImage: "calendar",
 					description: store.calendarsLoaded
-						? "Verbindungen prüfen oder in der Web-App anlegen."
+						? "Verbindungen prüfen oder eine neue Quelle anlegen."
 						: nil
 				)
 				.frame(height: 170)
@@ -371,16 +829,22 @@ private struct NotifySection: View {
 	@State private var weekday = 0
 	@State private var intervalHours = 3
 	@State private var url = ""
+	@State private var token = ""
 	@State private var prompt = ""
 	@State private var selectedCategories: Set<String> = []
 	@State private var seeded = false
+
+	// „Komplette Webhook-URL einfügen" → URL + Token aufteilen.
+	@State private var importUrl = ""
+	@State private var importError: String?
 
 	@State private var saving = false
 	@State private var saveError: String?
 	@State private var savedFlash = false
 	@State private var testingSend = false
-	@State private var sendTestError: String?
-	@State private var sendTestFlash = false
+	@State private var testResult: NotifyTestResult?
+	@State private var sendingNow = false
+	@State private var sendResult: NotifySendResult?
 
 	private let weekdayNames = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
 
@@ -391,6 +855,25 @@ private struct NotifySection: View {
 		SettingsSectionCard(title: "Aufgaben-Benachrichtigungen") {
 			if let notify = store.notify {
 				headerRow(notify)
+
+				VStack(alignment: .leading, spacing: DS.Space.xs) {
+					Text("Komplette Webhook-URL einfügen")
+						.font(DS.Typo.metaStrong)
+						.foregroundStyle(DS.textSecondary)
+					HStack(spacing: DS.Space.sm) {
+						TextField("https://…/webhook/a1b2c3d4", text: $importUrl)
+							.autocorrectionDisabled()
+						Button("Aufteilen") { splitWebhookURL() }
+							.buttonStyle(.bordered)
+							.disabled(importUrl.trimmed.isEmpty)
+					}
+					Text("Am einfachsten: die ganze URL vom Dienst einfügen — Horizont trennt sie automatisch in Adresse und Zugriffsschlüssel.")
+						.font(.caption)
+						.foregroundStyle(DS.textSecondary)
+					if let err = importError {
+						Text(err).font(.caption).foregroundStyle(DS.danger)
+					}
+				}
 
 				Picker("Frequenz", selection: $frequency) {
 					Text("Aus").tag(NotifyFrequency.manual)
@@ -435,7 +918,23 @@ private struct NotifySection: View {
 						.foregroundStyle(DS.textSecondary)
 					TextField("https://…", text: $url)
 						.autocorrectionDisabled()
-					Text("HTTPS-Endpunkt, an den die Zusammenfassung gesendet wird.")
+					Text("Adresse des Dienstes, der die Nachrichten empfängt — alles direkt vor dem Zugriffsschlüssel.")
+						.font(.caption)
+						.foregroundStyle(DS.textSecondary)
+				}
+
+				VStack(alignment: .leading, spacing: DS.Space.xs) {
+					Text("Zugriffsschlüssel (Token)")
+						.font(DS.Typo.metaStrong)
+						.foregroundStyle(DS.textSecondary)
+					SecureField(notify.hasToken
+					            ? "Gespeichert — leer lassen, um ihn zu behalten"
+					            : "Der geheime Teil am Ende der Webhook-URL",
+					            text: $token)
+						.autocorrectionDisabled()
+					Text(notify.hasToken
+					      ? "Ein Zugriffsschlüssel ist gespeichert — neu ausfüllen, um ihn zu ersetzen."
+					      : "Noch kein Zugriffsschlüssel — du bekommst ihn zusammen mit der Webhook-URL.")
 						.font(.caption)
 						.foregroundStyle(DS.textSecondary)
 				}
@@ -463,18 +962,27 @@ private struct NotifySection: View {
 				if let err = saveError {
 					ErrorBanner(message: err)
 				}
-				if let err = sendTestError {
-					ErrorBanner(message: "Testversand: \(err)")
-				}
 				if savedFlash {
-					Label("Gespeichert.", systemImage: "checkmark.circle.fill")
-						.font(.callout)
-						.foregroundStyle(DS.success)
+					ResultBanner(ok: true, title: "Benachrichtigung gespeichert.", detail: nil)
 				}
-				if sendTestFlash {
-					Label("Test versendet – bitte beim Empfänger prüfen.", systemImage: "paperplane.fill")
-						.font(.callout)
-						.foregroundStyle(DS.success)
+				if let res = testResult {
+					ResultBanner(
+						ok: res.ok,
+						title: res.ok ? "Webhook angenommen." : "Webhook-Test fehlgeschlagen.",
+						detail: res.ok
+							? Self.detail(forStatus: res.status, outcome: res.outcome,
+							              fallback: "Die Nachricht sollte jetzt beim Empfänger angekommen sein.")
+							: res.error)
+				}
+				if let res = sendResult {
+					ResultBanner(
+						ok: res.ok,
+						title: res.ok
+							? "Nachricht gesendet."
+							: (res.skipped == true ? "Nichts gesendet." : "Senden fehlgeschlagen."),
+						detail: res.ok
+							? Self.detail(forStatus: res.status, outcome: res.outcome, fallback: nil)
+							: (res.error ?? res.outcome))
 				}
 
 				if let run = notify.lastRun {
@@ -487,6 +995,21 @@ private struct NotifySection: View {
 					Button("Speichern") { save() }
 						.disabled(saving || (showsTime && !isValidTime(time)))
 						.primaryButton()
+					// Verschickt die echten offenen Tasks (unabhängig von der Automatik).
+					Button {
+						sendNow()
+					} label: {
+						if sendingNow {
+							HStack(spacing: DS.Space.xs) {
+								ProgressView().controlSize(.small)
+								Text("Sende…")
+							}
+						} else {
+							Text("Jetzt senden")
+						}
+					}
+					.buttonStyle(.bordered)
+					.disabled(sendingNow || notify.url == nil || !notify.hasToken)
 					// Testet den Webhook mit den Werten aus dem Formular.
 					Button {
 						sendTest()
@@ -497,7 +1020,7 @@ private struct NotifySection: View {
 								Text("Sende…")
 							}
 						} else {
-							Text("Testversand")
+							Text("Testnachricht senden")
 						}
 					}
 					.buttonStyle(.bordered)
@@ -569,6 +1092,7 @@ private struct NotifySection: View {
 		weekday = notify.weekday
 		intervalHours = notify.intervalHours
 		url = notify.url ?? ""
+		token = ""          // Klartext-Token gibt der Server nie zurück
 		prompt = notify.prompt
 		selectedCategories = Set(notify.categories)
 		seeded = true
@@ -577,19 +1101,26 @@ private struct NotifySection: View {
 	/// Speichern über store.saveNotify; Erfolg = grüner Hinweistext, Fehler = Banner.
 	private func save() {
 		guard !saving else { return }
-		saving = true
-		saveError = nil
-		savedFlash = false
 		let cats = store.categories
 			.filter { selectedCategories.contains($0.name) }
 			.map(\.name)
+		guard !cats.isEmpty else {
+			saveError = "Bitte mindestens eine Kategorie auswählen."
+			return
+		}
+		saving = true
+		saveError = nil
+		savedFlash = false
+		testResult = nil
+		sendResult = nil
 		Task {
 			let err = await store.saveNotify(
 				frequency: frequency,
 				time: time,
 				weekday: weekday,
 				intervalHours: intervalHours,
-				url: url.trimmingCharacters(in: .whitespacesAndNewlines),
+				url: url.trimmed,
+				token: token.trimmed,
 				prompt: prompt,
 				categories: cats
 			)
@@ -597,7 +1128,7 @@ private struct NotifySection: View {
 			if let err {
 				saveError = err
 			} else {
-				sendTestFlash = false
+				token = ""
 				savedFlash = true
 				DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
 					savedFlash = false
@@ -609,27 +1140,506 @@ private struct NotifySection: View {
 	/// Testversand mit den aktuellen Formularwerten (leere Werte: gespeicherte Config).
 	private func sendTest() {
 		guard !testingSend else { return }
+		if token.trimmed.isEmpty, store.notify?.hasToken != true {
+			testResult = NotifyTestResult(ok: false, error: "Bitte zuerst einen Token angeben.")
+			return
+		}
 		testingSend = true
-		sendTestError = nil
 		savedFlash = false
-		let u = url.trimmingCharacters(in: .whitespacesAndNewlines)
+		testResult = nil
+		let u = url.trimmed
+		let tk = token.trimmed
 		let pr = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
 		Task {
-			let err = await store.sendNotifyTest(url: u, prompt: pr)
+			testResult = await store.sendNotifyTest(url: u, token: tk, prompt: pr)
 			testingSend = false
-			if let err {
-				sendTestError = err
+		}
+	}
+
+	/// „Jetzt senden": echte offene Tasks über die gespeicherte Config verschicken.
+	private func sendNow() {
+		guard !sendingNow else { return }
+		sendingNow = true
+		sendResult = nil
+		Task {
+			sendResult = await store.sendNotifyNow()
+			sendingNow = false
+		}
+	}
+
+	/// Komplette Webhook-URL in Adresse + Token am letzten Pfad-Segment aufteilen.
+	private func splitWebhookURL() {
+		importError = nil
+		var s = importUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+		while s.hasSuffix("/") { s.removeLast() }
+		guard let slash = s.lastIndex(of: "/"), slash != s.startIndex else {
+			importError = "Bitte die vollständige Webhook-URL einfügen."
+			return
+		}
+		let head = String(s[..<slash])
+		let tail = String(s[s.index(after: slash)...])
+		guard head.hasPrefix("http"), !tail.isEmpty else {
+			importError = "Bitte die vollständige Webhook-URL einfügen."
+			return
+		}
+		url = head
+		token = tail
+		importUrl = ""
+	}
+
+	/// Detailzeile für Ergebnis-Banner: „HTTP 200 · Ergebnis: accepted".
+	private static func detail(forStatus status: Int?, outcome: String?,
+	                           fallback: String?) -> String? {
+		var parts: [String] = []
+		if let status { parts.append("HTTP \(status)") }
+		if let outcome, !outcome.isEmpty { parts.append("Ergebnis: \(outcome)") }
+		if parts.isEmpty { return fallback }
+		return parts.joined(separator: " · ")
+	}
+}
+
+// MARK: – Aufgaben-Kategorien
+
+/// Task-Kategorien (Name + Farbe): umbenennen, einfärben, anlegen, löschen.
+/// Farbänderungen werden entprellt automatisch gespeichert.
+private struct CategoriesSection: View {
+	@Environment(AppStore.self) private var store
+
+	/// Arbeitskopie (identifiziert über den aktuellen Namen).
+	@State private var rows: [TaskCategory] = []
+	@State private var seeded = false
+
+	/// Entprellter Speicher-Task pro Kategorie (Farbänderungen).
+	@State private var colorSaves: [String: Task<Void, Never>] = [:]
+
+	/// Umbenennen-Draft + Fehler pro Kategorie.
+	@State private var renameDrafts: [String: String] = [:]
+	@State private var rowErrors: [String: String] = [:]
+
+	// Neue Kategorie.
+	@State private var newName = ""
+	@State private var newColor = Color(nsColor: .systemTeal)
+	@State private var addError: String?
+
+	@State private var saveError: String?
+	@State private var showResetConfirm = false
+
+	var body: some View {
+		SettingsSectionCard(title: "Aufgaben-Kategorien") {
+			Text("Hier benennst und einfärbst du die Kategorien, die du deinen Aufgaben geben kannst — z. B. „Schule“, „Privat“ oder „Garten“. Die Kategorie wird direkt in der Aufgabe gespeichert.")
+				.font(.callout)
+				.foregroundStyle(DS.textSecondary)
+
+			if rows.isEmpty {
+				Text("Keine Kategorien — lege unten eine an.")
+					.font(.callout)
+					.foregroundStyle(DS.textSecondary)
 			} else {
-				sendTestFlash = true
-				DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-					sendTestFlash = false
+				VStack(spacing: DS.Space.sm) {
+					ForEach(rows, id: \.name) { cat in
+						categoryRow(cat)
+					}
 				}
 			}
+
+			Divider()
+
+			HStack(spacing: DS.Space.sm) {
+				ColorPicker("", selection: $newColor)
+					.labelsHidden()
+				TextField("Neue Kategorie (z. B. Garten)", text: $newName)
+					.onSubmit { addCategory() }
+				Button("Hinzufügen") { addCategory() }
+					.buttonStyle(.bordered)
+					.disabled(TaskCategories.normalize(newName) == nil)
+			}
+			if let err = addError {
+				Text(err).font(.caption).foregroundStyle(DS.danger)
+			}
+			if let err = saveError {
+				ErrorBanner(message: err)
+			}
+
+			HStack {
+				Spacer()
+				Button("Standard herstellen") { showResetConfirm = true }
+					.buttonStyle(.bordered)
+			}
+		}
+		.task {
+			guard !seeded else { return }
+			await store.loadCategories()
+			rows = store.categories
+			seeded = true
+		}
+		.onDisappear {
+			colorSaves.values.forEach { $0.cancel() }
+		}
+		.confirmationDialog(
+			"Standard-Kategorien wiederherstellen?",
+			isPresented: $showResetConfirm,
+			titleVisibility: .visible
+		) {
+			Button("Standard herstellen") { restoreDefaults() }
+		} message: {
+			Text("Alle eigenen Kategorien werden durch Hoch, Schule und Niedrig ersetzt.")
+		}
+	}
+
+	// MARK: Zeile
+
+	/// Eine Kategorie: Farbe, Name (oder Umbenennen-Formular), Löschen.
+	@ViewBuilder
+	private func categoryRow(_ cat: TaskCategory) -> some View {
+		VStack(alignment: .leading, spacing: DS.Space.xs) {
+			HStack(spacing: DS.Space.sm) {
+				ColorPicker("", selection: colorBinding(for: cat))
+					.labelsHidden()
+				if renameDrafts[cat.name] != nil {
+					TextField("Neuer Name", text: Binding(
+						get: { renameDrafts[cat.name] ?? "" },
+						set: { renameDrafts[cat.name] = $0 }
+					))
+					.frame(maxWidth: 260)
+					.onSubmit { commitRename(of: cat) }
+					Button("Umbenennen") { commitRename(of: cat) }
+						.buttonStyle(.bordered)
+					Button("Abbrechen") {
+						renameDrafts[cat.name] = nil
+						rowErrors[cat.name] = nil
+					}
+					.buttonStyle(.borderless)
+				} else {
+					Text(cat.name)
+						.font(DS.Typo.rowTitle)
+						.foregroundStyle(DS.textPrimary)
+					Spacer(minLength: DS.Space.sm)
+					Button("Umbenennen") { renameDrafts[cat.name] = cat.name }
+						.buttonStyle(.bordered)
+					Button {
+						deleteCategory(cat)
+					} label: {
+						Image(systemName: "trash")
+					}
+					.buttonStyle(.borderless)
+					.foregroundStyle(DS.danger)
+					.help("Kategorie löschen")
+				}
+			}
+			if let err = rowErrors[cat.name] {
+				Text(err).font(.caption).foregroundStyle(DS.danger)
+			}
+		}
+		.padding(DS.Space.sm)
+		.background(
+			RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+				.fill(DS.fillSubtle)
+		)
+	}
+
+	// MARK: Aktionen
+
+	/// Farbbindung mit entprelltem Auto-Speichern (~400 ms nach der letzten Änderung).
+	private func colorBinding(for cat: TaskCategory) -> Binding<Color> {
+		Binding(
+			get: {
+				guard let row = rows.first(where: { $0.name == cat.name }) else { return .gray }
+				return dsColor(hex: row.color) ?? .gray
+			},
+			set: { newValue in
+				guard let i = rows.firstIndex(where: { $0.name == cat.name }) else { return }
+				let hex = hexString(from: newValue) ?? rows[i].color
+				rows[i] = TaskCategory(name: rows[i].name, color: hex)
+				scheduleColorSave()
+			}
+		)
+	}
+
+	private func scheduleColorSave() {
+		colorSaves["_"]?.cancel()
+		colorSaves["_"] = Task {
+			do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+			guard !Task.isCancelled else { return }
+			if let err = await store.saveCategories(rows) { saveError = err }
+			colorSaves["_"] = nil
+		}
+	}
+
+	private func commitRename(of cat: TaskCategory) {
+		guard let draft = renameDrafts[cat.name] else { return }
+		guard let normalized = TaskCategories.normalize(draft) else {
+			rowErrors[cat.name] = "Ungültiger Kategoriename (1–40 Zeichen, ohne Komma/Semikolon)."
+			return
+		}
+		if rows.contains(where: {
+			$0.name.lowercased() == normalized.lowercased() && $0.name != cat.name
+		}) {
+			rowErrors[cat.name] = "Diese Kategorie gibt es schon."
+			return
+		}
+		guard let i = rows.firstIndex(where: { $0.name == cat.name }) else { return }
+		let color = rows[i].color
+		rows[i] = TaskCategory(name: normalized, color: color)
+		renameDrafts[cat.name] = nil
+		rowErrors[cat.name] = nil
+		saveAll()
+	}
+
+	private func addCategory() {
+		guard let normalized = TaskCategories.normalize(newName) else {
+			addError = "Ungültiger Kategoriename (1–40 Zeichen, ohne Komma/Semikolon)."
+			return
+		}
+		if rows.contains(where: { $0.name.lowercased() == normalized.lowercased() }) {
+			addError = "Diese Kategorie gibt es schon."
+			return
+		}
+		guard let hex = hexString(from: newColor) else { return }
+		rows.append(TaskCategory(name: normalized, color: hex))
+		newName = ""
+		addError = nil
+		saveAll()
+	}
+
+	/// Kategorie löschen; bestehende Aufgaben behalten ihren Kategorienamen (ohne Farbe).
+	private func deleteCategory(_ cat: TaskCategory) {
+		colorSaves.values.forEach { $0.cancel() }
+		rows.removeAll { $0.name == cat.name }
+		renameDrafts[cat.name] = nil
+		rowErrors[cat.name] = nil
+		saveAll()
+	}
+
+	private func restoreDefaults() {
+		colorSaves.values.forEach { $0.cancel() }
+		rows = TaskCategories.defaults
+		renameDrafts = [:]
+		rowErrors = [:]
+		saveAll()
+	}
+
+	private func saveAll() {
+		Task {
+			if let err = await store.saveCategories(rows) { saveError = err }
+		}
+	}
+}
+
+// MARK: – API-Token
+
+/// API-Token für externe Programme (MCP): erzeugen, einmalig anzeigen, ablehnen.
+private struct ApiTokenSection: View {
+	@Environment(AppStore.self) private var store
+
+	@State private var busy = false
+	@State private var actionError: String?
+	@State private var showGenerateConfirm = false
+	@State private var showRevokeConfirm = false
+	@State private var copiedFlash = false
+
+	var body: some View {
+		SettingsSectionCard(title: "API-Token (für externe Zugriffe)") {
+			Text("Mit diesem Token können externe Programme — z. B. ein Assistenz-/Automatisierungs-Tool über den mitgelieferten MCP-Server — auf deine Termine und Aufgaben zugreifen. Der Token funktioniert wie ein Passwort (Header „Authorization: Bearer <token>“).")
+				.font(.callout)
+				.foregroundStyle(DS.textSecondary)
+
+			if let info = store.apiToken {
+				if info.hasToken {
+					Text(statusLine(info))
+						.font(.caption)
+						.foregroundStyle(DS.textSecondary)
+				} else {
+					Text("Noch kein Token erstellt.")
+						.font(.caption)
+						.foregroundStyle(DS.textSecondary)
+				}
+			}
+
+			// Klartext gibt es nur einmal — direkt nach dem Erzeugen.
+			if let token = store.newApiToken {
+				VStack(alignment: .leading, spacing: DS.Space.sm) {
+					Text("Neuer Token — wird nur einmal angezeigt, jetzt kopieren:")
+						.font(.caption)
+						.foregroundStyle(DS.textSecondary)
+					HStack(alignment: .top, spacing: DS.Space.sm) {
+						Text(token)
+							.font(.system(.caption, design: .monospaced))
+							.textSelection(.enabled)
+							.frame(maxWidth: .infinity, alignment: .leading)
+							.padding(DS.Space.sm)
+							.background(
+								RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+									.fill(DS.fillSubtle)
+							)
+						VStack(spacing: DS.Space.xs) {
+							Button("Kopieren") { copyToken(token) }
+								.buttonStyle(.bordered)
+							if copiedFlash {
+								Text("Kopiert.").font(.caption).foregroundStyle(DS.success)
+							}
+						}
+					}
+				}
+				.padding(DS.Space.md)
+				.background(
+					RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+						.fill(DS.success.opacity(0.08))
+				)
+				.overlay(
+					RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
+						.strokeBorder(DS.success.opacity(0.3), lineWidth: 1)
+				)
+			}
+
+			if let err = actionError {
+				ErrorBanner(message: err)
+			}
+
+			HStack(spacing: DS.Space.sm) {
+				Button {
+					if store.apiToken?.hasToken == true {
+						showGenerateConfirm = true
+					} else {
+						generateToken()
+					}
+				} label: {
+					generateLabel
+				}
+				.disabled(busy)
+				if store.apiToken?.hasToken == true {
+					Button("Token ablehnen", role: .destructive) { showRevokeConfirm = true }
+						.buttonStyle(.bordered)
+						.disabled(busy)
+				}
+			}
+		}
+		.task {
+			if store.apiToken == nil { await store.loadApiToken() }
+		}
+		.confirmationDialog(
+			"Den aktuellen Token ersetzen? Er ist danach ungültig.",
+			isPresented: $showGenerateConfirm,
+			titleVisibility: .visible
+		) {
+			Button("Neuen Token erzeugen") { generateToken() }
+		}
+		.confirmationDialog(
+			"API-Token ablehnen? Externe Tools verlieren sofort den Zugriff.",
+			isPresented: $showRevokeConfirm,
+			titleVisibility: .visible
+		) {
+			Button("Token ablehnen", role: .destructive) { revokeToken() }
+		}
+	}
+
+	@ViewBuilder
+	private var generateLabel: some View {
+		if busy {
+			HStack(spacing: DS.Space.xs) {
+				ProgressView().controlSize(.small)
+				Text("Arbeite…")
+			}
+		} else {
+			Text(store.apiToken?.hasToken == true ? "Neuen Token erzeugen" : "Token erzeugen")
+		}
+	}
+
+	/// „Token erstellt am 12.03.2026 · zuletzt genutzt 09.05.2026“.
+	private func statusLine(_ info: ApiTokenView) -> String {
+		var line = "Token erstellt am \(Self.date(info.createdAt) ?? "–")"
+		if let last = info.lastUsedAt {
+			line += " · zuletzt genutzt \(Self.date(last))"
+		} else {
+			line += " · noch nie genutzt"
+		}
+		return line
+	}
+
+	private static func date(_ epochMs: Int?) -> String? {
+		guard let epochMs else { return nil }
+		let f = DateFormatter()
+		f.locale = Locale(identifier: "de_DE")
+		f.dateStyle = .medium
+		return f.string(from: Date(timeIntervalSince1970: Double(epochMs) / 1000))
+	}
+
+	private func copyToken(_ token: String) {
+		NSPasteboard.general.clearContents()
+		NSPasteboard.general.setString(token, forType: .string)
+		copiedFlash = true
+		Task {
+			try? await Task.sleep(for: .seconds(2))
+			copiedFlash = false
+		}
+	}
+
+	private func generateToken() {
+		guard !busy else { return }
+		busy = true
+		actionError = nil
+		Task {
+			let err = await store.generateApiToken()
+			busy = false
+			if let err { actionError = err }
+		}
+	}
+
+	private func revokeToken() {
+		guard !busy else { return }
+		busy = true
+		actionError = nil
+		Task {
+			let err = await store.revokeApiToken()
+			busy = false
+			if let err { actionError = err }
 		}
 	}
 }
 
 // MARK: – Hilfsfunktionen
+
+private extension String {
+	/// Whitespace am Anfang/Ende entfernt (Kurzform für Formulareingaben).
+	var trimmed: String {
+		trimmingCharacters(in: .whitespacesAndNewlines)
+	}
+}
+
+/// Grün/rotes Ergebnis-Banner (Test/Versand) mit optionaler Detailzeile.
+private struct ResultBanner: View {
+	let ok: Bool
+	let title: String
+	var detail: String?
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 2) {
+			Label(title, systemImage: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+				.font(.callout.weight(.medium))
+			if let detail, !detail.isEmpty {
+				Text(detail)
+					.font(.caption)
+					.textSelection(.enabled)
+			}
+		}
+		.foregroundStyle(ok ? DS.success : DS.danger)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(DS.Space.sm)
+		.background(
+			RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+				.fill((ok ? DS.success : DS.danger).opacity(0.10))
+		)
+		.accessibilityElement(children: .combine)
+	}
+}
+
+/// Color als Hex-String (#rrggbb) für die Kategorie-Farben; nil wenn nicht konvertierbar.
+private func hexString(from color: Color) -> String? {
+	guard let ns = NSColor(color).usingColorSpace(.sRGB) else { return nil }
+	let r = Int((ns.redComponent * 255).rounded())
+	let g = Int((ns.greenComponent * 255).rounded())
+	let b = Int((ns.blueComponent * 255).rounded())
+	return String(format: "#%02x%02x%02x", r, g, b)
+}
 
 /// Prüft das Zeitformat HH:MM (0–23 Uhr, 0–59 Minuten).
 private func isValidTime(_ s: String) -> Bool {
@@ -648,6 +1658,15 @@ private func dsColor(hex: String) -> Color? {
 		srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
 		green: CGFloat((value >> 8) & 0xFF) / 255,
 		blue: CGFloat(value & 0xFF) / 255,
+		alpha: 1))
+}
+
+/// Feste sRGB-Farbe (Design-Vorschau – folgt bewusst nicht der aktuellen Erscheinung).
+private func staticRGB(_ hex: UInt64) -> Color {
+	Color(nsColor: NSColor(
+		srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
+		green: CGFloat((hex >> 8) & 0xFF) / 255,
+		blue: CGFloat(hex & 0xFF) / 255,
 		alpha: 1))
 }
 

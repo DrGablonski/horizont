@@ -14,6 +14,7 @@ import {
 	updateConnection
 } from '$server/store/connections';
 import type { ConnectionInput } from '$server/store/connections';
+import { invalidatePanelCache } from '$server/lib/panelCache';
 
 function badRequest(msg: string) {
 	return json({ error: msg }, { status: 400 });
@@ -39,6 +40,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	};
 	try {
 		createConnection(locals.user.id, input);
+		invalidatePanelCache();
 		return json(listConnectionsView(locals.user.id));
 	} catch (e) {
 		return badRequest(e instanceof Error ? e.message : 'Ungültige Eingaben.');
@@ -61,6 +63,7 @@ export const PATCH: RequestHandler = async ({ request, locals }) => {
 			username: body.username,
 			password: body.password
 		});
+		invalidatePanelCache();
 		return json(listConnectionsView(locals.user.id));
 	} catch (e) {
 		return badRequest(e instanceof Error ? e.message : 'Ungültige Eingaben.');
@@ -76,6 +79,7 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
 	}
 	try {
 		removeConnection(locals.user.id, body.id);
+		invalidatePanelCache();
 		return json(listConnectionsView(locals.user.id));
 	} catch (e) {
 		return badRequest(e instanceof Error ? e.message : 'Ungültige Eingaben.');

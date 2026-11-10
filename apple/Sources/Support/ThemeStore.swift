@@ -2,7 +2,65 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// Erscheinungsbild: Appearance-Modus + Akzentfarbe, persistiert in UserDefaults.
+/// Feste Designs (komplette Looks): jedes Design legt Helligkeit **und**
+/// Akzentfarbe gemeinsam fest – bewusst keine freie Farbwahl mehr, sondern
+/// 4 kuratierte Looks (Graphit, Tinte, Violett, Papier).
+enum AppDesign: String, CaseIterable, Identifiable {
+	case graphite  // Dunkel + Amber (Standard)
+	case ink       // Dunkel + Blau
+	case violet    // Dunkel + Violett
+	case paper     // Hell + Amber
+
+	var id: String { rawValue }
+
+	var name: String {
+		switch self {
+		case .graphite: return "Graphit"
+		case .ink: return "Tinte"
+		case .violet: return "Violett"
+		case .paper: return "Papier"
+		}
+	}
+
+	/// Kurzbeschreibung unter dem Kachelnamen.
+	var subtitle: String {
+		switch self {
+		case .graphite: return "Dunkel · Amber"
+		case .ink: return "Dunkel · Blau"
+		case .violet: return "Dunkel · Violett"
+		case .paper: return "Hell · Amber"
+		}
+	}
+
+	var isDark: Bool { self != .paper }
+
+	/// sRGB-Akzent für die feste Helligkeit des Designs.
+	var accentRGB: UInt64 { isDark ? accentDark : accentLight }
+
+	/// Akzent-Paar (Hell/Dunkel-Zweige passen immer zum jeweiligen Design).
+	var accentLight: UInt64 {
+		switch self {
+		case .graphite, .paper: return 0xB4761F
+		case .ink: return 0x2563EB
+		case .violet: return 0x7C3AED
+		}
+	}
+
+	var accentDark: UInt64 {
+		switch self {
+		case .graphite, .paper: return 0xF0A65A
+		case .ink: return 0x60A5FA
+		case .violet: return 0xA78BFA
+		}
+	}
+
+	/// erzwungene Fenster-Erscheinung (Design = fester Look, kein System-Follow)
+	var nsAppearance: NSAppearance? {
+		NSAppearance(named: isDark ? .darkAqua : .aqua)
+	}
+}
+
+/// Erscheinungsbild: gewähltes Design, persistiert in UserDefaults.
 ///
 /// Die App nutzt bewusst **eigene Paletten** (Graphite-Dark / Paper-Light) statt
 /// der macOS-Systemfarben – so wirkt sie wie ein gestaltetes Produkt (Diddy-Look)
@@ -12,21 +70,15 @@ import SwiftUI
 final class ThemeStore {
 	static let shared = ThemeStore()
 
-	private static let modeKey = "hz.appearanceMode"
-	private static let accentKey = "hz.accentID"
+	private static let designKey = "hz.designID"
+	// Alt (freie Akzentwahl + Hell/Dunkel-Pill) – nur noch für die Migration.
+	private static let legacyModeKey = "hz.appearanceMode"
+	private static let legacyAccentKey = "hz.accentID"
 
-	/// System / Dunkel / Hell.
-	var mode: AppearanceMode {
+	/// Aktives Design (Graphit, Tinte, Violett, Papier).
+	var design: AppDesign {
 		didSet {
-			UserDefaults.standard.set(mode.rawValue, forKey: Self.modeKey)
-			apply()
-		}
-	}
-
-	/// Akzent-Preset (Amber, Blau, …).
-	var accentPreset: AccentPreset {
-		didSet {
-			UserDefaults.standard.set(accentPreset.id, forKey: Self.accentKey)
+			UserDefaults.standard.set(design.rawValue, forKey: Self.designKey)
 			apply()
 		}
 	}
@@ -36,90 +88,39 @@ final class ThemeStore {
 	private(set) var revision = 0
 
 	private init() {
-		let raw = UserDefaults.standard.string(forKey: Self.modeKey) ?? AppearanceMode.system.rawValue
-		mode = AppearanceMode(rawValue: raw) ?? .system
-		let aid = UserDefaults.standard.string(forKey: Self.accentKey) ?? AccentPreset.amberID
-		accentPreset = AccentPreset.byId(aid)
+		if let raw = UserDefaults.standard.string(forKey: Self.designKey),
+		   let saved = AppDesign(rawValue: raw) {
+			design = saved
+		} else {
+			design = Self.migrateLegacyChoice()
+		}
 	}
 
-	/// Akzentfarbe (Hell/Dunkel-Paar des Presets).
+	/// Alte freie Akzent-/Modus-Einstellung auf das nächste feste Design mappen.
+	private static func migrateLegacyChoice() -> AppDesign {
+		switch UserDefaults.standard.string(forKey: Self.legacyAccentKey) {
+		case "blue": return .ink
+		case "violet": return .violet
+		default: break
+		}
+		// Alt-Modus "Hell" (bzw. System mit hellem System) → Papier, sonst Graphit.
+		let legacyMode = UserDefaults.standard.string(forKey: Self.legacyModeKey)
+		return legacyMode == "light" ? .paper : .graphite
+	}
+
+	/// Akzentfarbe des aktiven Designs.
 	var accent: Color {
-		Color.dynamic(light: accentPreset.light, dark: accentPreset.dark)
+		Color.dynamic(light: design.accentLight, dark: design.accentDark)
 	}
 
 	/// Setzt die NSApplication-Erscheinung und triggert Re-Render (nur bei echter Änderung).
 	func apply() {
-		let key = "\(mode.rawValue)|\(accentPreset.id)"
-		NSApp.appearance = mode.nsAppearance
-		if key != appliedKey {
-			appliedKey = key
+		NSApp.appearance = design.nsAppearance
+		if design.rawValue != appliedKey {
+			appliedKey = design.rawValue
 			revision += 1
 		}
 	}
 
 	private var appliedKey: String = ""
-}
-
-// MARK: – Appearance-Modus
-
-enum AppearanceMode: String, CaseIterable, Identifiable {
-	case system, light, dark
-
-	var id: String { rawValue }
-
-	var label: String {
-		switch self {
-		case .system: return "System"
-		case .light: return "Hell"
-		case .dark: return "Dunkel"
-		}
-	}
-
-	var icon: String {
-		switch self {
-		case .system: return "circle.lefthalf.filled"
-		case .light: return "sun.max"
-		case .dark: return "moon"
-		}
-	}
-
-	var nsAppearance: NSAppearance? {
-		switch self {
-		case .system: return nil
-		case .light: return NSAppearance(named: .aqua)
-		case .dark: return NSAppearance(named: .darkAqua)
-		}
-	}
-}
-
-// MARK: – Akzent-Presets
-
-struct AccentPreset: Identifiable, Hashable {
-	let id: String
-	let name: String
-	/// sRGB-Werte für Hell- und Dunkel-Palette.
-	let light: UInt64
-	let dark: UInt64
-
-	static let amberID = "amber"
-	static let blueID = "blue"
-	static let violetID = "violet"
-	static let pinkID = "pink"
-	static let greenID = "green"
-	static let redID = "red"
-
-	static let all: [AccentPreset] = [
-		AccentPreset(id: amberID, name: "Amber", light: 0xB4761F, dark: 0xF0A65A),
-		AccentPreset(id: blueID, name: "Blau", light: 0x2563EB, dark: 0x60A5FA),
-		AccentPreset(id: violetID, name: "Violett", light: 0x7C3AED, dark: 0xA78BFA),
-		AccentPreset(id: pinkID, name: "Rosa", light: 0xDB2777, dark: 0xF472B6),
-		AccentPreset(id: greenID, name: "Grün", light: 0x15803D, dark: 0x4ADE80),
-		AccentPreset(id: redID, name: "Rot", light: 0xDC2626, dark: 0xF87171),
-	]
-
-	static func byId(_ id: String) -> AccentPreset {
-		all.first { $0.id == id } ?? all[0]
-	}
-
-	static var amber: AccentPreset { byId(amberID) }
 }

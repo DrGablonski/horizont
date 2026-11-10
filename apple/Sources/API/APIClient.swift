@@ -236,9 +236,39 @@ final class APIClient {
 		try await get("/api/settings")
 	}
 
+	/// Verbindung anlegen (POST /api/settings); Antwort = aktualisierte Liste.
+	@discardableResult
+	func createConnection(name: String, url: String, username: String,
+	                      password: String) async throws -> ConnectionsResponse {
+		try await send("/api/settings", method: "POST",
+		              body: ["name": name, "url": url,
+		                     "username": username, "password": password])
+	}
+
+	/// Verbindung ändern (PATCH /api/settings); leere Password = gespeichertes behalten.
+	@discardableResult
+	func updateConnection(id: String, name: String, url: String,
+	                      username: String, password: String?) async throws -> ConnectionsResponse {
+		var body: [String: Any] = ["id": id, "name": name, "url": url, "username": username]
+		if let password, !password.isEmpty { body["password"] = password }
+		return try await send("/api/settings", method: "PATCH", body: body)
+	}
+
+	/// Verbindung löschen (DELETE /api/settings); Antwort = aktualisierte Liste.
+	@discardableResult
+	func deleteConnection(id: String) async throws -> ConnectionsResponse {
+		try await send("/api/settings", method: "DELETE", body: ["id": id])
+	}
+
 	/// Gespeicherte Verbindung per id testen.
 	func testConnection(id: String) async throws -> TestResult {
 		try await send("/api/settings/test", method: "POST", body: ["id": id])
+	}
+
+	/// Ungespeicherte Formularwerte testen („Erst testen" vor dem Anlegen).
+	func testConnection(url: String, username: String, password: String) async throws -> TestResult {
+		try await send("/api/settings/test", method: "POST",
+		              body: ["url": url, "username": username, "password": password])
 	}
 
 	// MARK: – Kategorien
@@ -265,11 +295,33 @@ final class APIClient {
 	}
 
 	/// Testversand (POST /api/notify/test). Leere Werte fallen auf die gespeicherte Config zurück.
-	func sendNotifyTest(url: String = "", prompt: String = "") async throws -> OKResponse {
+	func sendNotifyTest(url: String = "", token: String = "",
+	                    prompt: String = "") async throws -> NotifyTestResult {
 		var body: [String: Any] = [:]
 		if !url.isEmpty { body["url"] = url }
+		if !token.isEmpty { body["token"] = token }
 		if !prompt.isEmpty { body["prompt"] = prompt }
 		return try await send("/api/notify/test", method: "POST", body: body)
+	}
+
+	/// „Jetzt senden" (POST /api/notify/send): echte offene Tasks nach gespeicherter Config.
+	func sendNotifyNow() async throws -> NotifySendResult {
+		try await send("/api/notify/send", method: "POST")
+	}
+
+	// MARK: – API-Token (externe Zugriffe/MCP)
+
+	func apiToken() async throws -> ApiTokenView {
+		try await get("/api/token")
+	}
+
+	/// Neuen Token erzeugen (ersetzt vorhandenen) – Klartext nur in dieser Antwort.
+	func generateApiToken() async throws -> ApiTokenGenerated {
+		try await send("/api/token", method: "POST")
+	}
+
+	func revokeApiToken() async throws {
+		_ = try await raw("/api/token", method: "DELETE")
 	}
 
 	private func get<T: Decodable>(_ type: T.Type, from path: String) async throws -> T {

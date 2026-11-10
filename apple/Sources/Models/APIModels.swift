@@ -30,6 +30,13 @@ struct ApiTokenGenerated: Codable {
 	let createdAt: Int
 }
 
+/// Status des API-Tokens (GET /api/token) – Zeitstempel in Epoch-ms.
+struct ApiTokenView: Codable {
+	let hasToken: Bool
+	var createdAt: Int?
+	var lastUsedAt: Int?
+}
+
 // ── Events & Timeline ─────────────────────────────────────────────────────
 
 struct EventItem: Codable, Identifiable {
@@ -158,6 +165,26 @@ struct CategoriesResponse: Codable {
 	let categories: [TaskCategory]
 }
 
+/// Kategorien-Regeln – spiegelt src/lib/categories.ts.
+enum TaskCategories {
+	/// Standard-Kategorien („Standard herstellen" wie in der Web-App).
+	static let defaults: [TaskCategory] = [
+		TaskCategory(name: "Hoch", color: "#dc2626"),
+		TaskCategory(name: "Schule", color: "#2563eb"),
+		TaskCategory(name: "Niedrig", color: "#16a34a")
+	]
+
+	/// Erlaubter Kategoriename: 1–40 Zeichen ohne iCal-Sonderzeichen
+	/// (Komma, Semikolon, Backslash); whitespace bereinigt. nil = ungültig.
+	static func normalize(_ raw: String) -> String? {
+		let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+			.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+		if s.isEmpty || s.count > 40 { return nil }
+		if s.contains(where: { $0 == "," || $0 == ";" || $0 == "\\" }) { return nil }
+		return s
+	}
+}
+
 // ── Benachrichtigungen (Webhook) ──────────────────────────────────────────
 
 enum NotifyFrequency: String, Codable, CaseIterable {
@@ -169,6 +196,25 @@ struct NotifyLastRun: Codable {
 	let status: String        // ok | skipped | error
 	var error: String?
 	var at: Int?
+}
+
+/// Ergebnis des Webhook-Tests (POST /api/notify/test).
+struct NotifyTestResult: Codable {
+	let ok: Bool
+	var status: Int?
+	/// Ergebnis des Empfängers (Header x-t3-hook-outcome), z. B. „accepted".
+	var outcome: String?
+	var error: String?
+}
+
+/// Ergebnis des manuellen Versands (POST /api/notify/send).
+struct NotifySendResult: Codable {
+	let ok: Bool
+	/// true = nichts gesendet (keine offenen Tasks o. ä.).
+	var skipped: Bool?
+	var status: Int?
+	var outcome: String?
+	var error: String?
 }
 
 struct NotifyConfigView: Codable {

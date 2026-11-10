@@ -34,6 +34,11 @@ final class AppStore {
 	var connections: [ConnectionView] = []
 	var notify: NotifyConfigView?
 
+	// API-Token (Einstellungen „API-Zugang")
+	var apiToken: ApiTokenView?
+	/// Klartext des zuletzt erzeugten Tokens – wird nur einmal angezeigt.
+	var newApiToken: String?
+
 	private let serverBase: String
 	private var prefetchStarted = false
 
@@ -351,6 +356,17 @@ final class AppStore {
 		} catch {}
 	}
 
+	/// Ganze Kategorie-Liste ersetzen (wie Web-App); Erfolg = nil, sonst Fehlertext.
+	func saveCategories(_ cats: [TaskCategory]) async -> String? {
+		do {
+			categories = try await client.saveCategories(cats)
+			saveSnapshot(categories, name: "categories")
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
 	// MARK: – Einstellungen
 
 	func loadConnections() async {
@@ -363,17 +379,61 @@ final class AppStore {
 		try? await client.testConnection(id: id)
 	}
 
+	/// Ungespeicherte Formularwerte testen (ohne zu speichern).
+	func testConnection(url: String, username: String, password: String) async -> TestResult? {
+		try? await client.testConnection(url: url, username: username, password: password)
+	}
+
+	/// Verbindung anlegen; Erfolg = nil, sonst Fehlertext. Lädt Kalender nach (neue Quellen).
+	func createConnection(name: String, url: String, username: String,
+	                      password: String) async -> String? {
+		do {
+			connections = try await client.createConnection(
+				name: name, url: url, username: username, password: password).connections
+			await loadCalendars()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// Verbindung ändern; leeres Passwort = gespeichertes behalten. Erfolg = nil, sonst Fehlertext.
+	func updateConnection(id: String, name: String, url: String,
+	                      username: String, password: String) async -> String? {
+		do {
+			connections = try await client.updateConnection(
+				id: id, name: name, url: url, username: username,
+				password: password.isEmpty ? nil : password).connections
+			await loadCalendars()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// Verbindung löschen; Erfolg = nil, sonst Fehlertext.
+	func deleteConnection(id: String) async -> String? {
+		do {
+			connections = try await client.deleteConnection(id: id).connections
+			await loadCalendars()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
 	func loadNotify() async {
 		do {
 			notify = try await client.notifyConfig()
 		} catch {}
 	}
 
-	/// Notify-Konfiguration speichern; Erfolg = nil, sonst Fehlertext.
+	/// Notify-Konfiguration speichern; leeres token = gespeicherten Wert behalten.
+	/// Erfolg = nil, sonst Fehlertext.
 	func saveNotify(frequency: NotifyFrequency, time: String, weekday: Int,
-	                intervalHours: Int, url: String, prompt: String,
+	                intervalHours: Int, url: String, token: String, prompt: String,
 	                categories: [String]) async -> String? {
-		let body: [String: Any] = [
+		var body: [String: Any] = [
 			"frequency": frequency.rawValue,
 			"time": time,
 			"weekday": weekday,
@@ -382,6 +442,7 @@ final class AppStore {
 			"prompt": prompt,
 			"categories": categories
 		]
+		if !token.isEmpty { body["token"] = token }
 		do {
 			notify = try await client.saveNotifyConfig(body)
 			return nil
@@ -390,10 +451,53 @@ final class AppStore {
 		}
 	}
 
-	/// Testversand mit den aktuellen Formularwerten (leer = gespeicherte Config); Erfolg = nil.
-	func sendNotifyTest(url: String = "", prompt: String = "") async -> String? {
+	/// Testversand mit Formularwerten (leer = gespeicherte Config); Fehler landen im Ergebnis.
+	func sendNotifyTest(url: String = "", token: String = "",
+	                    prompt: String = "") async -> NotifyTestResult {
 		do {
-			_ = try await client.sendNotifyTest(url: url, prompt: prompt)
+			return try await client.sendNotifyTest(url: url, token: token, prompt: prompt)
+		} catch {
+			return NotifyTestResult(ok: false, error: error.localizedDescription)
+		}
+	}
+
+	/// „Jetzt senden": echte offene Tasks verschicken; danach Lauf-Status neu laden.
+	func sendNotifyNow() async -> NotifySendResult {
+		do {
+			let result = try await client.sendNotifyNow()
+			await loadNotify()
+			return result
+		} catch {
+			return NotifySendResult(ok: false, error: error.localizedDescription)
+		}
+	}
+
+	// MARK: – API-Token
+
+	func loadApiToken() async {
+		do {
+			apiToken = try await client.apiToken()
+		} catch {}
+	}
+
+	/// Neuen Token erzeugen (Klartext landet in newApiToken); Erfolg = nil, sonst Fehlertext.
+	func generateApiToken() async -> String? {
+		do {
+			let r = try await client.generateApiToken()
+			newApiToken = r.token
+			await loadApiToken()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// Token ablehnen; Erfolg = nil, sonst Fehlertext.
+	func revokeApiToken() async -> String? {
+		do {
+			try await client.revokeApiToken()
+			newApiToken = nil
+			await loadApiToken()
 			return nil
 		} catch {
 			return error.localizedDescription

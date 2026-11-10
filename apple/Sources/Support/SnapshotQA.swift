@@ -66,8 +66,24 @@ enum SnapshotQA {
 		render("archiv-dark", ArchiveView(), width: 900, height: 760, dark: true)
 		render("workflows", WorkflowsView(), width: 900, height: 640)
 		render("workflows-dark", WorkflowsView(), width: 900, height: 640, dark: true)
-		render("settings", SettingsView(), width: 900, height: 900, pause: 0.8)
-		render("settings-dark", SettingsView(), width: 900, height: 900, dark: true, pause: 0.8)
+		// Einstellungen: alle vier Bereiche (Design-Wechsel steuert Hell/Dunkel).
+		let designBefore = ThemeStore.shared.design
+		let areaBefore = UserDefaults.standard.string(forKey: SettingsView.areaKey)
+		ThemeStore.shared.design = .graphite
+		for a in SettingsView.Area.allCases {
+			UserDefaults.standard.set(a.rawValue, forKey: SettingsView.areaKey)
+			render("settings-\(a.id.lowercased())", SettingsView(), width: 900, height: 900, pause: 0.8)
+		}
+		UserDefaults.standard.set(SettingsView.Area.appearance.rawValue, forKey: SettingsView.areaKey)
+		ThemeStore.shared.design = .paper
+		render("settings-light", SettingsView(), width: 900, height: 900, pause: 0.8)
+		// Ausgangszustand wiederherstellen (QA soll Einstellungen nicht verbiegen).
+		ThemeStore.shared.design = designBefore
+		if let areaBefore {
+			UserDefaults.standard.set(areaBefore, forKey: SettingsView.areaKey)
+		} else {
+			UserDefaults.standard.removeObject(forKey: SettingsView.areaKey)
+		}
 		render("quickadd", QuickAddTaskView(), width: 460, height: 560, pause: 0.8)
 		render("quickadd-dark", QuickAddTaskView(), width: 460, height: 560, dark: true, pause: 0.8)
 		render("quickadd-event", QuickAddTaskView(initialEvent: true), width: 460, height: 560, pause: 0.8)

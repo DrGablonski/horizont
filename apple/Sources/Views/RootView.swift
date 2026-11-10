@@ -66,7 +66,7 @@ struct MacMainView: View {
 			case .horizont: return "Vergangenheit · Jetzt · Zukunft"
 			case .archiv: return "Monate mit Einträgen durchblättern"
 			case .workflows: return "Schrittpläne im Fokus-Modus"
-			case .einstellungen: return "Konto, Verbindungen & Benachrichtigungen"
+			case .einstellungen: return "Darstellung, Konto & Verbindungen"
 			}
 		}
 
@@ -98,7 +98,6 @@ struct MacMainView: View {
 
 	let client: APIClient
 	@Environment(AuthStore.self) private var auth
-	@Environment(ThemeStore.self) private var theme
 	@State private var store: AppStore
 	@State private var section: Section
 
@@ -123,7 +122,9 @@ struct MacMainView: View {
 			// Commands posten den Section-Index (Reihenfolge = allCases).
 			if let index = note.object as? Int,
 			   index >= 0, index < Section.allCases.count {
-				section = Section.allCases[index]
+				// Wie Pill-Klick behandeln (sonst fehlt der Eintrag in UserDefaults
+				// und ein Theme-bedingter Neuaufbau würfe auf den alten Bereich zurück).
+				select(Section.allCases[index])
 			}
 		}
 		.onReceive(NotificationCenter.default.publisher(for: NavCmd.reload)) { _ in
@@ -171,16 +172,6 @@ struct MacMainView: View {
 			Spacer(minLength: DS.Space.md)
 
 			HStack(spacing: DS.Space.xs) {
-				Button {
-					cycleAppearance()
-				} label: {
-					Image(systemName: theme.mode.icon)
-						.foregroundStyle(DS.textSecondary)
-				}
-				.ghostButton()
-				.help("Erscheinungsbild: \(theme.mode.label)")
-				.accessibilityLabel("Erscheinungsbild wechseln")
-
 				ZStack {
 					Circle().fill(DS.tintSoft)
 					Text(String((auth.user?.username ?? "?").prefix(1)).uppercased())
@@ -213,13 +204,6 @@ struct MacMainView: View {
 	private func select(_ s: Section) {
 		section = s
 		UserDefaults.standard.set(s.rawValue, forKey: Self.sectionKey)
-	}
-
-	/// System → Hell → Dunkel durchschalten (Parität zum Web-ThemeToggle).
-	/// ThemeStore.mode wendet die Änderung automatisch an (didSet).
-	private func cycleAppearance() {
-		let all = AppearanceMode.allCases
-		theme.mode = all[((all.firstIndex(of: theme.mode) ?? 0) + 1) % all.count]
 	}
 
 	// MARK: – Detail

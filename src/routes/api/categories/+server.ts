@@ -5,6 +5,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { getCategories, saveCategories } from '$server/store/categories';
+import { invalidatePanelCache } from '$server/lib/panelCache';
 
 export const GET: RequestHandler = ({ locals }) => {
 	if (!locals.user) return json({ error: 'Nicht angemeldet.' }, { status: 401 });
@@ -20,6 +21,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	}
 	try {
 		const categories = saveCategories(locals.user.id, body.categories);
+		invalidatePanelCache();
 		return json({ categories });
 	} catch (e) {
 		return json({ error: e instanceof Error ? e.message : 'Ungültige Eingaben.' }, { status: 400 });

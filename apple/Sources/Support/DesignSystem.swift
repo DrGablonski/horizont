@@ -59,7 +59,7 @@ enum DS {
 	/// Warn-/Überfällig-Rot (Web: red-600 / red-400).
 	static let danger = Color.dynamic(light: 0xDC2626, dark: 0xF87171)
 
-	/// Akzentfarbe aus dem gewählten Theme-Preset.
+	/// Akzentfarbe aus dem gewählten Design.
 	static var accent: Color { ThemeStore.shared.accent }
 	/// Akzent-Tönung für aktive Elemente.
 	static var tintSoft: Color { accent.opacity(0.16) }
@@ -67,8 +67,8 @@ enum DS {
 
 	/// Ambient-Glows für den Fensterhintergrund (warm in Akzentfarbe, kühl gegenüber).
 	static var glowWarm: Color {
-		Color.dynamicAlpha(light: (ThemeStore.shared.accentPreset.light, 0.12),
-		                   dark: (ThemeStore.shared.accentPreset.dark, 0.16))
+		Color.dynamicAlpha(light: (ThemeStore.shared.design.accentLight, 0.12),
+		                   dark: (ThemeStore.shared.design.accentDark, 0.16))
 	}
 	static let glowCool = Color.dynamicAlpha(light: (0x3E5C76, 0.10), dark: (0x3E5C76, 0.14))
 
