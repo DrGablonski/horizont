@@ -7,7 +7,7 @@ import Foundation
 /// den die Widgets lesen. Theme-Einstellungen liegen in denselben Defaults.
 enum AppGroup {
 	/// Muss zu den Entitlements in ipad/project.yml passen.
-	static let id = "group.de.hott.horizont"
+	static let id = "group.de.hott.horizont.ipad"
 
 	static var defaults: UserDefaults {
 		UserDefaults(suiteName: id) ?? .standard

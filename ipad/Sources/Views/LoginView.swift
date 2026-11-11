@@ -34,6 +34,7 @@ struct LoginView: View {
 							         focused: focusedField == .server) {
 								TextField("http://10.10.10.1:3001", text: $server)
 									.autocorrectionDisabled()
+									.keyboardType(.URL)
 									#if os(iOS)
 									.textInputAutocapitalization(.never)
 									#endif
@@ -75,7 +76,7 @@ struct LoginView: View {
 							}
 						}
 						.primaryButton()
-						.disabled(!canSubmit)
+						.opacity(canSubmit ? 1 : 0.55)
 					}
 					.padding(DS.Space.xxl)
 					.padding(.top, DS.Space.lg)
@@ -85,6 +86,18 @@ struct LoginView: View {
 					.padding(.vertical, DS.Space.xl)
 				}
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
+				.scrollDismissesKeyboard(.interactively)
+				// Tastatur-Leiste: „Anmelden“ ist auch erreichbar, wenn die
+				// Tastatur den großen Button auf kleinen Displays verdeckt.
+				.toolbar {
+					ToolbarItemGroup(placement: .keyboard) {
+						Spacer()
+						Button("Fertig") { focusedField = nil }
+						Spacer()
+						Button("Anmelden") { submit() }
+							.font(.callout.weight(.semibold))
+					}
+				}
 
 				footnote
 					.padding(.bottom, DS.Space.lg)
@@ -122,7 +135,12 @@ struct LoginView: View {
 	// MARK: – Aktionen
 
 	private func submit() {
-		guard canSubmit else { return }
+		guard !busy else { return }
+		let s = server.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !s.isEmpty, !username.isEmpty, !password.isEmpty else {
+			errorText = "Bitte Server-URL, Benutzername und Passwort ausfüllen."
+			return
+		}
 		focusedField = nil
 		busy = true
 		errorText = nil

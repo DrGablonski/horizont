@@ -11,6 +11,7 @@ settings:
     SWIFT_VERSION: "5.9"
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: "2BKRSMQG7C"
 targets:
   HorizontiPad:
     type: application
@@ -44,7 +45,7 @@ targets:
       path: Support/HorizontiPad.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.de.hott.horizont
+          - group.de.hott.horizont.ipad
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.hott.horizont.ipad
@@ -75,7 +76,7 @@ targets:
       path: Support/HorizontWidgets.entitlements
       properties:
         com.apple.security.application-groups:
-          - group.de.hott.horizont
+          - group.de.hott.horizont.ipad
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.hott.horizont.ipad.widgets
