@@ -1,8 +1,13 @@
 // Persistenz für Workflows (CalDAV) + Auflösung der Primary-Verbindung des Users.
 //
 // Workflows: CalDAV (Radicale) – VTODO-Objekte im internen „workflows"-Kalender
-// der ersten Verbindung des Users. Die eigentliche CalDAV-Logik liegt in
-// store/workflowStore.ts; hier wird die Verbindung des Users aufgelöst.
+// der Hauptverbindung (role === 'primary') des Users. Die eigentliche CalDAV-
+// Logik liegt in store/workflowStore.ts; hier wird die Verbindung aufgelöst.
+//
+// Wichtig: Workflows liegen bewusst NIE in sekundären Verbindungen — auch wenn
+// dort Kalender beschreibbar sind. Der interne Workflow-Kalender wird aus-
+// schließlich in der primary-Verbindung angelegt und gesucht; requirePrimary
+// erzwingt das, secondary-Verbindungen sind als Workflow-Speicher tabu.
 //
 // CalDAV-Verbindungen selbst: siehe store/connections.ts.
 
@@ -11,12 +16,26 @@ import { getPrimaryConnection, toSettings } from '$server/store/connections';
 import { NotConfiguredError } from '$server/lib/workflowErrors';
 import type { CalDavSettings, UpdateStepInput, UpdateWorkflowInput, Workflow } from '$lib/types';
 
-/** Liefert die erste Verbindung des Users (Primary) oder wirft (→ 503). */
+/**
+ * Liefert die Settings der Hauptverbindung (role === 'primary') oder wirft
+ * NotConfiguredError (→ 503). Darf niemals eine secondary-Verbindung liefern:
+ * getPrimaryConnection gibt die primaryId-Verbindung zurück, sonst (Alt-
+ * Installationen) die erste Verbindung; fehlt die Hauptverbindung und sind nur
+ * secondary-Verbindungen vorhanden, wird hier explizit abgelehnt.
+ */
 export function requirePrimary(userId: string): CalDavSettings {
 	const primary = getPrimaryConnection(userId);
 	if (!primary) {
 		throw new NotConfiguredError(
 			'Keine CalDAV-Verbindung vorhanden. Bitte verbinde zuerst in den Einstellungen einen Kalender.'
+		);
+	}
+	// Explizite Sperre: secondary-Verbindungen sind nie Workflow-Ziel. Verbindungen
+	// ohne role-Feld (Altinstallationen vor dem Rollen-Update) bleiben zulässig —
+	// für Installationen mit genau einer Verbindung ändert sich nichts.
+	if (primary.role === 'secondary') {
+		throw new NotConfiguredError(
+			'Keine Hauptverbindung gefunden. Lege in den Einstellungen eine Verbindung als Hauptverbindung fest – Workflows liegen immer in deren internem Kalender.'
 		);
 	}
 	return toSettings(primary);

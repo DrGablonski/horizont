@@ -30,6 +30,8 @@ struct HomeView: View {
 				.help("Neuer Termin (⌘⇧N)")
 			}
 
+			CalendarChipsRow()
+
 			Group {
 				if store.homeBusy && store.home == nil {
 					TimelineSkeleton()
@@ -229,5 +231,76 @@ struct HomeView: View {
 	private func initOpenPanels() {
 		guard let home = store.home, openPanels.isEmpty else { return }
 		for panel in home.panels { openPanels[panel.id] = panel.defaultOpen }
+	}
+}
+
+// MARK: – Kalender-Chips (über der Timeline)
+
+/// Schmale Zeile mit Kalender-Chips, nur bei mehr als einem Kalender sichtbar:
+/// Farb-Punkt + Name, ausgeblendete Kalender abgeblendet und durchgestrichen.
+/// Klick schaltet die Sichtbarkeit um (Timeline lädt danach neu).
+private struct CalendarChipsRow: View {
+	@Environment(AppStore.self) private var store
+
+	var body: some View {
+		let calendars = store.calendars
+		if calendars.count > 1 {
+			ScrollView(.horizontal, showsIndicators: false) {
+				HStack(spacing: DS.Space.xs) {
+					ForEach(calendars) { cal in
+						CalendarChip(cal: cal) {
+							Task { await store.toggleCalendarVisibility(cal.id) }
+						}
+					}
+				}
+				.padding(.horizontal, DS.Space.xl)
+			}
+			.padding(.top, DS.Space.xs)
+			.frame(maxWidth: 780)
+			.frame(maxWidth: .infinity)
+			.animation(.easeOut(duration: 0.15), value: calendars)
+		}
+	}
+}
+
+/// Einzelner Umschalt-Chip: Farb-Punkt + Name; ausgeblendet abgeblendet + durchgestrichen.
+private struct CalendarChip: View {
+	let cal: CalendarView
+	let action: () -> Void
+
+	@State private var hovering = false
+
+	var body: some View {
+		// Angezeigte Farbe: lokale Überschreibung, sonst Server-/Palette-Farbe.
+		let tint = Color(hex: cal.colorOverride ?? cal.color)
+		Button(action: action) {
+			HStack(spacing: DS.Space.xs) {
+				Circle().fill(tint).frame(width: 8, height: 8)
+				Text(cal.name)
+					.font(DS.Typo.chip)
+					.foregroundStyle(cal.hidden ? DS.textTertiary : DS.textSecondary)
+					.strikethrough(cal.hidden)
+					.lineLimit(1)
+			}
+			.padding(.horizontal, DS.Space.sm)
+			.padding(.vertical, 4)
+			.background(
+				Capsule().fill(hovering ? DS.rowHover : DS.fillSubtle)
+			)
+			.opacity(cal.hidden ? 0.55 : 1)
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.help(helpText)
+		.accessibilityLabel(helpText)
+		.onHover { hovering = $0 }
+		.animation(.easeOut(duration: 0.12), value: hovering)
+	}
+
+	private var helpText: String {
+		var text = cal.name
+		if let conn = cal.connectionName, !conn.isEmpty { text += " · \(conn)" }
+		text += cal.hidden ? " — ausgeblendet (Klick: einblenden)" : " — sichtbar (Klick: ausblenden)"
+		return text
 	}
 }

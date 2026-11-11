@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type {
 	CalDavConnection,
 	CalDavCalendar,
+	CalendarView,
 	EventItem,
 	EventCreateInput,
 	EventUpdateInput,
@@ -21,7 +22,11 @@ import {
 	deleteIcs,
 	getObjectIcs
 } from '$server/caldav/client';
-import { findCalendarAcross, resolveAllCalendars } from '$server/caldav/multi';
+import {
+	findCalendarView,
+	resolveCalendarViews,
+	resolveWriteTarget
+} from '$server/caldav/multi';
 import {
 	buildEventIcs,
 	updateEventIcs,
@@ -62,6 +67,45 @@ export class ValidationError extends Error {
 		super(msg);
 		this.name = 'ValidationError';
 	}
+}
+
+/** Zielkalender ist schreibgeschützt (localer Schreibschutz oder fehlende Server-Rechte). */
+export class ReadOnlyError extends Error {
+	constructor(msg = 'Dieser Kalender ist schreibgeschützt.') {
+		super(msg);
+		this.name = 'ReadOnlyError';
+	}
+}
+
+// ── Zielkalender für Schreibzugriffe ──────────────────────────────────────
+
+/** Wirft ReadOnlyError bei lokalem Schreibschutz oder fehlenden Server-Rechten. */
+function assertWritable(calendar: CalendarView): void {
+	if (calendar.writeDisabled === true || calendar.writable === false) {
+		throw new ReadOnlyError(`Kalender „${calendar.name}“ ist schreibgeschützt.`);
+	}
+}
+
+/**
+ * Kalender, in den geschrieben werden darf: bei fehlender/leerer id das
+ * erlaubte Standardziel, sonst die explizit genannte Kalender über alle
+ * Verbindungen. resolveWriteTarget prüft zwar ebenfalls, wirft dort aber nur
+ * einen allgemeinen Fehler — hier zählt der auf 403 mappbare ReadOnlyError.
+ */
+async function requireWritableCalendar(
+	userId: string,
+	connections: CalDavConnection[],
+	calendarId?: string | null
+): Promise<ResolvedCalendar> {
+	if (!calendarId) {
+		const target = await resolveWriteTarget(userId, connections);
+		assertWritable(target.calendar);
+		return target;
+	}
+	const found = await findCalendarView(userId, connections, calendarId);
+	if (!found) throw new NotFoundError('Kalender nicht gefunden.');
+	assertWritable(found.calendar);
+	return found;
 }
 
 // ── Validation: Event-Input ───────────────────────────────────────────────
@@ -151,13 +195,12 @@ function buildEventItemFromInput(
 // ── Event: Create ─────────────────────────────────────────────────────────
 
 export async function createEvent(
+	userId: string,
 	connections: CalDavConnection[],
 	input: EventCreateInput
 ): Promise<EventItem> {
 	validateEventInput(input);
-	const found = await findCalendarAcross(connections, input.calendarId);
-	if (!found) throw new NotFoundError('Kalender nicht gefunden.');
-	const { connection, calendar } = found;
+	const { connection, calendar } = await requireWritableCalendar(userId, connections, input.calendarId);
 
 	const uid = `horizont-${randomUUID()}`;
 	const { ics } = buildEventIcs(uid, input);
@@ -171,15 +214,14 @@ export async function createEvent(
 // ── Event: Mutate ─────────────────────────────────────────────────────────
 
 export async function mutateEvent(
+	userId: string,
 	connections: CalDavConnection[],
 	calendarId: string,
 	uid: string,
 	input: EventUpdateInput
 ): Promise<EventItem> {
 	validateEventInput(input);
-	const cal = await findCalendarAcross(connections, calendarId);
-	if (!cal) throw new NotFoundError('Kalender nicht gefunden.');
-	const { connection, calendar } = cal;
+	const { connection, calendar } = await requireWritableCalendar(userId, connections, calendarId);
 
 	const found = await findObjectByUid(connection, calendar, uid);
 	if (!found) throw new NotFoundError('Kalendereintrag nicht gefunden.');
@@ -194,13 +236,12 @@ export async function mutateEvent(
 // ── Event: Delete ─────────────────────────────────────────────────────────
 
 export async function removeEvent(
+	userId: string,
 	connections: CalDavConnection[],
 	calendarId: string,
 	uid: string
 ): Promise<void> {
-	const cal = await findCalendarAcross(connections, calendarId);
-	if (!cal) throw new NotFoundError('Kalender nicht gefunden.');
-	const { connection, calendar } = cal;
+	const { connection, calendar } = await requireWritableCalendar(userId, connections, calendarId);
 
 	const found = await findObjectByUid(connection, calendar, uid);
 	if (!found) throw new NotFoundError('Kalendereintrag nicht gefunden.');
@@ -250,6 +291,7 @@ function buildTaskItemFromInput(
 }
 
 export async function createTask(
+	userId: string,
 	connections: CalDavConnection[],
 	input: TaskCreateInput
 ): Promise<TaskItem> {
@@ -260,9 +302,7 @@ export async function createTask(
 	if (input.due == null || input.due.kind === 'none') {
 		input = { ...input, due: { kind: 'date', key: todayKey() } };
 	}
-	const found = await findCalendarAcross(connections, input.calendarId);
-	if (!found) throw new NotFoundError('Kalender nicht gefunden.');
-	const { connection, calendar } = found;
+	const { connection, calendar } = await requireWritableCalendar(userId, connections, input.calendarId);
 
 	const uid = `horizont-${randomUUID()}`;
 	const { ics } = buildTaskIcs(uid, input);
@@ -276,15 +316,14 @@ export async function createTask(
 // ── Task: Mutate (partial) ────────────────────────────────────────────────
 
 export async function mutateTask(
+	userId: string,
 	connections: CalDavConnection[],
 	calendarId: string,
 	uid: string,
 	input: TaskUpdateInput
 ): Promise<TaskItem> {
 	validateTaskPatch(input);
-	const cal = await findCalendarAcross(connections, calendarId);
-	if (!cal) throw new NotFoundError('Kalender nicht gefunden.');
-	const { connection, calendar } = cal;
+	const { connection, calendar } = await requireWritableCalendar(userId, connections, calendarId);
 
 	const found = await findObjectByUid(connection, calendar, uid);
 	if (!found) throw new NotFoundError('Aufgabe nicht gefunden.');
@@ -302,13 +341,12 @@ export async function mutateTask(
 // ── Task: Delete ──────────────────────────────────────────────────────────
 
 export async function removeTask(
+	userId: string,
 	connections: CalDavConnection[],
 	calendarId: string,
 	uid: string
 ): Promise<void> {
-	const cal = await findCalendarAcross(connections, calendarId);
-	if (!cal) throw new NotFoundError('Kalender nicht gefunden.');
-	const { connection, calendar } = cal;
+	const { connection, calendar } = await requireWritableCalendar(userId, connections, calendarId);
 
 	const found = await findObjectByUid(connection, calendar, uid);
 	if (!found) throw new NotFoundError('Aufgabe nicht gefunden.');
@@ -349,7 +387,13 @@ export async function listAllTasksForItems(items: ResolvedCalendar[]): Promise<T
 	});
 }
 
-export async function listAllTasks(connections: CalDavConnection[]): Promise<TaskItem[]> {
-	const { items } = await resolveAllCalendars(connections);
+/** Tasks aus allen sichtbaren Kalendern des Users (Panel-Sicht). */
+export async function listAllTasks(userId: string, connections: CalDavConnection[]): Promise<TaskItem[]> {
+	const { calendars } = await resolveCalendarViews(userId, connections, { includeHidden: false });
+	const items: ResolvedCalendar[] = [];
+	for (const calendar of calendars) {
+		const connection = connections.find((c) => c.id === calendar.connectionId);
+		if (connection) items.push({ connection, calendar });
+	}
 	return listAllTasksForItems(items);
 }

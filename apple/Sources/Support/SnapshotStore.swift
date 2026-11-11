@@ -22,7 +22,10 @@ enum SnapshotStore {
 
 	/// Erlaubt das Speichern im Sandbox-Ordner auch in Debug-Builds ohne
 	/// Sandbox-Profil (plist nicht vorhanden) und in Release-Builds mit.
-	private static func fileURL(named name: String, serverBase: String) -> URL? {
+	/// `generation` (optional) hängt einen Fingerabdruck an den Dateinamen an —
+	/// z. B. die Kalender-Sichtbarkeit, damit ein veralteter Snapshot nach dem
+	/// Ein-/Ausblenden von Kalendern nicht mehr als aktuell gilt.
+	private static func fileURL(named name: String, serverBase: String, generation: String) -> URL? {
 		let fm = FileManager.default
 		guard let base = try? fm.url(
 			for: .applicationSupportDirectory, in: .userDomainMask,
@@ -32,17 +35,18 @@ enum SnapshotStore {
 		let serverHash = digest.prefix(8).map { String(format: "%02x", $0) }.joined()
 		let dir = base.appendingPathComponent("Horizont/Snapshots/\(serverHash)", isDirectory: true)
 		do { try fm.createDirectory(at: dir, withIntermediateDirectories: true) } catch { return nil }
-		return dir.appendingPathComponent("\(name).json")
+		let fileName = generation.isEmpty ? "\(name).json" : "\(name)~\(generation).json"
+		return dir.appendingPathComponent(fileName)
 	}
 
-	static func load<T: Decodable>(_ type: T.Type, name: String, serverBase: String) -> T? {
-		guard let url = fileURL(named: name, serverBase: serverBase),
+	static func load<T: Decodable>(_ type: T.Type, name: String, serverBase: String, generation: String = "") -> T? {
+		guard let url = fileURL(named: name, serverBase: serverBase, generation: generation),
 		      let data = try? Data(contentsOf: url) else { return nil }
 		return try? decoder.decode(type, from: data)
 	}
 
-	static func save<T: Encodable>(_ value: T, name: String, serverBase: String) {
-		guard let url = fileURL(named: name, serverBase: serverBase),
+	static func save<T: Encodable>(_ value: T, name: String, serverBase: String, generation: String = "") {
+		guard let url = fileURL(named: name, serverBase: serverBase, generation: generation),
 		      let data = try? encoder.encode(value) else { return }
 		try? data.write(to: url, options: .atomic)
 	}

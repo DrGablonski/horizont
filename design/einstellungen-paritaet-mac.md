@@ -3,6 +3,10 @@
 **Status: umgesetzt (2026-11-10).** Alle vier Phasen sind implementiert und bauen
 (macOS-Ziel, `xcodebuild … build` → Erfolg): Notify-Parität (Token, URL-Aufteilen,
 „Jetzt senden", echte Testergebnisse), CalDAV-CRUD, Kategorien-Seite, API-Token-Seite.
+**Nachfolger (umgesetzt):** Phase 5 „Kalender & Anbieter-Vorlagen" aus
+[`mehrkalender-und-fremde-caldav.md`](mehrkalender-und-fremde-caldav.md) —
+Kalender-Seite, Rollen/Umbenennung, Anbieter-Chips und Kalender-Chips sind in
+der Mac-App (und parallel in der iPad-App) gelandet.
 
 **Stand-Analyse (Deep Dive) + Umsetzungsplan**
 
@@ -76,7 +80,8 @@ verwendet — Restbestand, kann wiederverwendet werden.
 
 - Auth (login/logout/me): komplett da; einen Passwort-Wechsel-Endpunkt
   gibt es auf dem Server gar nicht → nichts fehlendes.
-- Kalender anzeigen (`/api/calendars`): da.
+- Kalender anzeigen (`/api/calendars`): da — inzwischen volle
+  Kalender-Verwaltungsseite (siehe Phase 5).
 - Workflows, Tasks, Events (CRUD): in der App ohnehin schon voll.
 - „Darstellung" und „Konto" sind reine App-lokale Seiten ohne Server-Gegenstück.
 
@@ -154,12 +159,43 @@ Reihenfolge nach Nutzen/Aufwand; jeder Schritt ist unabhängig liefer- und testb
    - „Token erzeugen" (mit Ersetzen-Bestätigung), Klartext **einmalig** in
      Ergebnis-Box + „Kopieren" (`NSPasteboard`), „Token ablehnen" mit Dialog.
 
+### Phase 5 — Kalender & Anbieter-Vorlagen (Nachfolger, umgesetzt)
+
+Aus dem Kontrakt [`mehrkalender-und-fremde-caldav.md`](mehrkalender-und-fremde-caldav.md):
+
+1. **`SettingsView.swift` → neuer `Area.kalender`** („Kalender",
+   „Sichtbarkeit, Farben & Standardkalender"): Kalender pro Verbindung
+   gruppiert, Rollen-Badge „Hauptkalender"/„Zusatzkalender"; pro Kalender
+   Color-Picker, Schalter „Sichtbar" + „Beschreibbar" (→ `PATCH
+   /api/calendars/<id>` mit `hidden`/`writeDisabled`), „Als Standard"
+   (`isDefault`), Umbenennen und Löschen (Bestätigung = exakter Name);
+   Sheet „Neuer Kalender" (`POST /api/calendars`, `MKCALENDAR`).
+2. **Verbindungsformulare**: `ProviderChips` aus `GET /api/settings/presets`
+   (iCloud, Google, Fastmail, Nextcloud, Radicale, Baïkal) füllen URL/
+   Benutzernamen voraus; Rollen-Picker („Primär (Hauptkalender)") in
+   Anlage- und Bearbeitungsformular — eine andere Verbindung hochzustufen
+   ersetzt die Hauptverbindung (`PATCH /api/settings` mit `role:'primary'`);
+   ein Downgrade der aktuellen ist nicht vorgesehen und wird in der App
+   gesperrt.
+3. **`HomeView.swift`**: Kalender-Chips über der Timeline (ab zwei Kalendern),
+   Tap = aus-/einblenden (`hidden`), abgeblendet + durchgestrichen.
+4. **`AppStore.swift`**: `providerPresets`-Load, `updateCalendar(…)`-patches,
+   `createCalendar`/`deleteCalendar`; nach jeder Mutation Kalender + Panels
+   neu laden (serverseitiger Cache ist bereits invalidiert).
+
+**Offene Restarbeit:** `APIClient.swift`/`APIModels.swift` (macOS wie iPad)
+müssen die passenden Typen (`CalendarView` mit `role`/`hidden`/`isDefault`,
+`ProviderPreset`, `primaryId`) und Methoden (`createCalendar`,
+`updateCalendar`, `deleteCalendar`, `providerPresets`) noch vollständig
+führen — Views/Store rufen sie bereits auf.
+
 ### Querschnitt / Randnotizen
 
 - **Snapshot-QA**: neue Areas erscheinen automatisch im `Area`-Enum;
   `SnapshotQA.swift`-Fixtures um Screenshots der neuen Seiten erweitern.
-- **iPad-App (`ipad/`)**: hat dieselben Gaps; nach Abschluss der Mac-Phasen
-  als Folgeprojekt mit identischen API-Schritten planbar.
+- **iPad-App (`ipad/`)**: dieselben Gaps; Phasen 1–4 sind dort teils offen,
+   Phase 5 wurde parallel mit umgesetzt (Views + Store bereits auf
+   Kalender-Verwaltung/Chips umgestellt, Modelle/Client folgen).
 - **Keine Server-Änderungen nötig** — alle Endpunkte existieren und sind
   session-authentifiziert; die Mac-App nutzt bereits dasselbe Cookie-Login.
 
@@ -171,3 +207,4 @@ Reihenfolge nach Nutzen/Aufwand; jeder Schritt ist unabhängig liefer- und testb
 | 2 CalDAV-CRUD | dito | M |
 | 3 Kategorien | SettingsView, AppStore, (neue kleine CategoryEditor-View) | M |
 | 4 API-Token | +2 Areas, Models, Client | S |
+| 5 Kalender & Vorlagen | SettingsView, HomeView, AppStore, (APIModels/APIClient) | M |

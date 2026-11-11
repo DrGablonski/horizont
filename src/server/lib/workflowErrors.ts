@@ -1,12 +1,13 @@
 // Mappt Serverfehler der Workflow-API in HTTP-Antworten (Status + deutsche Meldung).
 //
-//   - NotConfiguredError (keine Primary-Verbindung) → 503
+//   - NotConfiguredError (keine oder keine primäre CalDAV-Verbindung, z. B.
+//     nur secondary-Verbindungen vorhanden) → 503
 //   - CalDavError → 502 (DAV-Server nicht erreichbar / abgelehnt)
 //   - sonst → 500
 
 import { CalDavError } from '$server/caldav/client';
 
-/** Geworfene, wenn der User keine zugewiesene CalDAV-Verbindung hat. */
+/** Geworfene, wenn der User keine als primär markierte CalDAV-Verbindung hat. */
 export class NotConfiguredError extends Error {
 	constructor(msg: string) {
 		super(msg);

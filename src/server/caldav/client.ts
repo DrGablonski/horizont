@@ -91,6 +91,16 @@ function textOf(node: any): string | undefined {
 	return undefined;
 }
 
+/** escaped Text für die Einfügung in XML-Knoten (Anzeigenamen usw.). */
+function escapeXml(s: string): string {
+	return s
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&apos;');
+}
+
 function decodeXmlEntities(s: string): string {
 	return s
 		.replace(/&lt;/g, '<')
@@ -306,14 +316,15 @@ export async function collectionExists(settings: CalDavSettings, url: string): P
 
 /**
  * Legt einen CalDAV-Kalender per MKCALENDAR an. Nur aufrufen, wenn absent.
- * `components` bestimmt, welche ICS-Komponenten erlaubt sind (Default: VTODO,
- * für den internen Workflow-Speicher). Für Benutzer-Kalender VEVENT übergeben.
+ * `components` bestimmt, welche ICS-Komponenten erlaubt sind (Default:
+ * VEVENT + VTODO). Für reine Aufgaben-Speicher (interner Workflow-Speicher)
+ * explizit ['VTODO'] übergeben.
  */
 export async function mkCalendar(
 	settings: CalDavSettings,
 	url: string,
 	displayName: string,
-	components: string[] = ['VTODO']
+	components: string[] = ['VEVENT', 'VTODO']
 ): Promise<void> {
 	const compSet = components
 		.map((c) => `<C:supported><C:comp-name>${c}</C:comp-name></C:supported>`)
@@ -322,7 +333,7 @@ export async function mkCalendar(
 <C:mkcalendar xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
   <D:set>
     <D:prop>
-      <D:displayname>${displayName}</D:displayname>
+      <D:displayname>${escapeXml(displayName)}</D:displayname>
       <C:supported-calendar-component-set>
         ${compSet}
       </C:supported-calendar-component-set>
@@ -331,8 +342,47 @@ export async function mkCalendar(
 </C:mkcalendar>`;
 	const r = await davRequest(settings, url, 'MKCALENDAR', body, { Depth: '0' });
 	if (r.status === 200 || r.status === 201) return;
-	if (r.status === 401 || r.status === 403) authError();
+	// 401 = falsche Zugangsdaten; 403 dagegen bedeutet bei MKCALENDAR meist nur,
+	// dass der Server das Anlegen von Kalendern grundsätzlich verbietet (z. B.
+	// iCloud) — die Zugangsdaten sind dann trotzdem korrekt.
+	if (r.status === 401) authError();
 	throw new CalDavError(r.status, `CalDAV: Kalender "${displayName}" konnte nicht angelegt werden (HTTP ${r.status}).`);
+}
+
+// ── Collection verwalten (Löschen + Anzeigename) ─────────────────────────
+
+/**
+ * Löscht eine Collection (Kalender) per DELETE. 200/201/204 gelten als Erfolg,
+ * sonst CalDavError mit Server-Status.
+ */
+export async function deleteCollection(settings: CalDavSettings, url: string): Promise<void> {
+	const r = await davRequest(settings, url, 'DELETE', '');
+	if (r.status === 200 || r.status === 201 || r.status === 204) return;
+	throw new CalDavError(r.status, `CalDAV: Kalender konnte nicht gelöscht werden (HTTP ${r.status}).`);
+}
+
+/**
+ * Setzt den Anzeigenamen einer Collection per PROPPATCH auf DAV:displayname.
+ * true bei 200/207, false bei 400/403/405/501 (Server kann das nicht),
+ * sonst CalDavError.
+ */
+export async function setCollectionDisplayName(
+	settings: CalDavSettings,
+	url: string,
+	displayName: string
+): Promise<boolean> {
+	const body = `<?xml version="1.0" encoding="utf-8"?>
+<D:propertyupdate xmlns:D="DAV:">
+  <D:set>
+    <D:prop>
+      <D:displayname>${escapeXml(displayName)}</D:displayname>
+    </D:prop>
+  </D:set>
+</D:propertyupdate>`;
+	const r = await davRequest(settings, url, 'PROPPATCH', body);
+	if (r.status === 200 || r.status === 207) return true;
+	if (r.status === 400 || r.status === 403 || r.status === 405 || r.status === 501) return false;
+	throw new CalDavError(r.status, `CalDAV: Anzeigename konnte nicht gesetzt werden (HTTP ${r.status}).`);
 }
 
 // ── Kalender-Liste ────────────────────────────────────────────────────────
@@ -343,6 +393,8 @@ export async function listCalendars(settings: CalDavSettings, home: string): Pro
   <prop>
     <displayname/>
     <resourcetype/>
+    <current-user-privilege-set/>
+    <supported-calendar-component-set xmlns="urn:ietf:params:xml:ns:caldav"/>
   </prop>
 </propfind>`;
 
@@ -376,7 +428,33 @@ export async function listCalendars(settings: CalDavSettings, home: string): Pro
 		const hash = createHash('sha256').update(full).digest('hex').slice(0, 12);
 		const color = PALETTE[parseInt(hash, 16) % PALETTE.length];
 
-		out.push({ id: hash, name, color, url: full });
+		// Schreibbarkeit: fehlt der Privilege-Knoten (Server nennt keine Rechte),
+		// gilt der Kalender als beschreibbar; sonst zählt write-bind oder
+		// write-content. collect() normalisiert Array- und Skalarformen.
+		const privNode = collect(block, 'current-user-privilege-set').find(
+			(n: any) => n != null && typeof n === 'object'
+		);
+		let writable = true;
+		if (privNode !== undefined) {
+			const privileges = collect(privNode, 'privilege');
+			writable = privileges.some(
+				(p: any) => p != null && typeof p === 'object' && ('write-bind' in p || 'write-content' in p)
+			);
+		}
+
+		// Erlaubte ICS-Komponenten (C:supported-calendar-component-set → C:comp/C:name);
+		// nennt der Server keine, gilt der Standard VEVENT + VTODO.
+		const compNode = collect(block, 'supported-calendar-component-set').find(
+			(n: any) => n != null && typeof n === 'object'
+		);
+		const comps = compNode
+			? [...new Set(collect(compNode, 'comp')
+					.flatMap((c: any) => collect(c, 'name').map(textOf))
+					.filter((n: any): n is string => typeof n === 'string' && n !== ''))]
+			: [];
+		const supportedComponents = comps.length > 0 ? comps : ['VEVENT', 'VTODO'];
+
+		out.push({ id: hash, name, color, url: full, writable, supportedComponents });
 	}
 
 	return out.sort((a, b) => a.name.localeCompare(b.name, 'de'));

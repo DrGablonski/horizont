@@ -1,13 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { listConnections } from '$server/store/connections';
-import { mutateTask, removeTask, NotFoundError, ValidationError } from '$server/lib/write';
+import { mutateTask, removeTask, NotFoundError, ReadOnlyError, ValidationError } from '$server/lib/write';
 import { CalDavError } from '$server/caldav/client';
 import type { TaskUpdateInput } from '$lib/types';
 
 function handleError(e: any) {
 	if (e instanceof ValidationError) return json({ error: e.message }, { status: 400 });
 	if (e instanceof NotFoundError) return json({ error: e.message }, { status: 404 });
+	if (e instanceof ReadOnlyError) return json({ error: e.message }, { status: 403 });
 	if (e instanceof CalDavError) return json({ error: e.message }, { status: e.status === 409 ? 409 : 502 });
 	return json({ error: e.message ?? 'Unbekannter Fehler' }, { status: 500 });
 }
@@ -26,7 +27,7 @@ export const PATCH: RequestHandler = async ({ params, request, locals }) => {
 	}
 
 	try {
-		const item = await mutateTask(connections, params.calendarId, params.uid, body);
+		const item = await mutateTask(locals.user?.id ?? '', connections, params.calendarId, params.uid, body);
 		return json(item);
 	} catch (e: any) {
 		return handleError(e);
@@ -40,7 +41,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
 	}
 
 	try {
-		await removeTask(connections, params.calendarId, params.uid);
+		await removeTask(locals.user?.id ?? '', connections, params.calendarId, params.uid);
 		return json({ ok: true });
 	} catch (e: any) {
 		return handleError(e);

@@ -8,6 +8,10 @@
 // Diese Module ist rein: es erhält die CalDAV-Settings als Parameter und hat
 // keine Abhängigkeit von store.ts (verhindert Zirkelimporte). store.ts löst
 // die Settings auf und delegiert hierher.
+//
+// Der settings-Parameter stammt ausschließlich aus der primary-Verbindung
+// (store.ts/requirePrimary): der interne Workflow-Kalender wird hier nie in
+// einer secondary-Verbindung angelegt oder gesucht.
 
 import { randomUUID } from 'node:crypto';
 import type {
@@ -31,7 +35,10 @@ import { buildWorkflowIcs, parseWorkflowIcs } from '$server/caldav/workflowIcs';
 
 // ── Ableitung der Kalender-URL ────────────────────────────────────────────
 
-/** URL des internen Workflow-Kalenders (ohne Existenzprüfung). */
+/**
+ * URL des internen Workflow-Kalenders (ohne Existenzprüfung). Die Settings
+ * kommen immer aus der primary-Verbindung, gesucht wird also nur dort.
+ */
 async function workflowsBase(settings: CalDavSettings): Promise<string> {
 	const { home } = await resolveHome(settings);
 	return new URL(`${WORKFLOWS_CALENDAR}/`, home).toString();
@@ -39,12 +46,14 @@ async function workflowsBase(settings: CalDavSettings): Promise<string> {
 
 /**
  * Stellt sicher, dass der interne Kalender existiert (legt ihn sonst per
- * MKCALENDAR an) und liefert seine Basis-URL. Nur im Schreibpfad aufrufen.
+ * MKCALENDAR an) und liefert seine Basis-URL. Nur im Schreibpfad aufrufen;
+ * weil nur primary-Settings hereinkommen, entsteht der Kalender nie in einer
+ * secondary-Verbindung.
  */
 async function ensureWorkflowsCalendar(settings: CalDavSettings): Promise<string> {
 	const base = await workflowsBase(settings);
 	if (!(await collectionExists(settings, base))) {
-		await mkCalendar(settings, base, 'Workflows (intern)');
+		await mkCalendar(settings, base, 'Workflows (intern)', ['VTODO']);
 	}
 	return base;
 }

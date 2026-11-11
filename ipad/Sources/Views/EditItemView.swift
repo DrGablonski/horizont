@@ -33,6 +33,11 @@ struct EditItemView: View {
 
 	private var isTask: Bool { event.kind == "task" }
 
+	/// Kalender des Eintrags (Info: Sichtbarkeit) – Verschieben zwischen Kalendern bietet die API nicht.
+	private var itemCalendar: CalendarView? {
+		store.calendars.first { $0.id == event.calendarId }
+	}
+
 	init(event: EventItem) {
 		self.event = event
 		// Vorbelegung: Tasks nutzen dueKey (Fallback startMs),
@@ -64,6 +69,23 @@ struct EditItemView: View {
 				fieldLabel("Titel")
 				TextField("Titel", text: $summary)
 					.focused($summaryFocused)
+			}
+
+			// Kalender (nur Info, ohne Auswahl): Einträge bleiben in ihrem Kalender.
+			VStack(alignment: .leading, spacing: DS.Space.xs) {
+				fieldLabel("Kalender")
+				HStack(spacing: DS.Space.xs) {
+					dot(event.calendarColor)
+					Text(event.calendarName)
+						.font(.callout)
+						.foregroundStyle(DS.textPrimary)
+					if itemCalendar?.hidden == true {
+						Text("(ausgeblendet)")
+							.font(DS.Typo.meta)
+							.foregroundStyle(DS.textSecondary)
+					}
+					Spacer(minLength: 0)
+				}
 			}
 
 			if isTask {

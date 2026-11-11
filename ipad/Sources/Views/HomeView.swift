@@ -50,6 +50,7 @@ struct HomeView: View {
 		}
 		.task {
 			if store.home == nil { await store.loadHome() }
+			if !store.calendarsLoaded { await store.loadCalendars() }
 			initOpenPanels()
 		}
 	}
@@ -60,6 +61,7 @@ struct HomeView: View {
 	private func content(_ home: MainEventsResponse) -> some View {
 		ScrollView {
 			VStack(alignment: .leading, spacing: DS.Space.lg) {
+				calendarChips
 				if let err = store.homeError {
 					ErrorBanner(message: err, retry: { Task { await store.loadHome() } })
 				}
@@ -87,6 +89,46 @@ struct HomeView: View {
 			.frame(maxWidth: .infinity)
 		}
 		.refreshable { await store.loadHome() }
+	}
+
+	/// Schmale Kalender-Chip-Zeile über der Timeline (nur bei mehr als einem Kalender):
+	/// Klick schaltet die Sichtbarkeit des Kalenders (Panels laden sich neu).
+	@ViewBuilder
+	private var calendarChips: some View {
+		if store.calendars.count > 1 {
+			ScrollView(.horizontal, showsIndicators: false) {
+				HStack(spacing: DS.Space.xs) {
+					ForEach(store.calendars, id: \.id) { cal in
+						calendarChip(cal)
+					}
+				}
+			}
+		}
+	}
+
+	/// Ein Chip: Farb-Punkt + Name, ausgeblendete Kalender abgeblendet.
+	private func calendarChip(_ cal: CalendarView) -> some View {
+		Button {
+			Task { await store.toggleCalendarVisibility(cal.id) }
+		} label: {
+			HStack(spacing: DS.Space.xs) {
+				Circle()
+					.fill(Color(hex: cal.color))
+					.frame(width: 8, height: 8)
+				Text(cal.name).font(DS.Typo.chip)
+			}
+			.foregroundStyle(cal.hidden ? DS.textTertiary : DS.textSecondary)
+			.padding(.horizontal, 7)
+			.padding(.vertical, 3)
+			.background(Capsule().fill(DS.fillSubtle))
+			.overlay(
+				Capsule().strokeBorder(cal.hidden ? Color.clear : DS.border, lineWidth: 1)
+			)
+			.opacity(cal.hidden ? 0.5 : 1)
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.help(cal.hidden ? "Kalender einblenden" : "Kalender ausblenden")
 	}
 
 	/// Panel als Karte: klickbarer Header (Titel, Subtitle, Zähler, Chevron) + Tage.

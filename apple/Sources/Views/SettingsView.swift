@@ -1,15 +1,17 @@
 import SwiftUI
 
 /// Einstellungen: Sidebar-Navigation wie die Systemeinstellungen –
-/// Darstellung, Konto, CalDAV, Kategorien, Mitteilungen, API-Zugang
+/// Darstellung, Konto, CalDAV, Kalender, Kategorien, Mitteilungen, API-Zugang
 /// (je eine Seite, kein Gesamt-Scroll). Volle Parität zur Server-API:
-/// CalDAV-CRUD, Kategorien, Webhook inkl. Token, API-Token-Verwaltung.
+/// CalDAV-CRUD inkl. Anbieter-Vorlagen und Rollen, Kalender-Verwaltung,
+/// Kategorien, Webhook inkl. Token, API-Token-Verwaltung.
 struct SettingsView: View {
 	/// Bereiche der Einstellungs-Sidebar.
 	enum Area: String, CaseIterable, Identifiable {
 		case appearance = "Darstellung"
 		case account = "Konto"
 		case caldav = "CalDAV"
+		case kalender = "Kalender"
 		case kategorien = "Kategorien"
 		case notify = "Mitteilungen"
 		case token = "API-Zugang"
@@ -21,6 +23,7 @@ struct SettingsView: View {
 			case .appearance: return "paintpalette"
 			case .account: return "person.crop.circle"
 			case .caldav: return "calendar"
+			case .kalender: return "rectangle.stack"
 			case .kategorien: return "tag"
 			case .notify: return "bell"
 			case .token: return "key"
@@ -32,7 +35,8 @@ struct SettingsView: View {
 			switch self {
 			case .appearance: return "Feste Designs – Helligkeit & Akzent"
 			case .account: return "Profil, Server & Abmelden"
-			case .caldav: return "CalDAV-Verbindungen & Kalender"
+			case .caldav: return "CalDAV-Verbindungen & Rollen"
+			case .kalender: return "Sichtbarkeit, Farben & Standardkalender"
 			case .kategorien: return "Namen & Farben für Aufgaben"
 			case .notify: return "Webhook für Aufgaben + Meldungen auf diesem Mac"
 			case .token: return "Zugriff für MCP & externe Tools"
@@ -60,7 +64,8 @@ struct SettingsView: View {
 						switch area {
 						case .appearance: AppearancePage()
 						case .account: AccountPage()
-						case .caldav: CalDAVPage()
+						case .caldav: CalDAVPage(onOpenKalender: { select(.kalender) })
+					case .kalender: KalenderPage()
 						case .kategorien: CategoriesPage()
 						case .notify: NotifyPage()
 						case .token: ApiTokenPage()
@@ -341,12 +346,474 @@ private struct AccountPage: View {
 
 // MARK: – Bereich „CalDAV“
 
-/// CalDAV-Verbindungen + Kalenderübersicht untereinander.
+/// CalDAV-Verbindungen + kompakte Kalenderübersicht untereinander;
+/// die volle Kalenderverwaltung liegt im eigenen Bereich „Kalender“.
 private struct CalDAVPage: View {
+	/// Springt zum Bereich „Kalender“ (Schalter der Sidebar-Auswahl).
+	let onOpenKalender: () -> Void
+
 	var body: some View {
 		SettingsPage {
 			ConnectionsSection()
-			CalendarsSection()
+			CalendarsSection(onOpenKalender: onOpenKalender)
+		}
+	}
+}
+
+// MARK: – Bereich „Kalender“
+
+/// Verbindungs-Gruppe auf der Kalenderseite (Kopf: Name + Rolle).
+private struct CalendarGroup: Identifiable {
+	let connectionId: String
+	let name: String
+	let role: String        // primary | secondary
+	let calendars: [CalendarView]
+
+	var id: String { connectionId }
+}
+
+/// Alle Kalender pro Verbindung: Farbe, Sichtbarkeit, Schreibschutz,
+/// Standard, Umbenennen, Löschen und Anlage (Parität zur Web-Seite).
+private struct KalenderPage: View {
+	@Environment(AppStore.self) private var store
+	@Environment(AuthStore.self) private var auth
+
+	@State private var showNew = false
+	@State private var renameCandidate: CalendarView?
+	@State private var deleteCandidate: CalendarView?
+	/// Entprellter Farb-Speicher pro Kalender (wie bei den Kategorien).
+	@State private var colorSaves: [String: Task<Void, Never>] = [:]
+	@State private var rowErrors: [String: String] = [:]
+
+	var body: some View {
+		SettingsPage {
+			if let err = store.calendarsError {
+				ErrorBanner(message: err, retry: { Task { await store.loadCalendars() } })
+			}
+
+			Text("Sichtbare Kalender erscheinen in allen Ansichten. Der Standardkalender ist Ziel für neue Termine und Aufgaben; ausgeblendete oder gesperrte Kalender werden nie beschrieben.")
+				.font(.callout)
+				.foregroundStyle(DS.textSecondary)
+
+			HStack {
+				Spacer()
+				Button {
+					showNew = true
+				} label: {
+					Label("Neuer Kalender", systemImage: "plus")
+				}
+				.buttonStyle(.bordered)
+				.disabled(store.connections.isEmpty)
+				.help(store.connections.isEmpty
+				      ? "Zuerst eine CalDAV-Verbindung anlegen."
+				      : "Kalender direkt auf dem Server anlegen (MKCALENDAR)")
+			}
+
+			if store.calendars.isEmpty {
+				EmptyStateView(
+					title: "Keine Kalender gefunden.",
+					systemImage: "rectangle.stack",
+					description: store.calendarsLoaded
+						? "Verbindungen prüfen oder eine neue Quelle anlegen."
+						: nil
+				)
+				.frame(height: 170)
+			} else {
+				ForEach(groups) { groupCard($0) }
+			}
+		}
+		.task {
+			if store.connections.isEmpty { await store.loadConnections() }
+			await store.loadCalendars()
+		}
+		.onDisappear { colorSaves.values.forEach { $0.cancel() } }
+		.sheet(isPresented: $showNew) { NewCalendarSheet() }
+		.sheet(item: $renameCandidate) { cal in RenameCalendarSheet(calendar: cal) }
+		.sheet(item: $deleteCandidate) { cal in DeleteCalendarSheet(calendar: cal) }
+	}
+
+	// MARK: Gruppen
+
+	/// Gruppen pro Verbindung, in Reihenfolge der Kalenderliste (Server sortiert schon).
+	private var groups: [CalendarGroup] {
+		var order: [String] = []
+		var buckets: [String: [CalendarView]] = [:]
+		for cal in store.calendars {
+			if buckets[cal.connectionId] == nil { order.append(cal.connectionId) }
+			buckets[cal.connectionId, default: []].append(cal)
+		}
+		return order.compactMap { id in
+			guard let cals = buckets[id], !cals.isEmpty else { return nil }
+			let conn = store.connections.first { $0.id == id }
+			return CalendarGroup(
+				connectionId: id,
+				name: conn?.name ?? cals.first?.connectionName ?? "Unbekannte Verbindung",
+				role: conn?.role ?? cals.first?.role ?? "secondary",
+				calendars: cals)
+		}
+	}
+
+	/// Karte pro Verbindung mit Rollen-Badge und Kalenderzeilen.
+	private func groupCard(_ group: CalendarGroup) -> some View {
+		VStack(alignment: .leading, spacing: DS.Space.md) {
+			HStack(spacing: DS.Space.sm) {
+				Text(group.name)
+					.font(DS.Typo.cardTitle)
+					.foregroundStyle(DS.textPrimary)
+					.lineLimit(1)
+				Chip(text: group.role == "primary" ? "Hauptkalender" : "Zusatzkalender",
+				     color: group.role == "primary" ? DS.accent : DS.textSecondary,
+				     systemImage: group.role == "primary" ? "star.fill" : nil)
+				Spacer(minLength: DS.Space.sm)
+				Text("\(group.calendars.count) Kalender")
+					.font(DS.Typo.meta)
+					.foregroundStyle(DS.textTertiary)
+			}
+			ForEach(group.calendars) { cal in
+				calendarRow(cal)
+			}
+		}
+		.padding(DS.Space.lg)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.dsCard()
+	}
+
+	// MARK: Kalenderzeile
+
+	@ViewBuilder
+	private func calendarRow(_ cal: CalendarView) -> some View {
+		VStack(alignment: .leading, spacing: DS.Space.xs) {
+			HStack(spacing: DS.Space.sm) {
+				ColorPicker("", selection: colorBinding(for: cal))
+					.labelsHidden()
+					.help("Kalenderfarbe ändern")
+				Text(cal.name)
+					.font(DS.Typo.rowTitle)
+					.foregroundStyle(cal.hidden ? DS.textSecondary : DS.textPrimary)
+					.lineLimit(1)
+				if !cal.writable && !cal.writeDisabled {
+					Chip(text: "Server: schreibgeschützt", systemImage: "lock.fill")
+				}
+				Spacer(minLength: DS.Space.sm)
+				Toggle(isOn: visibilityBinding(cal)) {
+					Text("Sichtbar").font(.caption)
+				}
+				.toggleStyle(.switch)
+				Toggle(isOn: writeBinding(cal)) {
+					Text("Beschreibbar").font(.caption)
+				}
+				.toggleStyle(.switch)
+				// Bei Server-Schreibschutz bringt der lokale Schalter nichts.
+				.disabled(!cal.writable && !cal.writeDisabled)
+			}
+			HStack(spacing: DS.Space.sm) {
+				if cal.isDefault {
+					Chip(text: "Standardkalender", color: DS.accent, systemImage: "star.fill")
+				} else {
+					Button("Als Standard") {
+						Task { await store.setDefaultCalendar(cal.id) }
+					}
+					.buttonStyle(.bordered)
+					.controlSize(.small)
+					.disabled(!cal.writable)
+					.help(cal.writable
+					      ? "Neue Termine und Aufgaben landen in diesem Kalender."
+					      : "Ein schreibgeschützter Kalender kann nicht Standard sein.")
+				}
+				Spacer(minLength: DS.Space.sm)
+				Button("Umbenennen") { renameCandidate = cal }
+					.buttonStyle(.bordered)
+					.controlSize(.small)
+				Button(role: .destructive) { deleteCandidate = cal } label: {
+					Image(systemName: "trash")
+				}
+				.buttonStyle(.borderless)
+				.foregroundStyle(DS.danger)
+				.help("Kalender löschen")
+			}
+			if let err = rowErrors[cal.id] {
+				Text(err).font(.caption).foregroundStyle(DS.danger)
+			}
+		}
+		.padding(DS.Space.sm)
+		.background(
+			RoundedRectangle(cornerRadius: DS.Radius.sm, style: .continuous)
+				.fill(DS.fillSubtle)
+		)
+	}
+
+	// MARK: Bindings & Aktionen
+
+	/// Schalter „Sichtbar“: umschalten ruft die Store-Aktion auf (PATCH hidden).
+	private func visibilityBinding(_ cal: CalendarView) -> Binding<Bool> {
+		Binding(
+			get: { !cal.hidden },
+			set: { newValue in
+				guard newValue != !cal.hidden else { return }
+				Task { await store.toggleCalendarVisibility(cal.id) }
+			}
+		)
+	}
+
+	/// Schalter „Beschreibbar“: lokaler Schreibschutz (PATCH writeDisabled).
+	private func writeBinding(_ cal: CalendarView) -> Binding<Bool> {
+		Binding(
+			get: { cal.writable },
+			set: { newValue in
+				guard let client = auth.client, newValue != cal.writable else { return }
+				Task {
+					do {
+						_ = try await client.updateCalendar(
+							id: cal.id, patch: ["writeDisabled": !newValue])
+						await store.loadCalendars()
+					} catch {
+						rowErrors[cal.id] = error.localizedDescription
+					}
+				}
+			}
+		)
+	}
+
+	/// Farbbindung mit entprelltem Auto-Speichern (~400 ms, wie bei Kategorien).
+	private func colorBinding(for cal: CalendarView) -> Binding<Color> {
+		Binding(
+			get: { dsColor(hex: cal.colorOverride ?? cal.color) ?? Color(hex: cal.color) },
+			set: { newValue in
+				guard let hex = hexString(from: newValue) else { return }
+				scheduleColorSave(cal.id, hex: hex)
+			}
+		)
+	}
+
+	private func scheduleColorSave(_ id: String, hex: String) {
+		colorSaves[id]?.cancel()
+		colorSaves[id] = Task {
+			do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
+			guard !Task.isCancelled, let client = auth.client else { return }
+			do {
+				_ = try await client.updateCalendar(id: id, patch: ["color": hex])
+				await store.loadCalendars()
+			} catch {
+				rowErrors[id] = error.localizedDescription
+			}
+			colorSaves[id] = nil
+		}
+	}
+}
+
+// MARK: Kalender-Sheets (anlegen, umbenennen, löschen)
+
+/// Sheet: Kalender anlegen (Verbindung + Name + Farbe). Lehnt der Anbieter
+/// die Anlage ab (z. B. iCloud mit 403), erscheint der Fehler im Sheet.
+private struct NewCalendarSheet: View {
+	@Environment(\.dismiss) private var dismiss
+	@Environment(AppStore.self) private var store
+	@Environment(AuthStore.self) private var auth
+
+	@State private var connectionId = ""
+	@State private var name = ""
+	@State private var color = Color(hex: "#4f7cff")
+	@State private var saving = false
+	@State private var errorText: String?
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: DS.Space.md) {
+			Text("Neuer Kalender")
+				.font(DS.Typo.cardTitle)
+			Picker("Verbindung", selection: $connectionId) {
+				ForEach(store.connections) { conn in
+					Text(conn.role == "primary" ? "\(conn.name) (Hauptkalender)" : conn.name)
+						.tag(conn.id)
+				}
+			}
+			settingsField("Name", text: $name, placeholder: "z. B. Projekte")
+			ColorPicker("Farbe", selection: $color)
+			Text("Der Kalender wird auf dem CalDAV-Server angelegt. Manche Anbieter (z. B. iCloud) erlauben das nicht — der Fehler wird hier angezeigt.")
+				.font(.caption)
+				.foregroundStyle(DS.textSecondary)
+			if let err = errorText {
+				ErrorBanner(message: err)
+			}
+			HStack(spacing: DS.Space.sm) {
+				Button("Abbrechen") { dismiss() }
+					.buttonStyle(.bordered)
+					.disabled(saving)
+				Spacer(minLength: DS.Space.sm)
+				Button {
+					create()
+				} label: {
+					if saving {
+						HStack(spacing: DS.Space.xs) {
+							ProgressView().controlSize(.small)
+							Text("Lege an…")
+						}
+					} else {
+						Text("Anlegen")
+					}
+				}
+				.disabled(saving || name.trimmed.isEmpty || connectionId.isEmpty)
+				.primaryButton()
+				.frame(maxWidth: 140)
+			}
+		}
+		.padding(DS.Space.xl)
+		.frame(width: 420)
+		.task {
+			if connectionId.isEmpty { connectionId = store.connections.first?.id ?? "" }
+		}
+	}
+
+	private func create() {
+		guard !saving, let client = auth.client else { return }
+		saving = true
+		errorText = nil
+		let target = connectionId
+		let title = name.trimmed
+		let hex = hexString(from: color)
+		Task {
+			do {
+				_ = try await client.createCalendar(
+					connectionId: target, name: title, color: hex,
+					components: ["VEVENT", "VTODO"])
+				await store.loadCalendars()
+				dismiss()
+			} catch {
+				errorText = error.localizedDescription
+				saving = false
+			}
+		}
+	}
+}
+
+/// Sheet: Kalender umbenennen (PATCH name; nicht jeder Server erlaubt PROPPATCH).
+private struct RenameCalendarSheet: View {
+	let calendar: CalendarView
+
+	@Environment(\.dismiss) private var dismiss
+	@Environment(AppStore.self) private var store
+	@Environment(AuthStore.self) private var auth
+
+	@State private var name: String = ""
+	@State private var saving = false
+	@State private var errorText: String?
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: DS.Space.md) {
+			Text("Kalender umbenennen")
+				.font(DS.Typo.cardTitle)
+			settingsField("Name", text: $name)
+			Text("Der Name wird nach Möglichkeit auf dem CalDAV-Server geändert; sonst merkt ihn sich Horizont lokal.")
+				.font(.caption)
+				.foregroundStyle(DS.textSecondary)
+			if let err = errorText {
+				ErrorBanner(message: err)
+			}
+			HStack(spacing: DS.Space.sm) {
+				Button("Abbrechen") { dismiss() }
+					.buttonStyle(.bordered)
+					.disabled(saving)
+				Spacer(minLength: DS.Space.sm)
+				Button {
+					rename()
+				} label: {
+					if saving {
+						HStack(spacing: DS.Space.xs) {
+							ProgressView().controlSize(.small)
+							Text("Speichere…")
+						}
+					} else {
+						Text("Speichern")
+					}
+				}
+				.disabled(saving || name.trimmed.isEmpty)
+				.primaryButton()
+				.frame(maxWidth: 140)
+			}
+		}
+		.padding(DS.Space.xl)
+		.frame(width: 420)
+		.task { name = calendar.name }
+	}
+
+	private func rename() {
+		guard !saving, let client = auth.client else { return }
+		saving = true
+		errorText = nil
+		let title = name.trimmed
+		Task {
+			do {
+				_ = try await client.updateCalendar(id: calendar.id, patch: ["name": title])
+				await store.loadCalendars()
+				dismiss()
+			} catch {
+				errorText = error.localizedDescription
+				saving = false
+			}
+		}
+	}
+}
+
+/// Sheet: Kalender löschen — sicherheitshalber nur bei exakt getipptem Namen.
+private struct DeleteCalendarSheet: View {
+	let calendar: CalendarView
+
+	@Environment(\.dismiss) private var dismiss
+	@Environment(AppStore.self) private var store
+	@Environment(AuthStore.self) private var auth
+
+	@State private var typed = ""
+	@State private var deleting = false
+	@State private var errorText: String?
+
+	private var confirmed: Bool { typed.trimmed == calendar.name }
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: DS.Space.md) {
+			Text("Kalender löschen?")
+				.font(DS.Typo.cardTitle)
+			Text("„\(calendar.name)“ wird auf dem CalDAV-Server gelöscht — Termine und Aufgaben darin sind endgültig verloren.")
+				.font(.callout)
+				.foregroundStyle(DS.textSecondary)
+			VStack(alignment: .leading, spacing: DS.Space.xs) {
+				Text("Zur Bestätigung den exakten Namen „\(calendar.name)“ eintippen")
+					.font(DS.Typo.metaStrong)
+					.foregroundStyle(DS.textSecondary)
+				TextField("Name bestätigen", text: $typed)
+					.autocorrectionDisabled()
+			}
+			if let err = errorText {
+				ErrorBanner(message: err)
+			}
+			HStack(spacing: DS.Space.sm) {
+				Button("Abbrechen") { dismiss() }
+					.buttonStyle(.bordered)
+					.disabled(deleting)
+				Spacer(minLength: DS.Space.sm)
+				Button(deleting ? "Lösche…" : "Endgültig löschen", role: .destructive) {
+					remove()
+				}
+				.buttonStyle(.bordered)
+				.disabled(deleting || !confirmed)
+			}
+		}
+		.padding(DS.Space.xl)
+		.frame(width: 420)
+	}
+
+	private func remove() {
+		guard !deleting, let client = auth.client else { return }
+		deleting = true
+		errorText = nil
+		let name = calendar.name
+		Task {
+			do {
+				try await client.deleteCalendar(id: calendar.id, name: name)
+				await store.loadCalendars()
+				dismiss()
+			} catch {
+				errorText = error.localizedDescription
+				deleting = false
+			}
 		}
 	}
 }
@@ -411,10 +878,14 @@ private struct SettingsSectionCard<Content: View>: View {
 /// CalDAV-Verbindungen mit voller Verwaltung (CRUD + Test) wie in der Web-App.
 private struct ConnectionsSection: View {
 	@Environment(AppStore.self) private var store
+	@Environment(AuthStore.self) private var auth
 
 	@State private var results: [String: TestResult] = [:]
 	@State private var errors: [String: String] = [:]
 	@State private var testing: Set<String> = []
+
+	// Anbieter-Vorlagen (Presets vom Server, einmal geladen).
+	@State private var presets: [ProviderPreset] = []
 
 	// Inline-Bearbeitung (id der gerade bearbeiteten Verbindung).
 	@State private var editingId: String?
@@ -422,6 +893,9 @@ private struct ConnectionsSection: View {
 	@State private var editUrl = ""
 	@State private var editUsername = ""
 	@State private var editPassword = ""
+	@State private var editPresetId: String?
+	@State private var editUsernameLabel = ""
+	@State private var editRole = "secondary"
 	@State private var editSaving = false
 	@State private var editError: String?
 
@@ -435,6 +909,9 @@ private struct ConnectionsSection: View {
 	@State private var newUrl = ""
 	@State private var newUsername = ""
 	@State private var newPassword = ""
+	@State private var newPresetId: String?
+	@State private var newUsernameLabel = ""
+	@State private var newRole = "secondary"
 	@State private var newSaving = false
 	@State private var newTesting = false
 	@State private var newError: String?
@@ -455,7 +932,10 @@ private struct ConnectionsSection: View {
 			}
 			newSourceCard
 		}
-		.task { await store.loadConnections() }
+		.task {
+			await store.loadConnections()
+			await loadPresets()
+		}
 		.confirmationDialog(
 			"„\(deleteCandidate?.name ?? "")“ wirklich löschen?",
 			isPresented: Binding(
@@ -500,6 +980,9 @@ private struct ConnectionsSection: View {
 					.lineLimit(1)
 					.truncationMode(.middle)
 				HStack(spacing: DS.Space.sm) {
+					if conn.role == "primary" {
+						Chip(text: "Hauptkalender", color: DS.accent, systemImage: "star.fill")
+					}
 					Chip(text: conn.username, systemImage: "person.fill")
 					if conn.hasPassword {
 						Chip(text: "Passwort gesetzt", color: DS.success, systemImage: "lock.fill")
@@ -532,11 +1015,33 @@ private struct ConnectionsSection: View {
 	private func editForm(for conn: ConnectionView) -> some View {
 		Divider()
 		VStack(alignment: .leading, spacing: DS.Space.sm) {
+			ProviderChips(presets: presets, selection: $editPresetId,
+			              usernameLabel: $editUsernameLabel, url: $editUrl)
 			settingsField("Name", text: $editName)
 			settingsField("URL", text: $editUrl, placeholder: "https://…")
-			settingsField("Benutzername", text: $editUsername)
+			settingsField(editUsernameLabel.isEmpty ? "Benutzername" : editUsernameLabel,
+			              text: $editUsername)
 			settingsField("Passwort", text: $editPassword, secure: true,
 			              placeholder: "●●●● (leer lassen = behalten)")
+			VStack(alignment: .leading, spacing: DS.Space.xs) {
+				Text("Rolle")
+					.font(DS.Typo.metaStrong)
+					.foregroundStyle(DS.textSecondary)
+				Picker("Rolle", selection: $editRole) {
+					Text("Sekundär (nur anzeigen)").tag("secondary")
+					Text("Primär (Hauptkalender)").tag("primary")
+				}
+				.pickerStyle(.segmented)
+				.labelsHidden()
+				.onChange(of: editRole) { _, newValue in
+					// Herabstufen gibt es als API nicht: der Server setzt die alte
+					// Hauptverbindung erst um, wenn eine andere hochgestuft wird.
+					if newValue == "secondary" && conn.role == "primary" {
+						editRole = "primary"
+						editError = "Eine Hauptverbindung kann nicht abgestuft werden – stattdessen eine andere Verbindung zum Hauptkalender machen."
+					}
+				}
+			}
 			if let err = editError {
 				Text(err).font(.caption).foregroundStyle(DS.danger)
 			}
@@ -558,6 +1063,9 @@ private struct ConnectionsSection: View {
 		editUsername = conn.username
 		editPassword = ""
 		editError = nil
+		editPresetId = conn.provider == "generic" ? nil : conn.provider
+		editUsernameLabel = presets.first(where: { $0.id == conn.provider })?.usernameLabel ?? ""
+		editRole = conn.role
 	}
 
 	private func cancelEdit() {
@@ -580,8 +1088,19 @@ private struct ConnectionsSection: View {
 			if let err {
 				editError = err
 			} else {
-				editingId = nil
-				results.removeValue(forKey: conn.id)
+				// Rollenwechsel: Hochstufen macht die eigene setPrimaryConnection-API.
+				if editRole == "primary" && conn.role != "primary", let client = auth.client {
+					do {
+						try await client.setPrimaryConnection(id: conn.id)
+					} catch {
+						editError = error.localizedDescription
+					}
+					await store.loadConnections()
+				}
+				if editError == nil {
+					editingId = nil
+					results.removeValue(forKey: conn.id)
+				}
 			}
 		}
 	}
@@ -625,11 +1144,30 @@ private struct ConnectionsSection: View {
 					.buttonStyle(.borderless)
 					.help("Abbrechen")
 				}
+				ProviderChips(presets: presets, selection: $newPresetId,
+				              usernameLabel: $newUsernameLabel, url: $newUrl)
 				settingsField("Name", text: $newName, placeholder: "z. B. iCloud")
 				settingsField("URL", text: $newUrl, placeholder: "https://caldav.icloud.com/")
-				settingsField("Benutzername", text: $newUsername, placeholder: "E-Mail")
+				settingsField(newUsernameLabel.isEmpty ? "Benutzername" : newUsernameLabel,
+				              text: $newUsername, placeholder: "E-Mail")
 				settingsField("Passwort", text: $newPassword, secure: true,
 				              placeholder: "App-spezifisches Passwort")
+				VStack(alignment: .leading, spacing: DS.Space.xs) {
+					Text("Rolle")
+						.font(DS.Typo.metaStrong)
+						.foregroundStyle(DS.textSecondary)
+					Picker("Rolle", selection: $newRole) {
+						Text("Sekundär (nur anzeigen)").tag("secondary")
+						Text("Primär (Hauptkalender)").tag("primary")
+					}
+					.pickerStyle(.segmented)
+					.labelsHidden()
+					Text(store.connections.isEmpty
+					     ? "Die erste Verbindung wird automatisch Hauptkalender."
+					     : "Der bisherige Hauptkalender wird dabei abgestuft.")
+						.font(DS.Typo.meta)
+						.foregroundStyle(DS.textSecondary)
+				}
 				if let res = newFormResult {
 					ResultBanner(
 						ok: res.ok,
@@ -689,6 +1227,7 @@ private struct ConnectionsSection: View {
 		let urlValue = newUrl.trimmed
 		let username = newUsername.trimmed
 		let password = newPassword
+		let role = newRole
 		Task {
 			let err = await store.createConnection(
 				name: name, url: urlValue, username: username, password: password)
@@ -696,12 +1235,31 @@ private struct ConnectionsSection: View {
 			if let err {
 				newError = err
 			} else {
-				showNew = false
-				newName = ""
-				newUrl = ""
-				newUsername = ""
-				newPassword = ""
-				newFormResult = nil
+				// Gewünschte Rolle primary: hinterher hochstufen (erste Verbindung
+				// ist ohnehin automatisch Hauptverbindung).
+				if role == "primary" && store.connections.contains(where: { $0.role == "primary" }),
+				   let created = store.connections.first(where: {
+				       $0.url == urlValue && $0.username == username
+				   }),
+				   let client = auth.client {
+					do {
+						try await client.setPrimaryConnection(id: created.id)
+					} catch {
+						newError = error.localizedDescription
+					}
+					await store.loadConnections()
+				}
+				if newError == nil {
+					showNew = false
+					newName = ""
+					newUrl = ""
+					newUsername = ""
+					newPassword = ""
+					newPresetId = nil
+					newUsernameLabel = ""
+					newRole = "secondary"
+					newFormResult = nil
+				}
 			}
 		}
 	}
@@ -720,6 +1278,11 @@ private struct ConnectionsSection: View {
 				url: urlValue, username: username, password: password)
 			newTesting = false
 		}
+	}
+
+	private func loadPresets() async {
+		guard presets.isEmpty, let client = auth.client else { return }
+		presets = (try? await client.providerPresets()) ?? []
 	}
 
 	// MARK: Testen (bestehend)
@@ -760,6 +1323,52 @@ private struct ConnectionsSection: View {
 	}
 }
 
+/// Anbieter-Chips fürs Verbindungsformular: übernehmen URL und Feldbeschriftung.
+/// Google ist nur ein Hinweis-Chip (kein Standard-CalDAV, nicht wählbar).
+private struct ProviderChips: View {
+	let presets: [ProviderPreset]
+	@Binding var selection: String?
+	@Binding var usernameLabel: String
+	@Binding var url: String
+
+	private var selectable: [ProviderPreset] { presets.filter { $0.id != "google" } }
+	private var googleHint: ProviderPreset? { presets.first(where: { $0.id == "google" }) }
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: DS.Space.xs) {
+			FlowLayout(spacing: DS.Space.xs) {
+				ForEach(selectable) { preset in
+					Chip(text: preset.label,
+					     color: selection == preset.id ? DS.accent : DS.textSecondary,
+					     systemImage: selection == preset.id ? "checkmark" : nil)
+						.onTapGesture { choose(preset) }
+				}
+				if let google = googleHint {
+					Chip(text: google.label, color: DS.warning, systemImage: "info.circle")
+						.help(google.hint)
+				}
+			}
+			if let hint = presets.first(where: { $0.id == selection })?.hint {
+				Text(hint)
+					.font(DS.Typo.meta)
+					.foregroundStyle(DS.textSecondary)
+			}
+		}
+	}
+
+	/// Nochmal antippen hebt die Wahl auf (zurück zu „eigene URL").
+	private func choose(_ preset: ProviderPreset) {
+		if selection == preset.id {
+			selection = nil
+			usernameLabel = ""
+		} else {
+			selection = preset.id
+			url = preset.url
+			usernameLabel = preset.usernameLabel
+		}
+	}
+}
+
 /// Beschriftiertes Formularfeld (Label über Eingabe) für Settings-Formulare.
 @ViewBuilder
 private func settingsField(_ label: String, text: Binding<String>,
@@ -780,12 +1389,19 @@ private func settingsField(_ label: String, text: Binding<String>,
 
 // MARK: – Kalender
 
-/// Übersicht aller CalDAV-Kalender (Farbpunkt + Name + Verbindung).
+/// Kurzfassung der Kalenderliste: Farbpunkt, Name, Sichtbar-Schalter
+/// und Link zur vollen Verwaltung im Bereich „Kalender" (kein doppelter Zustand).
 private struct CalendarsSection: View {
+	/// Springt zum Einstellungs-Bereich „Kalender".
+	let onOpenKalender: () -> Void
+
 	@Environment(AppStore.self) private var store
 
 	var body: some View {
 		SettingsSectionCard(title: "Kalender") {
+			if let err = store.calendarsError {
+				ErrorBanner(message: err, retry: { Task { await store.loadCalendars() } })
+			}
 			if store.calendars.isEmpty {
 				EmptyStateView(
 					title: "Keine Kalender gefunden.",
@@ -800,19 +1416,43 @@ private struct CalendarsSection: View {
 					ForEach(store.calendars) { cal in
 						HStack(spacing: DS.Space.sm) {
 							Circle()
-								.fill(dsColor(hex: cal.color) ?? DS.textTertiary)
+								.fill(Color(hex: cal.colorOverride ?? cal.color))
 								.frame(width: 10, height: 10)
 							Text(cal.name)
 								.font(DS.Typo.rowTitle)
-								.foregroundStyle(DS.textPrimary)
+								.foregroundStyle(cal.hidden ? DS.textTertiary : DS.textPrimary)
 								.lineLimit(1)
+							if cal.isDefault {
+								Image(systemName: "star.fill")
+									.font(.caption2)
+									.foregroundStyle(DS.accent)
+									.help("Standardkalender")
+							}
 							if let connName = cal.connectionName {
 								Chip(text: connName)
 							}
 							Spacer(minLength: DS.Space.sm)
+							Toggle(isOn: Binding(
+								get: { !cal.hidden },
+								set: { visible in
+									guard visible != !cal.hidden else { return }
+									Task { await store.toggleCalendarVisibility(cal.id) }
+								}
+							)) {
+								Text("Sichtbar")
+							}
+							.toggleStyle(.switch)
+							.labelsHidden()
+							.controlSize(.mini)
 						}
 					}
 				}
+				Button {
+					onOpenKalender()
+				} label: {
+					Label("Alle Kalender verwalten…", systemImage: "rectangle.stack")
+				}
+				.buttonStyle(.bordered)
 			}
 		}
 		.task {

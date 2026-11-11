@@ -4,7 +4,12 @@ import type {
 	ApiTokenGenerated,
 	ApiTokenView,
 	ArchiveMonth,
+	CalDavProvider,
+	CalendarCreateInput,
+	CalendarUpdateInput,
+	CalendarView,
 	CalendarsResponse,
+	ConnectionRole,
 	ConnectionsResponse,
 	CreateWorkflowInput,
 	AppUser,
@@ -17,6 +22,7 @@ import type {
 	NotifySaveInput,
 	NotifySendResult,
 	NotifyTestResult,
+	ProviderPreset,
 	TasksResponse,
 	TaskCategory,
 	TaskCreateInput,
@@ -62,6 +68,8 @@ export interface ConnectionInput {
 	url: string;
 	username: string;
 	password?: string;
+	provider?: CalDavProvider;
+	role?: ConnectionRole;
 }
 
 export const api = {
@@ -81,12 +89,30 @@ export const api = {
 
 	// Verbindungen (der CalDAV-Zugang des Users)
 	connections: () => req<ConnectionsResponse>('/api/settings'),
+	// Anbieter-Vorlagen für das Verbindungsformular (statisch, ohne Secrets)
+	providerPresets: () => req<{ presets: ProviderPreset[] }>('/api/settings/presets'),
 	createConnection: (input: Omit<ConnectionInput, 'id'>) =>
 		req<ConnectionsResponse>('/api/settings', { method: 'POST', body: JSON.stringify(input) }),
-	updateConnection: (id: string, input: { name?: string; url?: string; username?: string; password?: string }) =>
+	updateConnection: (
+		id: string,
+		input: {
+			name?: string;
+			url?: string;
+			username?: string;
+			password?: string;
+			provider?: CalDavProvider;
+			role?: ConnectionRole;
+		}
+	) =>
 		req<ConnectionsResponse>('/api/settings', {
 			method: 'PATCH',
 			body: JSON.stringify({ id, ...input })
+		}),
+	// Verbindung zur Hauptverbindung machen (Workflows, Standardziele)
+	setPrimaryConnection: (id: string) =>
+		req<ConnectionsResponse>('/api/settings', {
+			method: 'PATCH',
+			body: JSON.stringify({ id, role: 'primary' })
 		}),
 	deleteConnection: (id: string) =>
 		req<ConnectionsResponse>('/api/settings', { method: 'DELETE', body: JSON.stringify({ id }) }),
@@ -131,8 +157,22 @@ export const api = {
 	resetWorkflow: (id: string) =>
 		req<Workflow>(`/api/workflows/${encodeURIComponent(id)}/reset`, { method: 'POST' }),
 
-	// Kalendare
+	// Kalender
 	calendars: () => req<CalendarsResponse>('/api/calendars'),
+	calendarsVisible: () => req<CalendarsResponse>('/api/calendars?sichtbar=1'),
+	createCalendar: (input: CalendarCreateInput) =>
+		req<CalendarView>('/api/calendars', { method: 'POST', body: JSON.stringify(input) }),
+	updateCalendar: (id: string, patch: CalendarUpdateInput) =>
+		req<CalendarView>(`/api/calendars/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			body: JSON.stringify(patch)
+		}),
+	// name = Löschbestätigung, muss exakt zum Kalendernamen passen
+	deleteCalendar: (id: string, name: string) =>
+		req<{ ok: true }>(`/api/calendars/${encodeURIComponent(id)}`, {
+			method: 'DELETE',
+			body: JSON.stringify({ name })
+		}),
 
 	// Event-CRUD
 	createEvent: (input: EventCreateInput) =>

@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { listConnections } from '$server/store/connections';
-import { listAllTasks, createTask, NotFoundError, ValidationError } from '$server/lib/write';
+import { listAllTasks, createTask, NotFoundError, ReadOnlyError, ValidationError } from '$server/lib/write';
 import { CalDavError } from '$server/caldav/client';
 import type { TaskCreateInput } from '$lib/types';
 
@@ -11,7 +11,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 		return json({ configured: false, tasks: [] });
 	}
 	try {
-		const tasks = await listAllTasks(connections);
+		const tasks = await listAllTasks(locals.user?.id ?? '', connections);
 		return json({ configured: true, tasks });
 	} catch (e: any) {
 		return json(
@@ -35,11 +35,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	}
 
 	try {
-		const item = await createTask(connections, body);
+		// calendarId optional: fehlt ⇒ Server wählt den Standardkalender (resolveWriteTarget).
+		const item = await createTask(locals.user?.id ?? '', connections, body);
 		return json(item, { status: 201 });
 	} catch (e: any) {
 		if (e instanceof ValidationError) return json({ error: e.message }, { status: 400 });
 		if (e instanceof NotFoundError) return json({ error: e.message }, { status: 404 });
+		if (e instanceof ReadOnlyError) return json({ error: e.message }, { status: 403 });
 		if (e instanceof CalDavError) return json({ error: e.message }, { status: 502 });
 		return json({ error: e.message ?? 'Unbekannter Fehler' }, { status: 500 });
 	}

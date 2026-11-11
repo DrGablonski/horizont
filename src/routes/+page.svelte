@@ -4,7 +4,7 @@
 	import type {
 		MainEventsResponse,
 		EventItem,
-		CalDavCalendar,
+		CalendarView,
 		EventUpdateInput,
 		EventCreateInput,
 		TaskUpdateInput,
@@ -19,6 +19,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
 	import { dayKey } from '$lib/dates';
+	import { cn } from '$lib/utils';
 	import { toast } from 'svelte-sonner';
 	import RotateCwIcon from '@lucide/svelte/icons/rotate-cw';
 	import PlusIcon from '@lucide/svelte/icons/plus';

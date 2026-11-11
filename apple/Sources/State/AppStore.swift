@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import CryptoKit
 
 /// Datenhaltung für Start-, Archiv- und Workflow-Screens.
 /// Mutationen (Abhaken, Schritt fortgeschritten) optimistisch + Rollback bei Fehler.
@@ -23,8 +24,9 @@ final class AppStore {
 	var workflowsError: String?
 	var workflowsBusy = false
 
-	// Kalender (für Einstellungen + Task-Dialog)
-	var calendars: [CalDavCalendar] = []
+	// Kalender (Timeline-Chips, Einstellungen + Task-Dialog)
+	var calendars: [CalendarView] = []
+	var calendarsError: String?
 	var calendarsLoaded = false
 
 	// Kategorien
@@ -41,6 +43,9 @@ final class AppStore {
 
 	private let serverBase: String
 	private var prefetchStarted = false
+	/// Fingerabdruck der Kalender-Sichtbarkeit; Teil des Snapshot-Keys für
+	/// home/archive, damit ein Sichtbarkeitswechsel alte Timelines entwertet.
+	private var snapshotGen = ""
 
 	init(client: APIClient) {
 		self.client = client
@@ -53,15 +58,31 @@ final class AppStore {
 	/// Zuerst geladene Antworten von der Disk laden → Views zeigen beim Start
 	/// sofort Inhalte, prefetchIfNeeded aktualisiert sie im Hintergrund.
 	private func loadSnapshots() {
-		home = SnapshotStore.load(MainEventsResponse.self, name: "home", serverBase: serverBase)
-		archive = SnapshotStore.load(ArchiveMonth.self, name: "archive", serverBase: serverBase)
+		// Kalender zuerst: ihr Sichtbarkeits-Fingerabdruck ist der Snapshot-Key
+		// der Timelines (home/archive enthalten nur Termine sichtbarer Kalender).
+		calendars = SnapshotStore.load([CalendarView].self, name: "calendars", serverBase: serverBase) ?? []
+		snapshotGen = Self.visibilityFingerprint(calendars)
+		home = SnapshotStore.load(MainEventsResponse.self, name: "home",
+		                          serverBase: serverBase, generation: snapshotGen)
+		archive = SnapshotStore.load(ArchiveMonth.self, name: "archive",
+		                             serverBase: serverBase, generation: snapshotGen)
 		workflows = SnapshotStore.load([Workflow].self, name: "workflows", serverBase: serverBase) ?? []
-		calendars = SnapshotStore.load([CalDavCalendar].self, name: "calendars", serverBase: serverBase) ?? []
 		categories = SnapshotStore.load([TaskCategory].self, name: "categories", serverBase: serverBase) ?? []
 	}
 
-	private func saveSnapshot<T: Encodable>(_ value: T, name: String) {
-		SnapshotStore.save(value, name: name, serverBase: serverBase)
+	private func saveSnapshot<T: Encodable>(_ value: T, name: String, generation: String = "") {
+		SnapshotStore.save(value, name: name, serverBase: serverBase, generation: generation)
+	}
+
+	/// Kurzer Hash aus Kalender-IDs + Versteckt-Schaltern (wie der Server-Hash
+	/// in SnapshotStore): ändert sich, wenn Termine in der Timeline andere werden.
+	private static func visibilityFingerprint(_ calendars: [CalendarView]) -> String {
+		let parts = calendars
+			.map { "\($0.id):\($0.hidden)" }
+			.sorted()
+			.joined(separator: ",")
+		let digest = SHA256.hash(data: Data(parts.utf8))
+		return digest.prefix(6).map { String(format: "%02x", $0) }.joined()
 	}
 
 	/// Alle Bereiche einmal parallel laden (einmal pro App-Lebenszeit).
@@ -86,7 +107,7 @@ final class AppStore {
 		do {
 			home = try await client.mainEvents()
 			homeError = home?.error
-			if let home { saveSnapshot(home, name: "home") }
+			if let home { saveSnapshot(home, name: "home", generation: snapshotGen) }
 		} catch {
 			homeError = error.localizedDescription
 		}
@@ -185,7 +206,7 @@ final class AppStore {
 		do {
 			try await client.updateTaskCompleted(
 				calendarId: event.calendarId, uid: event.uid, completed: newValue)
-			if let home { saveSnapshot(home, name: "home") }
+			if let home { saveSnapshot(home, name: "home", generation: snapshotGen) }
 		} catch {
 			// Rollback
 			if var p = home?.panels, let l = findEvent(event.id, in: &p) {
@@ -217,7 +238,7 @@ final class AppStore {
 		do {
 			archive = try await client.archiveMonth(monthKey)
 			archiveError = archive?.error
-			if let archive { saveSnapshot(archive, name: "archive") }
+			if let archive { saveSnapshot(archive, name: "archive", generation: snapshotGen) }
 		} catch {
 			archiveError = error.localizedDescription
 		}
@@ -340,13 +361,56 @@ final class AppStore {
 
 	// MARK: – Kalender / Kategorien
 
+	/// Kalender (inkl. verborgener) laden und Snapshot-Generation nachziehen;
+	/// Fehler einzelner Verbindungen (Response.errors) landen mit in calendarsError.
 	func loadCalendars() async {
 		do {
-			let r = try await client.calendars()
+			let r = try await client.fetchCalendars()
 			calendars = r.calendars
-			saveSnapshot(calendars, name: "calendars")
-		} catch {}
+			calendarsError = r.errors.isEmpty ? nil : r.errors.joined(separator: " · ")
+		} catch {
+			calendarsError = error.localizedDescription
+		}
 		calendarsLoaded = true
+		saveSnapshot(calendars, name: "calendars")
+		let gen = Self.visibilityFingerprint(calendars)
+		if gen != snapshotGen {
+			snapshotGen = gen
+			// Bereits geladene Timelines unter neuem Key weitersichern, sonst
+			// fehlen sie beim nächsten Start, obwohl sie noch aktuell sind.
+			if let home { saveSnapshot(home, name: "home", generation: gen) }
+			if let archive { saveSnapshot(archive, name: "archive", generation: gen) }
+		}
+	}
+
+	/// Sichtbarkeit umschalten (PATCH { hidden: !hidden }); danach Kalender und
+	/// Timeline neu laden — die Panels ändern sich mit der Sichtbarkeit.
+	func toggleCalendarVisibility(_ id: String) async {
+		guard let cal = calendars.first(where: { $0.id == id }) else { return }
+		do {
+			let updated = try await client.updateCalendar(id: id, patch: ["hidden": !cal.hidden])
+			if let i = calendars.firstIndex(where: { $0.id == id }) { calendars[i] = updated }
+			calendarsError = nil
+		} catch {
+			calendarsError = error.localizedDescription
+			return
+		}
+		await withTaskGroup(of: Void.self) { group in
+			group.addTask { await self.loadCalendars() }
+			group.addTask { await self.loadHome() }
+		}
+	}
+
+	/// Standardkalender setzen (PATCH { isDefault: true }, entwertet die anderen);
+	/// die Timeline bleibt gleich, nur die Kalenderliste braucht den Reload.
+	func setDefaultCalendar(_ id: String) async {
+		do {
+			_ = try await client.updateCalendar(id: id, patch: ["isDefault": true])
+			calendarsError = nil
+			await loadCalendars()
+		} catch {
+			calendarsError = error.localizedDescription
+		}
 	}
 
 	func loadCategories() async {
@@ -384,13 +448,15 @@ final class AppStore {
 		try? await client.testConnection(url: url, username: username, password: password)
 	}
 
-	/// Verbindung anlegen; Erfolg = nil, sonst Fehlertext. Lädt Kalender nach (neue Quellen).
+	/// Verbindung anlegen; Erfolg = nil, sonst Fehlertext.
+	/// Lädt Kalender und Timeline nach (neue Quellen, Panel-Cache serverseitig verworfen).
 	func createConnection(name: String, url: String, username: String,
 	                      password: String) async -> String? {
 		do {
 			connections = try await client.createConnection(
 				name: name, url: url, username: username, password: password).connections
 			await loadCalendars()
+			await loadHome()
 			return nil
 		} catch {
 			return error.localizedDescription
@@ -405,17 +471,19 @@ final class AppStore {
 				id: id, name: name, url: url, username: username,
 				password: password.isEmpty ? nil : password).connections
 			await loadCalendars()
+			await loadHome()
 			return nil
 		} catch {
 			return error.localizedDescription
 		}
 	}
 
-	/// Verbindung löschen; Erfolg = nil, sonst Fehlertext.
+	/// Verbindung löschen; Erfolg = nil, sonst Fehlertext. Kalender + Timeline nachladen.
 	func deleteConnection(id: String) async -> String? {
 		do {
 			connections = try await client.deleteConnection(id: id).connections
 			await loadCalendars()
+			await loadHome()
 			return nil
 		} catch {
 			return error.localizedDescription

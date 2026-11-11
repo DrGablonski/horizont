@@ -6,6 +6,7 @@
 import type {
 	ArchiveMonth,
 	CalDavConnection,
+	CalendarView,
 	DayGroup,
 	EventItem,
 	MainEventsResponse,
@@ -37,7 +38,7 @@ import {
 	PAST_DAYS
 } from '$server/lib/constants';
 import { fetchCalendarIcs } from '$server/caldav/client';
-import { resolveAllCalendars, type ResolvedCalendar } from '$server/caldav/multi';
+import { resolveCalendarViews, type ResolvedCalendar } from '$server/caldav/multi';
 import { icalToEventItems } from '$server/caldav/ical';
 import { listAllTasksForItems } from '$server/lib/write';
 import { cached } from '$server/lib/panelCache';
@@ -113,8 +114,21 @@ function bucketDaysMerged(
 	return groups;
 }
 
-function categoryColorMap(userId?: string): Map<string, string> {
-	return new Map((userId ? getCategories(userId) : []).map((c) => [c.name.toLowerCase(), c.color]));
+function categoryColorMap(userId: string): Map<string, string> {
+	return new Map(getCategories(userId).map((c) => [c.name.toLowerCase(), c.color]));
+}
+
+/**
+ * Ordnet aufgelöste Kalender (ohne ausgeblendete) ihren Verbindungen zu,
+ * damit Events/Tasks pro Kalender parallel abgefragt werden können.
+ * Kalender ohne zugehörige Verbindung (z. B. gelöst) werden übersprungen.
+ */
+function toResolvedItems(connections: CalDavConnection[], calendars: CalendarView[]): ResolvedCalendar[] {
+	const byId = new Map(connections.map((c) => [c.id, c]));
+	return calendars.flatMap((calendar) => {
+		const connection = byId.get(calendar.connectionId);
+		return connection ? [{ connection, calendar }] : [];
+	});
 }
 
 // ── Hauptansicht ──────────────────────────────────────────────────────────
@@ -125,7 +139,7 @@ async function fetchEventsForItems(
 	resolveErrors: string[],
 	rangeStart: number,
 	rangeEnd: number
-): Promise<{ events: EventItem[]; error: string | null; errors: string[] }> {
+): Promise<{ events: EventItem[]; errors: string[] }> {
 	const errors: string[] = [...resolveErrors];
 	const perCalendar = await Promise.all(
 		items.map(async ({ connection, calendar }) => {
@@ -145,7 +159,7 @@ async function fetchEventsForItems(
 	);
 	const events = perCalendar.flat();
 	events.sort((a, b) => a.startMs - b.startMs || a.summary.localeCompare(b.summary, 'de'));
-	return { events, error: errors.length > 0 ? errors.join(' | ') : null, errors };
+	return { events, errors };
 }
 
 // ── Tasks in die Timeline einbetten ──────────────────────────────────────
@@ -190,17 +204,17 @@ function tasksForDay(tasks: EventItem[], dayStart: number, dayEnd: number): Even
 }
 
 export function buildMainResponse(
-	connections: CalDavConnection[],
-	userId?: string
+	userId: string,
+	connections: CalDavConnection[]
 ): Promise<MainEventsResponse> {
 	const today = todayKey();
 	// Kurzer TTL + Invalidierung bei jeder Schreiboperation (panelCache).
-	return cached(`main:${userId ?? ''}:${today}`, () => buildMain(connections, userId, today));
+	return cached(`main:${userId}:${today}`, () => buildMain(userId, connections, today));
 }
 
 async function buildMain(
+	userId: string,
 	connections: CalDavConnection[],
-	userId: string | undefined,
 	today: string
 ): Promise<MainEventsResponse> {
 	const todayStart = msFromKey(today);
@@ -213,12 +227,21 @@ async function buildMain(
 	if (connections.length === 0) return emptyResponse(base);
 
 	const { startMs, endMs } = mainRange(todayStart);
-	// Kalender nur einmal auflösen, Events und Tasks parallel davon ableiten.
-	const { items, errors } = await resolveAllCalendars(connections);
-	const [{ events, error }, rawTasks] = await Promise.all([
-		fetchEventsForItems(items, errors, startMs, endMs),
-		listAllTasksForItems(items).catch(() => [] as TaskItem[])
+	// Kalender (ausgeblendete ausgeschlossen) nur einmal auflösen, Events und
+	// Tasks parallel davon ableiten. Fehler einzelner Verbindungen sammeln.
+	const { calendars, errors: resolveErrors } = await resolveCalendarViews(userId, connections, {
+		includeHidden: false
+	});
+	const items = toResolvedItems(connections, calendars);
+	const taskErrors: string[] = [];
+	const [{ events, errors }, rawTasks] = await Promise.all([
+		fetchEventsForItems(items, resolveErrors, startMs, endMs),
+		listAllTasksForItems(items).catch((e) => {
+			taskErrors.push(`Aufgaben: ${e instanceof Error ? e.message : String(e)}`);
+			return [] as TaskItem[];
+		})
 	]);
+	const error = errors.length + taskErrors.length > 0 ? [...errors, ...taskErrors].join(' | ') : null;
 
 	// Aufgaben mitten unter die Kalender-Ereignisse mischen.
 	// Erledigte (abgehakte) Tasks bleiben auf der Startseite ausgespart –
@@ -294,9 +317,9 @@ export function archiveWindow(todayStart: number): ArchiveWindow {
 }
 
 export function buildArchiveMonthResponse(
+	userId: string,
 	connections: CalDavConnection[],
-	requestedMonthKey: string | null,
-	userId?: string
+	requestedMonthKey: string | null
 ): Promise<ArchiveMonth> {
 	const today = todayKey();
 	const todayStart = msFromKey(today);
@@ -325,15 +348,15 @@ export function buildArchiveMonthResponse(
 	};
 
 	// Gleicher Mechanismus wie die Hauptansicht (TTL + Invalidierung).
-	return cached(`archive:${userId ?? ''}:${monthKey}:${today}`, () =>
-		buildArchive(connections, out, userId, today)
+	return cached(`archive:${userId}:${monthKey}:${today}`, () =>
+		buildArchive(userId, connections, out, today)
 	);
 }
 
 async function buildArchive(
+	userId: string,
 	connections: CalDavConnection[],
 	out: Omit<ArchiveMonth, 'days' | 'eventCount'>,
-	userId: string | undefined,
 	today: string
 ): Promise<ArchiveMonth> {
 	if (connections.length === 0) {
@@ -355,16 +378,27 @@ async function buildArchive(
 	const endMs = Math.min(gridEnd, addDaysMs(msFromKey(win.newest), 1));
 	let events: EventItem[] = [];
 	let error: string | null = null;
-	// Kalender nur einmal auflösen, Events + Tasks parallel ableiten.
-	const { items, errors } = await resolveAllCalendars(connections);
+	// Kalender (ausgeblendete ausgeschlossen) nur einmal auflösen, Events +
+	// Tasks parallel ableiten. Fehler einzelner Verbindungen sammeln.
+	const { calendars, errors: resolveErrors } = await resolveCalendarViews(userId, connections, {
+		includeHidden: false
+	});
+	const items = toResolvedItems(connections, calendars);
+	const taskErrors: string[] = [];
 	const [fetched, rawTasks] = await Promise.all([
 		startMs < endMs
-			? fetchEventsForItems(items, errors, startMs, endMs)
-			: Promise.resolve({ events: [] as EventItem[], error: null, errors: [] as string[] }),
-		listAllTasksForItems(items).catch(() => [] as TaskItem[])
+			? fetchEventsForItems(items, resolveErrors, startMs, endMs)
+			: Promise.resolve({ events: [] as EventItem[], errors: [] as string[] }),
+		listAllTasksForItems(items).catch((e) => {
+			taskErrors.push(`Aufgaben: ${e instanceof Error ? e.message : String(e)}`);
+			return [] as TaskItem[];
+		})
 	]);
 	events = fetched.events;
-	error = fetched.error;
+	error =
+		fetched.errors.length + taskErrors.length > 0
+			? [...fetched.errors, ...taskErrors].join(' | ')
+			: null;
 
 	const colors = categoryColorMap(userId);
 	const tasks = rawTasks.map((t) => {

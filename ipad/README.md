@@ -44,6 +44,23 @@ Ohne Developer-Account läuft alles auf dem Simulator; auf echtem iPad gilt das
 - **Lange drücken** auf einer Zeile → Kontextmenü (Erledigen/Details/Löschen)
 - Pull-to-Refresh in allen Listen
 
+## Mehrere Kalender & Zusatz-Server
+
+Wie die Mac-App (→ [`apple/README.md`](../apple/README.md), Kontrakt:
+[`design/mehrkalender-und-fremde-caldav.md`](../design/mehrkalender-und-fremde-caldav.md)):
+
+- **Einstellungen → CalDAV**: Anbieter-Vorlagen (iCloud, Google, Fastmail,
+  Nextcloud, Radicale, Baïkal) als Vorausfüllung, Rolle wählbar
+  (Hauptverbindung/Zusatzverbindung).
+- **Einstellungen → Kalender**: pro Verbindung gruppierte Liste mit
+  Rollen-Badge; Farbe, „Sichtbar"/„Beschreibbar", „Als Standard", Umbenennen
+  und Löschen (Bestätigung = exakter Name), „Neuer Kalender" (`MKCALENDAR`).
+- **Timeline**: Kalender-Chips (ab zwei Kalendern) — Antippen blendet den
+  Kalender aus/ein; die Präferenz liegt serverseitig und gilt für alle Clients.
+
+Termine aller sichtbaren Kalender erscheinen in Timeline und Archiv; Workflows
+bleiben auf Kalender der Hauptverbindung beschränkt.
+
 ## Widgets
 
 Zwei Widgets, Look 1:1 aus der App (eigene Palette, Ambient-Hintergrund):

@@ -54,3 +54,29 @@ angerührt — ein POST darauf würde den bestehenden MCP-Token ersetzen.
 Die App akzeptiert HTTP (ATS-Ausnahme in `Info.plist`) — praktisch fürs LAN.
 Sobald der Server hinter Reverse Proxy mit gültigem TLS hängt, kann die
 Ausnahme wieder raus. Unterwegs: NetBird-Tunnel zum Hausnetz nutzen.
+
+## Mehrere Kalender & Zusatz-Server
+
+Die App bildet die Mehrkalender-Funktionen des Servers ab (Kontrakt:
+[`design/mehrkalender-und-fremde-caldav.md`](../design/mehrkalender-und-fremde-caldav.md)):
+
+- **Einstellungen → CalDAV**: Anbieter-Vorlagen als Chips (iCloud, Google,
+  Fastmail, Nextcloud, Radicale, Baïkal) füllen URL und Benutzerfeld
+  voraus; in Anlage- und Bearbeitungsformular wählt man die Rolle
+  („Primär (Hauptkalender)" oder Zusatz). Die erste Verbindung wird
+  automatisch Hauptkalender; hochgestuft wird nur über das Bearbeiten einer
+  anderen Verbindung — Absteufen der aktuellen ist absichtlich gesperrt.
+- **Einstellungen → Kalender**: pro Verbindung gruppierte Liste mit Rollen-Badge
+  (Haupt-/Zusatzkalender). Pro Kalender: Color-Picker, Schalter „Sichtbar"
+  und „Beschreibbar" (lokaler Schreibschutz), „Als Standard", Umbenennen
+  (PROPPATCH, sonst lokal) und Löschen — der interne Workflow-Kalender und
+  der letzte beschreibbare Hauptkalender sind geschützt. „Neuer Kalender"
+  legt per `MKCALENDAR` einen echten Kalender auf dem Server an; lehnt der
+  Server ab (bei iCloud oft 403), zeigt die App die Fehlermeldung.
+- **Timeline**: Kalender-Chips über der Liste (ab zwei Kalendern) — Farb-Punkt
+  + Name, ausgeblendete abgeblendet/durchgestrichen. Antippen blendet den
+  Kalender aus bzw. wieder ein; die Präferenz liegt serverseitig und gilt
+  damit auch für Web-UI und iPad.
+
+Termine/Aufgaben aller sichtbaren Kalender erscheinen in Timeline und Archiv;
+Workflows nutzen ausschließlich Kalender der Hauptverbindung.

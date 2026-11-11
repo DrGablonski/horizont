@@ -18,6 +18,23 @@ export interface SetupResult {
 
 // ── CalDAV-Verbindungen (Multi-Connection pro User) ──────────────────────
 
+/** Anbieter-Typ einer Verbindung — nur für Vorlagen/Hinweise in der Oberfläche. */
+export type CalDavProvider =
+	| 'generic'
+	| 'icloud'
+	| 'google'
+	| 'nextcloud'
+	| 'radicale'
+	| 'bailkal'
+	| 'fastmail';
+
+/**
+ * Rolle einer Verbindung: `primary` ist der Hauptkalender (Workflows, Standardziele),
+ * `secondary` sind zusätzlich eingebundene Kalender (iCloud & Co.) — anzeigbar,
+ * auf Wunsch schreibbar, aber nie Workflow-Ziel.
+ */
+export type ConnectionRole = 'primary' | 'secondary';
+
 /** Eine einzelne CalDAV-Verbindung (Credentials + Ziel). */
 export interface CalDavSettings {
 	url: string;
@@ -29,6 +46,8 @@ export interface CalDavSettings {
 export interface CalDavConnection extends CalDavSettings {
 	id: string;
 	name: string;
+	role: ConnectionRole;
+	provider: CalDavProvider;
 }
 
 /** View einer Verbindung ohne Klartext-Passwort. */
@@ -38,11 +57,26 @@ export interface ConnectionView {
 	url: string;
 	username: string;
 	hasPassword: boolean;
+	role: ConnectionRole;
+	provider: CalDavProvider;
 }
 
 export interface ConnectionsResponse {
 	configured: boolean;
 	connections: ConnectionView[];
+	/** ID der Hauptverbindung (Workflows, Standard), sonst null. */
+	primaryId: string | null;
+}
+
+/** Anbieter-Vorlage für das Verbindungsformular (ohne Secrets). */
+export interface ProviderPreset {
+	id: CalDavProvider;
+	label: string;
+	url: string;
+	usernameLabel: string;
+	hint: string;
+	/** false = Kalender-Anlage vom Anbieter typischerweise abgelehnt. */
+	supportsCalendarCreation: boolean;
 }
 
 export interface TestResult {
@@ -59,6 +93,81 @@ export interface CalDavCalendar {
 	url: string;
 	/** Name der Verbindung, aus der dieser Kalender stammt (Multi-Connection). */
 	connectionName?: string;
+	/** ID der Verbindung, aus der dieser Kalender stammt. */
+	connectionId?: string;
+	/** Schreibrechte laut CalDAV-Privileges des Servers (unbekannt ⇒ true). */
+	writable?: boolean;
+	/** Unterstützte Komponenten, z. B. ['VEVENT','VTODO']. */
+	supportedComponents?: string[];
+}
+
+// ── Kalender (Sicht, Verwaltung, lokale Präferenzen) ─────────────────────
+
+/**
+ * Lokale, benutzergesteuerte Einstellungen zu einem fernen Kalender
+ * (serverseitig in users/<id>/calendar-prefs.json, nie im CalDAV-Server).
+ */
+export interface CalendarPref {
+	/** Versteckt ihn in allen Ansichten (Timeline, Archiv, Clients). */
+	hidden?: boolean;
+	/** Eigene Farbe statt Server-/Palette-Farbe. */
+	color?: string;
+	/** Schreiben durch Horizont unterbinden (unabhängig von Server-Rechten). */
+	writeDisabled?: boolean;
+	/** Standardkalender fürs Anlegen neuer Termine/Aufgaben. */
+	isDefault?: boolean;
+	/** Sortierung in Listen (kleiner = weiter oben). */
+	order?: number;
+	/** Lokal gemerkter Anzeigename, wenn der Server PROPPATCH auf displayname nicht kann. */
+	name?: string;
+}
+
+/** Ein Kalender aus CalDAV plus den lokalen Präferenzen — die Sicht aller Clients. */
+export interface CalendarView extends CalDavCalendar {
+	connectionId: string;
+	role: ConnectionRole;
+	/** Beschreibbar: Server-Rechte UND kein lokaler Schreibschutz. */
+	writable: boolean;
+	/** Lokaler Schreibschutz durch den Benutzer. */
+	writeDisabled: boolean;
+	hidden: boolean;
+	isDefault: boolean;
+	/** Sortierwert; null = nicht sortiert (hinten, alphabetisch). */
+	order: number | null;
+	/** Lokale Farbänderung; null = Server-/Palette-Farbe. */
+	colorOverride: string | null;
+	supportedComponents: string[];
+}
+
+/** Antwort auf GET /api/calendars. */
+export interface CalendarsResponse {
+	configured: boolean;
+	calendars: CalendarView[];
+	/** Fehler einzelner Verbindungen (Text je Verbindung), blockiert den Rest nicht. */
+	errors: string[];
+	/** ID der Hauptverbindung. */
+	primaryId: string | null;
+}
+
+/** Eingabe für POST /api/calendars (Kalender per MKCALENDAR anlegen). */
+export interface CalendarCreateInput {
+	connectionId: string;
+	name: string;
+	/** Optionale lokale Farbe (#rrggbb). */
+	color?: string;
+	/** Zu unterstützende Komponenten; Default ['VEVENT','VTODO']. */
+	components?: string[];
+}
+
+/** Eingabe für PATCH /api/calendars/<id>. `null` hebt eine lokale Einstellung auf. */
+export interface CalendarUpdateInput {
+	/** Neuer Anzeigename (PROPPATCH, sonst nur lokal gemerkt). */
+	name?: string;
+	color?: string | null;
+	hidden?: boolean;
+	writeDisabled?: boolean;
+	isDefault?: boolean;
+	order?: number | null;
 }
 
 // ── Events ────────────────────────────────────────────────────────────────
@@ -218,7 +327,8 @@ export interface TaskUpdateInput {
 
 export interface TaskCreateInput extends TaskUpdateInput {
 	summary: string;
-	calendarId: string;
+	/** Zielkalender; fehlend = Standardkalender (sonst erster beschreibbarer Kalender). */
+	calendarId?: string;
 }
 
 // ── Notify (Tasks-Benachrichtigung per Webhook) ────────────────────────────
@@ -330,13 +440,9 @@ export interface EventUpdateInput {
 }
 
 export interface EventCreateInput extends EventUpdateInput {
-	calendarId: string;
+	/** Zielkalender; fehlend = Standardkalender (sonst erster beschreibbarer Kalender). */
+	calendarId?: string;
 }
 
 // ── Calendars ─────────────────────────────────────────────────────────────
-
-export interface CalendarsResponse {
-	configured: boolean;
-	calendars: CalDavCalendar[];
-	error?: string;
-}
+// (Kalender-Typen siehe oben: CalDavCalendar, CalendarView, CalendarsResponse)

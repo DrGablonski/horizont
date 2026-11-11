@@ -23,15 +23,17 @@ final class AppStore {
 	var workflowsError: String?
 	var workflowsBusy = false
 
-	// Kalender (für Einstellungen + Task-Dialog)
-	var calendars: [CalDavCalendar] = []
+	// Kalender (für Einstellungen, Kalender-Chips + Task-/Termin-Dialog)
+	var calendars: [CalendarView] = []
 	var calendarsLoaded = false
+	var calendarsError: String?
 
 	// Kategorien
 	var categories: [TaskCategory] = []
 
 	// Einstellungen
 	var connections: [ConnectionView] = []
+	var providerPresets: [ProviderPreset] = []
 	var notify: NotifyConfigView?
 
 	init(client: APIClient) {
@@ -54,10 +56,14 @@ final class AppStore {
 	}
 
 	/// Task anlegen und Timeline neu laden. Fehler als String zurück (Dialog zeigt ihn).
-	func createTask(summary: String, calendarId: String, category: String?, dueKey: String?) async -> String? {
+	/// calendarId = nil ⇒ der Server wählt das Standardziel (Standardkalender).
+	func createTask(summary: String, calendarId: String?, category: String?, dueKey: String?) async -> String? {
+		var body: [String: Any] = ["summary": summary]
+		if let calendarId { body["calendarId"] = calendarId }
+		if let category { body["category"] = category }
+		if let dueKey { body["due"] = ["kind": "date", "key": dueKey] }
 		do {
-			_ = try await client.createTask(summary: summary, calendarId: calendarId,
-			                                category: category, dueKey: dueKey)
+			_ = try await postItem("/api/tasks", body: body)
 			await loadHome()
 			return nil
 		} catch {
@@ -66,16 +72,26 @@ final class AppStore {
 	}
 
 	/// Termin anlegen und Timeline neu laden. Fehler als String zurück.
-	func createEvent(summary: String, calendarId: String, dayKey: String,
+	/// calendarId = nil ⇒ der Server wählt das Standardziel (Standardkalender).
+	func createEvent(summary: String, calendarId: String?, dayKey: String,
 	                 allDay: Bool, startMs: Int?) async -> String? {
+		var body: [String: Any] = ["summary": summary, "dayKey": dayKey, "allDay": allDay]
+		if let calendarId { body["calendarId"] = calendarId }
+		if let startMs { body["startMs"] = startMs }
 		do {
-			_ = try await client.createEvent(summary: summary, calendarId: calendarId,
-			                                dayKey: dayKey, allDay: allDay, startMs: startMs)
+			_ = try await postItem("/api/events", body: body)
 			await loadHome()
 			return nil
 		} catch {
 			return error.localizedDescription
 		}
+	}
+
+	/// POST mit JSON-Body, decodiert das angelegte Event.
+	/// (Eigener Body-Aufbau, damit calendarId beim Anlegen fehlen darf.)
+	private func postItem(_ path: String, body: [String: Any]) async throws -> EventItem {
+		let data = try await client.raw(path, method: "POST", body: body)
+		return try JSONDecoder().decode(EventItem.self, from: data)
 	}
 
 	/// Task bearbeiten und Timeline neu laden. Fehler als String zurück.
@@ -302,10 +318,70 @@ final class AppStore {
 
 	func loadCalendars() async {
 		do {
-			let r = try await client.calendars()
+			let r = try await client.fetchCalendars()
 			calendars = r.calendars
-		} catch {}
+			// Fehler einzelner Verbindungen blockieren den Rest nicht – als Text zeigen.
+			calendarsError = r.errors.isEmpty ? nil : r.errors.joined(separator: " · ")
+		} catch {
+			calendarsError = error.localizedDescription
+		}
 		calendarsLoaded = true
+	}
+
+	/// Sichtbarkeit schalten (PATCH hidden) und Timeline neu laden – Panels ändern sich mit.
+	func toggleCalendarVisibility(_ id: String) async {
+		guard let cal = calendars.first(where: { $0.id == id }) else { return }
+		do {
+			_ = try await client.updateCalendar(id: id, patch: ["hidden": !cal.hidden])
+			await loadCalendars()
+			await loadHome()
+		} catch {
+			calendarsError = error.localizedDescription
+		}
+	}
+
+	/// Standardkalender setzen (entwertet den bisherigen); Kalenderliste neu laden.
+	func setDefaultCalendar(_ id: String) async {
+		do {
+			_ = try await client.updateCalendar(id: id, patch: ["isDefault": true])
+			await loadCalendars()
+		} catch {
+			calendarsError = error.localizedDescription
+		}
+	}
+
+	/// Kalender patchen (Name/Farbe/Schreibschutz); Erfolg = nil, sonst Fehlertext.
+	func updateCalendarEdit(_ id: String, patch: [String: Any]) async -> String? {
+		do {
+			_ = try await client.updateCalendar(id: id, patch: patch)
+			await loadCalendars()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// Kalender per MKCALENDAR anlegen; Erfolg = nil, sonst Fehlertext (Sheet zeigt ihn).
+	func createCalendar(connectionId: String, name: String, color: String) async -> String? {
+		do {
+			_ = try await client.createCalendar(connectionId: connectionId, name: name, color: color)
+			await loadCalendars()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
+	}
+
+	/// Kalender löschen (name = Tipp-Bestätigung, muss exakt passen); Timeline neu laden.
+	func deleteCalendar(_ id: String, name: String) async -> String? {
+		do {
+			try await client.deleteCalendar(id: id, name: name)
+			await loadCalendars()
+			await loadHome()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
 	}
 
 	func loadCategories() async {
@@ -320,6 +396,25 @@ final class AppStore {
 		do {
 			connections = try await client.connections().connections
 		} catch {}
+	}
+
+	/// Anbieter-Vorlagen für das Anlegen/Bearbeiten von Verbindungen (Referenz-Texte).
+	func loadProviderPresets() async {
+		do {
+			providerPresets = try await client.providerPresets()
+		} catch {}
+	}
+
+	/// Hauptverbindung setzen (Rollenwechsel); Erfolg = nil, sonst Fehlertext.
+	func setPrimaryConnection(_ id: String) async -> String? {
+		do {
+			_ = try await client.setPrimaryConnection(id: id)
+			await loadConnections()
+			await loadCalendars()
+			return nil
+		} catch {
+			return error.localizedDescription
+		}
 	}
 
 	func testConnection(id: String) async -> TestResult? {

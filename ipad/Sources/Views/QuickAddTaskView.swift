@@ -28,6 +28,9 @@ struct QuickAddTaskView: View {
 
 	@FocusState private var summaryFocused: Bool
 
+	/// Zur Auswahl stehen nur beschreibbare Kalender (Server-Rechte + kein Schreibschutz).
+	private var writableCalendars: [CalendarView] { store.calendars.filter(\.writable) }
+
 	/// initialEvent = true öffnet den Dialog direkt im Termin-Modus
 	/// (Button „Neuer Termin“ auf der Startseite).
 	init(initialEvent: Bool = false) {
@@ -64,20 +67,24 @@ struct QuickAddTaskView: View {
 
 			VStack(alignment: .leading, spacing: DS.Space.xs) {
 				fieldLabel("Kalender")
-				if store.calendars.isEmpty {
+				if writableCalendars.isEmpty {
 					Text(store.calendarsLoaded
-						? "Keine Kalender gefunden – bitte in den Einstellungen einrichten."
+						? "Kein beschreibbarer Kalender – das Ziel wählt der Server."
 						: "Kalender werden geladen …")
 						.font(DS.Typo.meta)
 						.foregroundStyle(DS.textSecondary)
 				} else {
 					Picker(selection: $calendarId) {
-						ForEach(store.calendars) { cal in
+						ForEach(writableCalendars, id: \.id) { cal in
 							HStack(spacing: DS.Space.xs) {
 								dot(cal.color)
 								Text(cal.name)
 								if let conn = cal.connectionName {
 									Text("· \(conn)")
+										.foregroundStyle(DS.textSecondary)
+								}
+								if cal.hidden {
+									Text("(ausgeblendet)")
 										.foregroundStyle(DS.textSecondary)
 								}
 							}
@@ -173,7 +180,11 @@ struct QuickAddTaskView: View {
 		.frame(width: 420)
 		.background(DS.card)
 		.onAppear {
-			if calendarId.isEmpty { calendarId = store.calendars.first?.id ?? "" }
+			if calendarId.isEmpty {
+				// Vorauswahl: Standardkalender, sonst erster beschreibbarer Kalender.
+				calendarId = writableCalendars.first(where: \.isDefault)?.id
+					?? writableCalendars.first?.id ?? ""
+			}
 			// Fokus, sobald das Sheet aufgebaut ist.
 			Task { @MainActor in
 				try? await Task.sleep(for: .milliseconds(120))
@@ -185,7 +196,8 @@ struct QuickAddTaskView: View {
 	// MARK: – Speichern
 
 	private var canSave: Bool {
-		!summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !calendarId.isEmpty
+		// Ohne Kalender-Auswahl entscheidet der Server (Standardkalender).
+		!summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 	}
 
 	private func save() {
@@ -193,19 +205,20 @@ struct QuickAddTaskView: View {
 		saving = true
 		error = nil
 		let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+		let targetCalendar = calendarId.isEmpty ? nil : calendarId
 		Task {
 			let failure: String?
 			if mode == .task {
 				// dueKey im Web-Format yyyy-MM-dd (Formatierer aus Fmt, Locale de).
 				let dueKey = hasDueDate ? Fmt.dayKeyFormatter.string(from: dueDate) : nil
 				failure = await store.createTask(
-					summary: trimmed, calendarId: calendarId, category: category, dueKey: dueKey)
+					summary: trimmed, calendarId: targetCalendar, category: category, dueKey: dueKey)
 			} else {
 				// dayKey = yyyy-MM-dd; startMs nur bei Uhrzeit als Epoch-Millisekunden.
 				let dayKey = Fmt.dayKeyFormatter.string(from: eventDate)
 				let startMs = isAllDay ? nil : Int((eventDate.timeIntervalSince1970 * 1000).rounded())
 				failure = await store.createEvent(
-					summary: trimmed, calendarId: calendarId, dayKey: dayKey,
+					summary: trimmed, calendarId: targetCalendar, dayKey: dayKey,
 					allDay: isAllDay, startMs: startMs)
 			}
 			saving = false

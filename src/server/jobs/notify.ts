@@ -133,7 +133,7 @@ export async function sendMessageForUser(userId: string, cfg: NotifyConfig, now:
 			setRun(userId, { date: today, weekKey: week, status: 'skipped', error: 'Keine CalDAV-Verbindung', at: Date.now() });
 			return { ok: false, skipped: true, error: 'Keine CalDAV-Verbindung' };
 		}
-		const tasks = await listAllTasks(connections);
+		const tasks = await listAllTasks(userId, connections);
 		const open = tasks.filter(
 			(t) => {
 				const cat = categoryNameOf(t);

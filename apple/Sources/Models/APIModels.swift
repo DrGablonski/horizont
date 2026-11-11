@@ -126,10 +126,32 @@ struct CalDavCalendar: Codable, Identifiable {
 	var connectionName: String?
 }
 
+/// Ein Kalender aus CalDAV plus lokale Präferenzen – spiegelt src/lib/types.ts (CalendarView).
+struct CalendarView: Codable, Identifiable, Equatable {
+	let id: String
+	let name: String
+	let color: String
+	let url: String
+	var connectionName: String?
+	let connectionId: String
+	let role: String                 // primary | secondary
+	let writable: Bool               // Server-Rechte UND kein lokaler Schreibschutz
+	let writeDisabled: Bool          // lokaler Schreibschutz durch den Benutzer
+	let hidden: Bool
+	let isDefault: Bool
+	let order: Int?                  // nil = nicht sortiert (hinten, alphabetisch)
+	let colorOverride: String?       // nil = Server-/Palette-Farbe
+	let supportedComponents: [String]
+}
+
+/// Antwort auf GET /api/calendars.
 struct CalendarsResponse: Codable {
 	let configured: Bool
-	let calendars: [CalDavCalendar]
-	var error: String?
+	let calendars: [CalendarView]
+	/// Fehler einzelner Verbindungen (Text je Verbindung), blockiert den Rest nicht.
+	let errors: [String]
+	/// ID der Hauptverbindung.
+	let primaryId: String?
 }
 
 // ── CalDAV-Verbindungen (Einstellungen) ───────────────────────────────────
@@ -140,11 +162,31 @@ struct ConnectionView: Codable, Identifiable {
 	let url: String
 	let username: String
 	let hasPassword: Bool
+	let role: String        // primary | secondary
+	let provider: String    // generic | icloud | google | nextcloud | radicale | bailkal | fastmail
 }
 
 struct ConnectionsResponse: Codable {
 	let configured: Bool
 	let connections: [ConnectionView]
+	/// ID der Hauptverbindung (Workflows, Standard).
+	let primaryId: String?
+}
+
+/// Anbieter-Vorlage für das Verbindungsformular (GET /api/settings/presets).
+struct ProviderPreset: Codable, Identifiable, Equatable {
+	let id: String
+	let label: String
+	let url: String
+	let usernameLabel: String
+	let hint: String
+	/// false = Kalender-Anlage vom Anbieter typischerweise abgelehnt.
+	let supportsCalendarCreation: Bool
+}
+
+/// Hülle der Preset-Antwort.
+struct ProviderPresetsResponse: Codable {
+	let presets: [ProviderPreset]
 }
 
 struct TestResult: Codable {

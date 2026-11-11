@@ -228,6 +228,8 @@ struct MacMainView: View {
 	private func reloadCurrentSection() async {
 		switch section {
 		case .horizont:
+			// Kalender gleich mit: die Chips über der Timeline spiegeln den Server-Stand.
+			await store.loadCalendars()
 			await store.loadHome()
 		case .archiv:
 			await store.loadArchive(monthKey: store.archive?.monthKey)

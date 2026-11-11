@@ -50,6 +50,45 @@ von `apple/`. Bauanleitung im [`ipad/README.md`](ipad/README.md).
 
 ---
 
+## Mehrere Kalender & Zusatz-Server
+
+Neben der **Hauptverbindung** (`primary`) lassen sich beliebige weitere
+CalDAV-Server als **Zusatzverbindungen** (`secondary`) anbinden — z. B. ein
+zweiter Nextcloud-Account oder ein Familienkalender auf einem eigenen Server:
+
+- **Rollen**: Timeline und Archiv zeigen die Termine *aller* Kalender.
+  Workflows schreiben und suchen jedoch **nur** in Kalendern der
+  Hauptverbindung; Zusatzkalender sind anzeigbar und optional beschreibbar,
+  aber niemals Workflow-Ziel.
+- **Kalender verwalten** (Mac-/iPad-App → Einstellungen → Kalender; die
+  REST-API steht jedem Client offen, eine Web-UI-Seite fehlt noch): neue
+  Kalender per `MKCALENDAR` direkt auf dem Server der Verbindung anlegen,
+  umbenennen, Farbe setzen, ausblenden,
+  Schreibschutz setzen/entfernen, einen Kalender als **Standard** markieren
+  und Kalender löschen — der interne Workflow-Kalender und der letzte
+  beschreibbare Kalender der Hauptverbindung sind geschützt (403).
+- **Standard-Ziel**: fehlt bei `POST /api/events` bzw. `/api/tasks` die
+  `calendarId`, wählt der Server den Standardkalender (sonst den ersten
+  beschreibbaren Kalender der Hauptverbindung).
+- **Präferenzen** (Farbe, Sichtbarkeit, Schreibschutz, Standard, lokaler Name)
+  liegen serverseitig in `DATA_DIR/users/<id>/calendar-prefs.json` — ein
+  reines Horizont-Feld, kein CalDAV-Feld; andere Kalender-Clients sehen es nicht.
+- **Cache**: Timeline, Archiv und die Mac-/iPad-Snapshots enthalten die
+  Termine aller sichtbaren Kalender; ausgeblendete Kalender tauchen in keiner
+  Ansicht auf. Jede Kalender-Änderung verwirft den Panel-Cache neu.
+
+**Anbieter-Vorlagen** (`GET /api/settings/presets`, in Mac- und iPad-App
+vorausgefüllt):
+
+| Anbieter | Hinweis |
+| -------- | ------- |
+| iCloud | Apple-ID + **app-spezifisches Passwort** (appleid.apple.com); Kalender-Anlage ist bei Apple oft untersagt (403) |
+| Google Calendar | **kein** CalDAV mit Passwort (nur OAuth2) → nicht direkt verbindbar; die Vorlage zeigt nur den Hinweis |
+| Fastmail | App-Passwort statt regulärem Passwort; Kalender-Anlage funktioniert |
+| Nextcloud, Radicale, Baïkal | normale CalDAV-Server, Kalender-Anlage funktioniert |
+
+---
+
 ## Funktionen
 
 - **Ein Benutzer pro Instanz**
@@ -72,9 +111,10 @@ von `apple/`. Bauanleitung im [`ipad/README.md`](ipad/README.md).
   - **Fokus-Modus**: ablenkungsfreie Vollansicht mit nur dem aktuellen Schritt
     (Web-UI: `/fokus/<id>`; Mac-App: eigener View).
   - Schrittfortschritt wird sofort gespeichert.
-- **CalDAV-Anbindung**: beliebig viele Verbindungen (z. B. iCloud, Nextcloud,
-  eigene Server), vollständig editierbar/löschbar, Verbindungstest mit
-  Kalender-Liste, farbcodierte Kalender.
+- **CalDAV-Anbindung**: beliebig viele Verbindungen als Haupt- oder
+  Zusatzverbindung (→ *Mehrere Kalender & Zusatz-Server*), vollständig
+  editierbar/löschbar, Verbindungstest mit Kalender-Liste, Anbieter-Vorlagen,
+  Kalender mit Farbe, Sichtbarkeit und Schreibschutz.
 - **Dunkel-/Hellmodus** in der Web-UI (klassenbasiert, folgt dem System).
 
 ## Tech-Stack
@@ -193,6 +233,12 @@ für OpenCode (→ `horizont_*`-Tools):
 | `tasks` / `create_task` / `update_task` / `complete_task` / `delete_task` | Aufgaben lesen / anlegen / ändern / abhaken / löschen |
 | `workflows` … `reset_workflow` | Checklisten-Workflows (inkl. Einzelschritte) |
 
+> Noch nicht als MCP-Tools umgesetzt: die Kalender-Verwaltung (anlegen,
+> Rolle/Standard setzen, löschen) und Schreibzugriffe ohne Zielangabe —
+> `create_event`/`create_task` verlangen die `calendarId` weiterhin (Quelle:
+> `calendars`). Die passenden REST-Endpunkte (`/api/calendars*`) existieren
+> bereits.
+
 ### Einbindung in OpenCode
 
 ```sh
@@ -243,6 +289,10 @@ automatische Job.
 1. Logge dich ein und öffne <`/einstellungen`>.
 2. **CalDAV-Quelle anlegen**: URL + Benutzername + Passwort frei anlegbar,
    editierbar, löschbar (z. B. eigener iCloud- oder Nextcloud-Account).
+   **Rolle** (Hauptverbindung = Workflows + Standardziele, sonst
+   Zusatzverbindung) und **Anbieter-Vorlagen** (`/api/settings/presets`)
+   sind über die API und in der Mac-/iPad-App wählbar/vorausgefüllt — die
+   Web-UI bildet beides noch nicht ab.
 3. **Verbindung testen** zeigt die gefundenen Kalender, **bevor** du speicherst.
 
 > Passwörter bleiben gespeichert: ein leeres Passwort-Feld beim Speichern
@@ -278,7 +328,8 @@ bun run build      # produktiver Build nach ./build
 
 Alle Endpunkte liegen unter `/api` und sind serverseitig (Node-Adapter).
 Die App ruft sie ausschließlich clientseitig auf. **Alle** Endpunkte
-(außer Login/Setup) erfordern eine gültige Session oder einen gültigen
+(außer Login/Setup und den statischen Anbieter-Vorlagen `/api/settings/presets`)
+erfordern eine gültige Session oder einen gültigen
 API-Token (`Authorization: Bearer`).
 
 | Methode | Pfad                                      | Beschreibung                              |
@@ -289,18 +340,22 @@ API-Token (`Authorization: Bearer`).
 | POST    | `/api/auth/setup`                         | First-Run: Benutzer anlegen (nur ohne User) |
 | GET     | `/api/events?scope=main`                  | Panels (past/now/future) + Status        |
 | GET     | `/api/events?scope=archive&page=N`        | Archiv-Seite (31 Tage) + Pagination       |
-| GET     | `/api/events?scope=calendars`             | Kalender-Liste (alle Verbindungen)        |
-| POST    | `/api/events`                             | Termin anlegen                            |
+| POST    | `/api/events`                             | Termin anlegen (`calendarId` optional ⇒ Standardkalender) |
 | PATCH   | `/api/events/[calendarId]/[uid]`          | Termin ändern                             |
 | DELETE  | `/api/events/[calendarId]/[uid]`          | Termin löschen                            |
 | GET     | `/api/tasks`                              | Aufgaben (VTODO)                          |
-| POST    | `/api/tasks`                              | Aufgabe anlegen                           |
+| POST    | `/api/tasks`                              | Aufgabe anlegen (`calendarId` optional ⇒ Standardkalender) |
 | PATCH   | `/api/tasks/[calendarId]/[uid]`           | Aufgabe ändern                            |
 | DELETE  | `/api/tasks/[calendarId]/[uid]`           | Aufgabe löschen                           |
-| GET     | `/api/calendars`                          | Verbindungs- + Kalender-Übersicht         |
-| GET     | `/api/settings`                           | Verbindungen (ohne PW)                    |
-| POST    | `/api/settings`                           | Verbindung anlegen/ändern                 |
-| DELETE  | `/api/settings/[id]`                      | Verbindung löschen                        |
+| GET     | `/api/calendars`                          | Kalenderübersicht aller Verbindungen (`?sichtbar=1` nur sichtbare) |
+| POST    | `/api/calendars`                          | Kalender anlegen (`MKCALENDAR`; Body: `connectionId`, `name`, `color`) |
+| PATCH   | `/api/calendars/[id]`                     | Kalender: Name/Farbe/Sichtbarkeit/Schreibschutz/Standard |
+| DELETE  | `/api/calendars/[id]`                     | Kalender löschen (Body `{name}` muss exakt passen; sonst 403) |
+| GET     | `/api/settings`                           | Verbindungen (ohne PW) + `primaryId` + Anbieter-Vorlagen |
+| GET     | `/api/settings/presets`                   | Anbieter-Vorlagen (ohne Session)          |
+| POST    | `/api/settings`                           | Verbindung anlegen/ändern (`provider`, `role`; `role:'primary'` = Hauptverbindung setzen) |
+| PATCH   | `/api/settings`                           | Verbindung ändern (gleiche Felder wie POST) |
+| DELETE  | `/api/settings`                           | Verbindung löschen (Body `{id}`)          |
 | POST    | `/api/settings/test`                      | Verbindung testen                         |
 | GET     | `/api/workflows`                          | alle Workflows                            |
 | POST    | `/api/workflows`                          | Workflow anlegen                          |
