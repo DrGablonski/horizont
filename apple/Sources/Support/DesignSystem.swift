@@ -58,6 +58,8 @@ enum DS {
 	static let success = Color.dynamic(light: 0x059669, dark: 0x34D399)
 	/// Warn-/Überfällig-Rot (Web: red-600 / red-400).
 	static let danger = Color.dynamic(light: 0xDC2626, dark: 0xF87171)
+	/// Warn-Gelb für Hinweise (Web: amber-600 / amber-400).
+	static let warning = Color.dynamic(light: 0xD97706, dark: 0xFBBF24)
 
 	/// Akzentfarbe aus dem gewählten Design.
 	static var accent: Color { ThemeStore.shared.accent }

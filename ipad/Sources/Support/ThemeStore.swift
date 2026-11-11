@@ -57,9 +57,11 @@ final class ThemeStore {
 	func apply() {
 		let key = "\(mode.rawValue)|\(accentPreset.id)"
 		let style = mode.uiUserInterfaceStyle
+		#if !WIDGET_EXTENSION
 		for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
 			for window in scene.windows { window.overrideUserInterfaceStyle = style }
 		}
+		#endif
 		if key != appliedKey {
 			appliedKey = key
 			revision += 1

@@ -1,0 +1,8 @@
+# XcodeGen erzeugt das Projekt – nicht einchecken
+HorizontiPad.xcodeproj/
+Support/
+.derivedData/
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate

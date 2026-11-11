@@ -230,6 +230,36 @@ final class APIClient {
 		try await get("/api/calendars")
 	}
 
+	/// Alle Kalender inkl. verborgener und Verbindungstexte (GET /api/calendars).
+	func fetchCalendars() async throws -> CalendarsResponse {
+		try await get("/api/calendars")
+	}
+
+	/// Neuen Kalender per MKCALENDAR anlegen (POST /api/calendars);
+	/// Antwort = die frische View des angelegten Kalenders.
+	@discardableResult
+	func createCalendar(connectionId: String, name: String, color: String? = nil,
+	                    components: [String]? = nil) async throws -> CalendarView {
+		var body: [String: Any] = ["connectionId": connectionId, "name": name]
+		if let color { body["color"] = color }
+		if let components { body["components"] = components }
+		return try await send("/api/calendars", method: "POST", body: body)
+	}
+
+	/// Kalender löschen (DELETE /api/calendars/{id}); der Name ist die
+	/// Löschbestätigung und muss auf dem Server exakt passen.
+	func deleteCalendar(id: String, name: String) async throws {
+		_ = try await send("/api/calendars/\(id)", method: "DELETE",
+		                   body: ["name": name]) as OKResponse
+	}
+
+	/// Lokale Präferenzen eines Kalenders ändern (PATCH /api/calendars/{id}),
+	/// z. B. ["hidden": true] oder ["isDefault": true]; Antwort = aktualisierter Kalender.
+	@discardableResult
+	func updateCalendar(id: String, patch: [String: Any]) async throws -> CalendarView {
+		try await send("/api/calendars/\(id)", method: "PATCH", body: patch)
+	}
+
 	// MARK: – Einstellungen: CalDAV-Verbindungen
 
 	func connections() async throws -> ConnectionsResponse {
@@ -258,6 +288,19 @@ final class APIClient {
 	@discardableResult
 	func deleteConnection(id: String) async throws -> ConnectionsResponse {
 		try await send("/api/settings", method: "DELETE", body: ["id": id])
+	}
+
+	/// Verbindung zur Hauptverbindung machen (PATCH /api/settings mit role:'primary';
+	/// die bisherige wird automatisch herabgestuft). Antwort = aktualisierte Liste.
+	@discardableResult
+	func setPrimaryConnection(id: String) async throws -> ConnectionsResponse {
+		try await send("/api/settings", method: "PATCH", body: ["id": id, "role": "primary"])
+	}
+
+	/// Anbieter-Vorlagen fürs Verbindungsformular (GET /api/settings/presets).
+	func providerPresets() async throws -> [ProviderPreset] {
+		let r: ProviderPresetsResponse = try await get("/api/settings/presets")
+		return r.presets
 	}
 
 	/// Gespeicherte Verbindung per id testen.

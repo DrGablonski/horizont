@@ -81,3 +81,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: de.hott.horizont.ipad.widgets
         TARGETED_DEVICE_FAMILY: "2"
         CODE_SIGN_STYLE: Automatic
+        # ThemeStore (geteilter Support-Code) nutzlich UIApplication.shared –
+        # in Extensions verboten; wird darüber im Code ausgeblendet.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) WIDGET_EXTENSION

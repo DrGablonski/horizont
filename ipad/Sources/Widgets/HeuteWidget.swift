@@ -27,7 +27,7 @@ struct HeuteProvider: TimelineProvider {
 			after: .now,
 			matching: DateComponents(hour: 0, minute: 1),
 			matchingPolicy: .nextTime) ?? .now.addingTimeInterval(3600)
-		completion(Timeline(entries: [entry], after: next))
+		completion(Timeline(entries: [entry], policy: .after(next)))
 	}
 }
 

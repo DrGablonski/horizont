@@ -13,6 +13,8 @@ struct HomeView: View {
 	@Environment(AppStore.self) private var store
 	@State private var openPanels: [String: Bool] = [:]
 	@State private var selectedEvent: EventItem?
+	@State private var editingEvent: EventItem?
+	@State private var deleteCandidate: EventItem?
 	@State private var quickAdd: QuickAddKind?
 
 	var body: some View {
@@ -47,6 +49,29 @@ struct HomeView: View {
 		}
 		.sheet(item: $quickAdd) { kind in
 			QuickAddTaskView(initialEvent: kind == .event)
+		}
+		.sheet(item: $editingEvent) { event in
+			EditItemView(event: event)
+		}
+		.confirmationDialog(
+			"Wirklich löschen?",
+			isPresented: Binding(
+				get: { deleteCandidate != nil },
+				set: { if !$0 { deleteCandidate = nil } }
+			),
+			titleVisibility: .visible
+		) {
+			Button("Löschen", role: .destructive) {
+				if let event = deleteCandidate {
+					deleteCandidate = nil
+					Task { await store.deleteItem(event) }
+				}
+			}
+			Button("Abbrechen", role: .cancel) { deleteCandidate = nil }
+		} message: {
+			if let event = deleteCandidate {
+				Text("„\(event.summary)“ wird dauerhaft aus dem Kalender entfernt.")
+			}
 		}
 		.task {
 			if store.home == nil { await store.loadHome() }
@@ -226,6 +251,10 @@ struct HomeView: View {
 	/// Events eines Tages als klickbare Zeilen mit Detail-Popover.
 	/// iPad: Wisch-Geste (rechts wischen = erledigen) + Kontextmenü;
 	/// auf Mac entspricht das der rechten Maustaste.
+	/// Der Popover-Zustand wird pro Zeile aus dem gemeinsamen `selectedEvent`
+	/// abgeleitet: nur die angeklickte Zeile präsentiert, der Pfeil sitzt
+	/// direkt über ihr (ein `.popover(item:)` an jeder Zeile würde immer die
+	/// letzte Zeile verankern).
 	@ViewBuilder
 	private func eventRows(_ day: DayGroup) -> some View {
 		ForEach(day.events) { event in
@@ -253,17 +282,35 @@ struct HomeView: View {
 					Label("Details", systemImage: "info.circle")
 				}
 				Button(role: .destructive) {
-					Task { await store.deleteItem(event) }
+					requestDelete(event)
 				} label: {
 					Label("Löschen", systemImage: "trash")
 				}
 			}
-			.popover(item: $selectedEvent) { ev in
+			.popover(isPresented: Binding(
+				get: { selectedEvent?.id == event.id },
+				set: { if !$0 { selectedEvent = nil } }
+			)) {
 				EventDetailView(
-					event: ev,
-					onToggle: { await store.toggleTask(ev) })
+					event: event,
+					onToggle: { await store.toggleTask(event) },
+					onEdit: openEditor,
+					onRequestDelete: requestDelete)
 			}
 		}
+	}
+
+	/// Öffnet den Bearbeiten-Dialog als Sheet im Hauptfenster und schließt
+	/// vorher das Popover (Sheets aus dem Popover heraus gehen unter).
+	private func openEditor(_ event: EventItem) {
+		selectedEvent = nil
+		editingEvent = event
+	}
+
+	/// Schließt das Popover und bittet im Hauptfenster um Löschbestätigung.
+	private func requestDelete(_ event: EventItem) {
+		selectedEvent = nil
+		deleteCandidate = event
 	}
 
 	private func dayLabelColor(_ day: DayGroup, hasOverdue: Bool) -> Color {
