@@ -106,11 +106,10 @@ extension Color {
 
 extension UIColor {
 	fileprivate static func dsSRGB(_ hex: UInt64) -> UIColor {
-		UIColor(
-			srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
-			green: CGFloat((hex >> 8) & 0xFF) / 255,
-			blue: CGFloat(hex & 0xFF) / 255,
-			alpha: 1)
+		let r = CGFloat((hex >> 16) & 0xFF) / 255
+		let g = CGFloat((hex >> 8) & 0xFF) / 255
+		let b = CGFloat(hex & 0xFF) / 255
+		return UIColor(red: r, green: g, blue: b, alpha: 1)
 	}
 }
 

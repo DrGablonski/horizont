@@ -48,7 +48,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.hott.horizont.ipad
-        TARGETED_DEVICE_FAMILY: "2"   # iPad-only
+        TARGETED_DEVICE_FAMILY: "1,2"   # iPhone + iPad
         CODE_SIGN_STYLE: Automatic
 
   HorizontWidgets:
@@ -79,7 +79,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: de.hott.horizont.ipad.widgets
-        TARGETED_DEVICE_FAMILY: "2"
+        TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         # ThemeStore (geteilter Support-Code) nutzlich UIApplication.shared –
         # in Extensions verboten; wird darüber im Code ausgeblendet.

@@ -510,9 +510,10 @@ private struct CalendarsSection: View {
 				}
 				Spacer(minLength: DS.Space.sm)
 				Menu {
-					Button("Als Standard setzen", disabled: cal.isDefault) {
+					Button("Als Standard setzen") {
 						Task { await store.setDefaultCalendar(cal.id) }
 					}
+					.disabled(cal.isDefault)
 					Button("Umbenennen") { renameTarget = CalendarTarget(id: cal.id) }
 					Button("Farbe ändern") { colorTarget = CalendarTarget(id: cal.id) }
 					Button("Löschen", role: .destructive) { deleteTarget = CalendarTarget(id: cal.id) }

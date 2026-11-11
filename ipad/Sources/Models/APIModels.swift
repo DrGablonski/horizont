@@ -30,6 +30,13 @@ struct ApiTokenGenerated: Codable {
 	let createdAt: Int
 }
 
+/// Status des API-Tokens (GET /api/token) – Zeitstempel in Epoch-ms.
+struct ApiTokenView: Codable {
+	let hasToken: Bool
+	var createdAt: Int?
+	var lastUsedAt: Int?
+}
+
 // ── Events & Timeline ─────────────────────────────────────────────────────
 
 struct EventItem: Codable, Identifiable {
@@ -119,10 +126,32 @@ struct CalDavCalendar: Codable, Identifiable {
 	var connectionName: String?
 }
 
+/// Ein Kalender aus CalDAV plus lokale Präferenzen – spiegelt src/lib/types.ts (CalendarView).
+struct CalendarView: Codable, Identifiable, Equatable {
+	let id: String
+	let name: String
+	let color: String
+	let url: String
+	var connectionName: String?
+	let connectionId: String
+	let role: String                 // primary | secondary
+	let writable: Bool               // Server-Rechte UND kein lokaler Schreibschutz
+	let writeDisabled: Bool          // lokaler Schreibschutz durch den Benutzer
+	let hidden: Bool
+	let isDefault: Bool
+	let order: Int?                  // nil = nicht sortiert (hinten, alphabetisch)
+	let colorOverride: String?       // nil = Server-/Palette-Farbe
+	let supportedComponents: [String]
+}
+
+/// Antwort auf GET /api/calendars.
 struct CalendarsResponse: Codable {
 	let configured: Bool
-	let calendars: [CalDavCalendar]
-	var error: String?
+	let calendars: [CalendarView]
+	/// Fehler einzelner Verbindungen (Text je Verbindung), blockiert den Rest nicht.
+	let errors: [String]
+	/// ID der Hauptverbindung.
+	let primaryId: String?
 }
 
 // ── CalDAV-Verbindungen (Einstellungen) ───────────────────────────────────
@@ -133,11 +162,31 @@ struct ConnectionView: Codable, Identifiable {
 	let url: String
 	let username: String
 	let hasPassword: Bool
+	let role: String        // primary | secondary
+	let provider: String    // generic | icloud | google | nextcloud | radicale | bailkal | fastmail
 }
 
 struct ConnectionsResponse: Codable {
 	let configured: Bool
 	let connections: [ConnectionView]
+	/// ID der Hauptverbindung (Workflows, Standard).
+	let primaryId: String?
+}
+
+/// Anbieter-Vorlage für das Verbindungsformular (GET /api/settings/presets).
+struct ProviderPreset: Codable, Identifiable, Equatable {
+	let id: String
+	let label: String
+	let url: String
+	let usernameLabel: String
+	let hint: String
+	/// false = Kalender-Anlage vom Anbieter typischerweise abgelehnt.
+	let supportsCalendarCreation: Bool
+}
+
+/// Hülle der Preset-Antwort.
+struct ProviderPresetsResponse: Codable {
+	let presets: [ProviderPreset]
 }
 
 struct TestResult: Codable {
@@ -158,6 +207,26 @@ struct CategoriesResponse: Codable {
 	let categories: [TaskCategory]
 }
 
+/// Kategorien-Regeln – spiegelt src/lib/categories.ts.
+enum TaskCategories {
+	/// Standard-Kategorien („Standard herstellen" wie in der Web-App).
+	static let defaults: [TaskCategory] = [
+		TaskCategory(name: "Hoch", color: "#dc2626"),
+		TaskCategory(name: "Schule", color: "#2563eb"),
+		TaskCategory(name: "Niedrig", color: "#16a34a")
+	]
+
+	/// Erlaubter Kategoriename: 1–40 Zeichen ohne iCal-Sonderzeichen
+	/// (Komma, Semikolon, Backslash); whitespace bereinigt. nil = ungültig.
+	static func normalize(_ raw: String) -> String? {
+		let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+			.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+		if s.isEmpty || s.count > 40 { return nil }
+		if s.contains(where: { $0 == "," || $0 == ";" || $0 == "\\" }) { return nil }
+		return s
+	}
+}
+
 // ── Benachrichtigungen (Webhook) ──────────────────────────────────────────
 
 enum NotifyFrequency: String, Codable, CaseIterable {
@@ -169,6 +238,25 @@ struct NotifyLastRun: Codable {
 	let status: String        // ok | skipped | error
 	var error: String?
 	var at: Int?
+}
+
+/// Ergebnis des Webhook-Tests (POST /api/notify/test).
+struct NotifyTestResult: Codable {
+	let ok: Bool
+	var status: Int?
+	/// Ergebnis des Empfängers (Header x-t3-hook-outcome), z. B. „accepted".
+	var outcome: String?
+	var error: String?
+}
+
+/// Ergebnis des manuellen Versands (POST /api/notify/send).
+struct NotifySendResult: Codable {
+	let ok: Bool
+	/// true = nichts gesendet (keine offenen Tasks o. ä.).
+	var skipped: Bool?
+	var status: Int?
+	var outcome: String?
+	var error: String?
 }
 
 struct NotifyConfigView: Codable {
