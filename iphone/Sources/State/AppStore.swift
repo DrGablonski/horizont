@@ -55,9 +55,27 @@ final class AppStore {
 		}
 	}
 
+	// MARK: – Schreibziel
+
+	/// Bevorzugtes Schreibziel für Schnellanlagen: Standardkalender, sonst der
+	/// erste beschreibbare Kalender. nil ⇒ der Server wählt selbst.
+	var preferredWriteCalendarId: String? {
+		let writable = calendars.filter(\.writable)
+		return writable.first(where: \.isDefault)?.id ?? writable.first?.id
+	}
+
 	/// Task anlegen und Timeline neu laden. Fehler als String zurück (Dialog zeigt ihn).
 	/// calendarId = nil ⇒ der Server wählt das Standardziel (Standardkalender).
+	/// Veraltete Auswahl (Kalender gelöscht/anderer Hash) ⇒ ein Versuch ohne id.
 	func createTask(summary: String, calendarId: String?, category: String?, dueKey: String?) async -> String? {
+		let failure = await postTask(summary: summary, calendarId: calendarId, category: category, dueKey: dueKey)
+		if let failure, calendarId != nil, failure.contains("Kalender nicht gefunden") {
+			return await postTask(summary: summary, calendarId: nil, category: category, dueKey: dueKey)
+		}
+		return failure
+	}
+
+	private func postTask(summary: String, calendarId: String?, category: String?, dueKey: String?) async -> String? {
 		var body: [String: Any] = ["summary": summary]
 		if let calendarId { body["calendarId"] = calendarId }
 		if let category { body["category"] = category }
@@ -73,11 +91,26 @@ final class AppStore {
 
 	/// Termin anlegen und Timeline neu laden. Fehler als String zurück.
 	/// calendarId = nil ⇒ der Server wählt das Standardziel (Standardkalender).
+	/// Bei Uhrzeit erwartet der Server zwingend eine Endzeit ⇒ Standard 1 Stunde.
 	func createEvent(summary: String, calendarId: String?, dayKey: String,
 	                 allDay: Bool, startMs: Int?) async -> String? {
+		let failure = await postEvent(summary: summary, calendarId: calendarId, dayKey: dayKey,
+		                              allDay: allDay, startMs: startMs)
+		if let failure, calendarId != nil, failure.contains("Kalender nicht gefunden") {
+			return await postEvent(summary: summary, calendarId: nil, dayKey: dayKey,
+			                       allDay: allDay, startMs: startMs)
+		}
+		return failure
+	}
+
+	private func postEvent(summary: String, calendarId: String?, dayKey: String,
+	                       allDay: Bool, startMs: Int?) async -> String? {
 		var body: [String: Any] = ["summary": summary, "dayKey": dayKey, "allDay": allDay]
 		if let calendarId { body["calendarId"] = calendarId }
-		if let startMs { body["startMs"] = startMs }
+		if let startMs {
+			body["startMs"] = startMs
+			body["endMs"] = startMs + 3_600_000   // Standarddauer 1 Stunde
+		}
 		do {
 			_ = try await postItem("/api/events", body: body)
 			await loadHome()

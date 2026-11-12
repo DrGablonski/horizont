@@ -14,16 +14,23 @@ import SwiftUI
 /// (links = Aufgabe, rechts = Termin) oder per Return/Stift-Button im
 /// vollen Editor bearbeiten.
 struct HomeView: View {
+	/// Picker-Blatt-Modus des Schnell-Eingabefelds (nil = zu).
+	private enum ComposerPicker: String, Identifiable {
+		case date, time
+		var id: String { rawValue }
+	}
+
 	@Environment(AppStore.self) private var store
 	@State private var openPanels: [String: Bool] = [:]
 	@State private var selectedEvent: EventItem?
 	@State private var deleteCandidate: EventItem?
 
-	// Schnell-Eingabefeld oben (Text, optionales Datum, Datepicker-Popover).
+	// Schnell-Eingabefeld oben (Text, optionales Datum, Picker-Popover).
 	@State private var composerText = ""
 	@State private var composerDate = Date()
 	@State private var composerHasDate = false
-	@State private var composerDateOpen = false
+	@State private var composerDatePopover = false
+	@State private var composerTimePopover = false
 	@State private var creationError: String?
 	// Voller Editor (Quick-Add-Blatt) mit übernommenem Text/Datum.
 	@State private var editorPresented = false
@@ -101,15 +108,9 @@ struct HomeView: View {
 	private func content(_ home: MainEventsResponse) -> some View {
 		List {
 			// Schnell-Eingabefeld immer ganz oben – direkt über den Bereichen.
-			// Der Datumsbereich klappt darunter nach unten auf (platzsparend,
-			// ganzer Monat sichtbar).
 			Section {
 				composerRow
 					.listRowBackground(DS.card)
-				if composerDateOpen {
-					composerDateEditor
-						.listRowBackground(DS.card)
-				}
 			}
 
 			if store.calendars.count > 1 {
@@ -349,10 +350,9 @@ struct HomeView: View {
 				.focused($composerFocused)
 				.textInputAutocapitalization(.sentences)
 				.onSubmit(openEditor)
-			composerDateButton
+			composerDateControls
 		}
 		.contentShape(Rectangle())
-		.listRowSeparator(composerDateOpen ? .hidden : .automatic)
 		.swipeActions(edge: .trailing, allowsFullSwipe: true) {
 			Button("Aufgabe") { quickCreate(asEvent: false) }
 				.tint(DS.success)
@@ -363,82 +363,110 @@ struct HomeView: View {
 		}
 	}
 
-	/// Kleines Datumsfeld ganz rechts: Kalender-Icon, nach Auswahl das kompakte
-	/// Datum in Akzentfarbe. Tippen klappt den Datumswähler direkt unter dem
-	/// Eingabefeld auf (nach unten, dort ist Platz für den ganzen Monat).
-	private var composerDateButton: some View {
-		Button {
-			withAnimation(.easeInOut(duration: 0.2)) {
-				composerDateOpen.toggle()
-			}
-		} label: {
+	/// Rechts in der Zeile (fixe Größe, bündig rechts): runder Kalender-Knopf +
+	/// Uhren-Knopf, beide mit gleichem grauen Kreis. Antippen öffnet ein echtes
+	/// Popover mit Pfeil direkt unter dem Icon, darin die OS-Radwahl. Ist ein
+	/// Datum gesetzt, zeigen die Icons es kompakt in Akzentfarbe; es gilt dann
+	/// für die Wischanlage (Termin mit Uhrzeit, Aufgabe als Fälligkeitstag).
+	private var composerDateControls: some View {
+		HStack(spacing: DS.Space.xs) {
 			if composerHasDate {
-				HStack(spacing: DS.Space.xxs) {
-					Image(systemName: "calendar")
-						.font(.system(size: 12, weight: .medium))
-					Text(composerDateLabel)
-						.font(DS.Typo.meta.monospacedDigit())
-				}
-				.foregroundStyle(DS.accent)
-				.padding(.horizontal, DS.Space.sm)
-				.padding(.vertical, DS.Space.xs)
-				.background(Capsule().fill(DS.tintSoft))
-			} else {
-				Image(systemName: "calendar")
-					.font(.system(size: 15, weight: .medium))
-					.foregroundStyle(DS.textSecondary)
-					.padding(DS.Space.xs)
+				Text("\(composerDateLabel) \(composerTimeLabel)")
+					.font(DS.Typo.meta.monospacedDigit())
+					.foregroundStyle(DS.accent)
+					.fixedSize()
+			}
+			Button {
+				composerTimePopover = false
+				composerDatePopover = true
+			} label: {
+				composerCircleIcon("calendar")
+			}
+			.buttonStyle(.plain)
+			.accessibilityLabel("Datum setzen")
+			// arrowEdge = Pfeilkante des Popovers: .top ⇒ Kasten öffnet sich
+			// unterhalb des Icons.
+			.popover(isPresented: $composerDatePopover, arrowEdge: .top) {
+				composerPopover(.date)
+			}
+
+			Button {
+				composerDatePopover = false
+				composerTimePopover = true
+			} label: {
+				composerCircleIcon("clock")
+					.contentShape(Circle())
+			}
+			.buttonStyle(.plain)
+			.accessibilityLabel("Uhrzeit setzen")
+			.popover(isPresented: $composerTimePopover, arrowEdge: .top) {
+				composerPopover(.time)
 			}
 		}
-		.buttonStyle(.plain)
-		.accessibilityLabel(composerHasDate ? "Datum ändern" : "Datum hinzufügen")
+		.fixedSize()
 	}
 
-	/// Aufgeklappter Datumswähler unter dem Eingabefeld: graphical month picker
-	/// (volle Breite) plus separates Uhrzeit-Feld und Abbruch-/Übernehmen-Knopf.
-	private var composerDateEditor: some View {
-		VStack(alignment: .leading, spacing: DS.Space.sm) {
-			DatePicker("Datum", selection: $composerDate, displayedComponents: .date)
-				.datePickerStyle(.graphical)
-				.tint(DS.accent)
-				.labelsHidden()
-			HStack {
-				Text("Uhrzeit")
-					.font(DS.Typo.meta)
-					.foregroundStyle(DS.textSecondary)
-				Spacer()
-				DatePicker("Uhrzeit", selection: $composerDate,
-				           displayedComponents: .hourAndMinute)
-					.datePickerStyle(.compact)
+	/// Einheitlicher runder Icon-Knopf (32 pt, grauer Kreis bzw. Akzent-Tönung).
+	private func composerCircleIcon(_ systemImage: String) -> some View {
+		Image(systemName: systemImage)
+			.font(.system(size: 14, weight: .medium))
+			.foregroundStyle(composerHasDate ? DS.accent : DS.textSecondary)
+			.frame(width: 32, height: 32)
+			.background(
+				Circle()
+					.fill(composerHasDate
+					    	? AnyShapeStyle(DS.tintSoft)
+					    	: AnyShapeStyle(DS.fillSubtle))
+			)
+	}
+
+	/// Popover-Inhalt: Monats-Kalenderrost bzw. Uhrzeit-Rad, dazu „Ohne Datum"
+	/// und „Fertig". Wird auf dem iPhone bewusst als echtes Popover (mit Pfeil
+	/// zum Icon) erzwungen.
+	private func composerPopover(_ mode: ComposerPicker) -> some View {
+		VStack(spacing: DS.Space.sm) {
+			Text(mode == .date ? "Datum wählen" : "Uhrzeit wählen")
+				.font(DS.Typo.meta)
+				.foregroundStyle(DS.textSecondary)
+			if mode == .date {
+				// Eine Seite = ein Monat; Tag antippen gilt sofort.
+				DatePicker("", selection: $composerDate, displayedComponents: .date)
+					.datePickerStyle(.graphical)
 					.labelsHidden()
+					.tint(DS.accent)
+			} else {
+				DatePicker("", selection: $composerDate, displayedComponents: .hourAndMinute)
+					.datePickerStyle(.wheel)
+					.labelsHidden()
+					.tint(DS.accent)
 			}
 			HStack {
-				// Text folgt dem Zustand: mit aktivem Datum darf man es nur noch
-				// entfernen, ein Abbruch wäre falsch (das Chip zeigt es bereits).
-				Button(composerHasDate ? "Datum entfernen" : "Abbrechen") {
-					composerHasDate = false
-					withAnimation(.easeInOut(duration: 0.2)) {
-						composerDateOpen = false
+				if mode == .date {
+					Button("Ohne Datum") {
+						composerHasDate = false
+						composerDatePopover = false
 					}
+					.foregroundStyle(DS.textSecondary)
 				}
-				.foregroundStyle(DS.textSecondary)
 				Spacer()
 				Button("Fertig") {
 					composerHasDate = true
-					withAnimation(.easeInOut(duration: 0.2)) {
-						composerDateOpen = false
-					}
+					composerDatePopover = false
+					composerTimePopover = false
 				}
-				.buttonStyle(.borderedProminent)
+				.bold()
 			}
+			.padding(.horizontal, DS.Space.xs)
 		}
-		// Tag antippen setzt das Datum automatisch, ohne extra „Fertig“.
+		.padding(DS.Space.md)
+		// Tag-/Zeitwahl im Rost setzt das Datum sofort (Chip aktualisiert sich).
 		.onChange(of: composerDate) { _, _ in
 			composerHasDate = true
 		}
+		.presentationCompactAdaptation(.popover)
 	}
 
-	/// Kompakte Datumsanzeige im Feld (heute/morgen sonst TT.MM.).
+	/// Kompakte Datumsanzeige im Chip (heute/morgen sonst TT.MM.).
 	private var composerDateLabel: String {
 		let cal = Calendar.current
 		let f = DateFormatter()
@@ -447,6 +475,11 @@ struct HomeView: View {
 		if cal.isDateInTomorrow(composerDate) { return "Morgen" }
 		f.dateFormat = "dd.MM."
 		return f.string(from: composerDate)
+	}
+
+	/// Kurzform der Uhrzeit im Chip (HH:mm).
+	private var composerTimeLabel: String {
+		Fmt.time(Int(composerDate.timeIntervalSince1970 * 1000))
 	}
 
 	// MARK: – Aktionen & Klapp-Zustand
@@ -458,6 +491,9 @@ struct HomeView: View {
 		guard !text.isEmpty else { return }
 		composerFocused = false
 		Task {
+			// Kalenderliste für die Zielvorauswahl bereithalten.
+			if !store.calendarsLoaded { await store.loadCalendars() }
+			let targetCalendar = store.preferredWriteCalendarId
 			let failure: String?
 			if asEvent {
 				let dayKey = Fmt.dayKeyFormatter.string(from: composerDate)
@@ -465,23 +501,20 @@ struct HomeView: View {
 					? Int((composerDate.timeIntervalSince1970 * 1000).rounded())
 					: nil
 				failure = await store.createEvent(
-					summary: text, calendarId: nil, dayKey: dayKey,
+					summary: text, calendarId: targetCalendar, dayKey: dayKey,
 					allDay: !composerHasDate, startMs: startMs)
 			} else {
 				let dueKey = composerHasDate
 					? Fmt.dayKeyFormatter.string(from: composerDate)
 					: nil
 				failure = await store.createTask(
-					summary: text, calendarId: nil, category: nil, dueKey: dueKey)
+					summary: text, calendarId: targetCalendar, category: nil, dueKey: dueKey)
 			}
 			if let failure {
 				creationError = failure
 			} else {
 				composerText = ""
 				composerHasDate = false
-				withAnimation(.easeInOut(duration: 0.2)) {
-					composerDateOpen = false
-				}
 			}
 		}
 	}
