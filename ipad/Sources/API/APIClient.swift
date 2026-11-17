@@ -193,7 +193,7 @@ final class APIClient {
 	/// Task anlegen (POST /api/tasks). dueKey = 'YYYY-MM-DD' oder nil.
 	@discardableResult
 	func createTask(summary: String, calendarId: String, category: String? = nil,
-	                dueKey: String? = nil, description: String? = nil) async throws -> EventItem {
+	                dueKey: String? = nil, description: String? = nil) async throws -> CreatedTask {
 		var body: [String: Any] = ["summary": summary, "calendarId": calendarId]
 		if let category { body["category"] = category }
 		if let dueKey { body["due"] = ["kind": "date", "key": dueKey] }

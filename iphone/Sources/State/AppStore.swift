@@ -66,10 +66,12 @@ final class AppStore {
 
 	/// Task anlegen und Timeline neu laden. Fehler als String zurück (Dialog zeigt ihn).
 	/// calendarId = nil ⇒ der Server wählt das Standardziel (Standardkalender).
-	/// Veraltete Auswahl (Kalender gelöscht/anderer Hash) ⇒ ein Versuch ohne id.
+	/// Veraltete Auswahl (Kalender gelöscht/anderer Hash) ⇒ Kalenderliste
+	/// auffrischen und ein Versuch ohne id (Server wählt das Standardziel).
 	func createTask(summary: String, calendarId: String?, category: String?, dueKey: String?) async -> String? {
 		let failure = await postTask(summary: summary, calendarId: calendarId, category: category, dueKey: dueKey)
 		if let failure, calendarId != nil, failure.contains("Kalender nicht gefunden") {
+			await loadCalendars()
 			return await postTask(summary: summary, calendarId: nil, category: category, dueKey: dueKey)
 		}
 		return failure
@@ -81,7 +83,7 @@ final class AppStore {
 		if let category { body["category"] = category }
 		if let dueKey { body["due"] = ["kind": "date", "key": dueKey] }
 		do {
-			_ = try await postItem("/api/tasks", body: body)
+			let _: CreatedTask = try await postItem("/api/tasks", body: body)
 			await loadHome()
 			return nil
 		} catch {
@@ -97,6 +99,7 @@ final class AppStore {
 		let failure = await postEvent(summary: summary, calendarId: calendarId, dayKey: dayKey,
 		                              allDay: allDay, startMs: startMs)
 		if let failure, calendarId != nil, failure.contains("Kalender nicht gefunden") {
+			await loadCalendars()
 			return await postEvent(summary: summary, calendarId: nil, dayKey: dayKey,
 			                       allDay: allDay, startMs: startMs)
 		}
@@ -112,7 +115,7 @@ final class AppStore {
 			body["endMs"] = startMs + 3_600_000   // Standarddauer 1 Stunde
 		}
 		do {
-			_ = try await postItem("/api/events", body: body)
+			let _: EventItem = try await postItem("/api/events", body: body)
 			await loadHome()
 			return nil
 		} catch {
@@ -120,11 +123,12 @@ final class AppStore {
 		}
 	}
 
-	/// POST mit JSON-Body, decodiert das angelegte Event.
+	/// POST mit JSON-Body, decodiert das angelegte Objekt (T = erwartetes
+	/// Antwortmodell: Tasks antworten als CreatedTask, Termine als EventItem).
 	/// (Eigener Body-Aufbau, damit calendarId beim Anlegen fehlen darf.)
-	private func postItem(_ path: String, body: [String: Any]) async throws -> EventItem {
+	private func postItem<T: Decodable>(_ path: String, body: [String: Any]) async throws -> T {
 		let data = try await client.raw(path, method: "POST", body: body)
-		return try JSONDecoder().decode(EventItem.self, from: data)
+		return try JSONDecoder().decode(T.self, from: data)
 	}
 
 	/// Task bearbeiten und Timeline neu laden. Fehler als String zurück.

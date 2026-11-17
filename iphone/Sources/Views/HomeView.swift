@@ -29,6 +29,9 @@ struct HomeView: View {
 	@State private var composerText = ""
 	@State private var composerDate = Date()
 	@State private var composerHasDate = false
+	// Uhrzeit bewusst per Uhren-Popover gewählt? Nur dann wird ein Termin mit
+	// Uhrzeit angelegt – sonst ganztägig (Aufgaben sind ohnehin datumlos).
+	@State private var composerHasTime = false
 	@State private var composerDatePopover = false
 	@State private var composerTimePopover = false
 	@State private var creationError: String?
@@ -364,19 +367,22 @@ struct HomeView: View {
 	}
 
 	/// Rechts in der Zeile (fixe Größe, bündig rechts): runder Kalender-Knopf +
-	/// Uhren-Knopf, beide mit gleichem grauen Kreis. Antippen öffnet ein echtes
-	/// Popover mit Pfeil direkt unter dem Icon, darin die OS-Radwahl. Ist ein
-	/// Datum gesetzt, zeigen die Icons es kompakt in Akzentfarbe; es gilt dann
-	/// für die Wischanlage (Termin mit Uhrzeit, Aufgabe als Fälligkeitstag).
+	/// Uhren-Knopf, beide mit gleichem grauen Kreis. Antippen öffnet das eigene
+	/// Picker-Menü (composerMenu) direkt unter dem Icon. Ist ein Datum gesetzt,
+	/// zeigen die Icons es kompakt in Akzentfarbe; es gilt dann für die
+	/// Wischanlage (Termin mit Uhrzeit, Aufgabe als Fälligkeitstag).
 	private var composerDateControls: some View {
 		HStack(spacing: DS.Space.xs) {
 			if composerHasDate {
-				Text("\(composerDateLabel) \(composerTimeLabel)")
+				Text(composerHasTime
+				    	? "\(composerDateLabel) \(composerTimeLabel)"
+				    	: composerDateLabel)
 					.font(DS.Typo.meta.monospacedDigit())
 					.foregroundStyle(DS.accent)
 					.fixedSize()
 			}
 			Button {
+				composerFocused = false
 				composerTimePopover = false
 				composerDatePopover = true
 			} label: {
@@ -384,13 +390,14 @@ struct HomeView: View {
 			}
 			.buttonStyle(.plain)
 			.accessibilityLabel("Datum setzen")
-			// arrowEdge = Pfeilkante des Popovers: .top ⇒ Kasten öffnet sich
-			// unterhalb des Icons.
+			// arrowEdge .top = Pfeil an der Popover-Oberkante ⇒ öffnet direkt
+			// unter dem Icon.
 			.popover(isPresented: $composerDatePopover, arrowEdge: .top) {
-				composerPopover(.date)
+				composerPopoverContent(.date)
 			}
 
 			Button {
+				composerFocused = false
 				composerDatePopover = false
 				composerTimePopover = true
 			} label: {
@@ -400,7 +407,7 @@ struct HomeView: View {
 			.buttonStyle(.plain)
 			.accessibilityLabel("Uhrzeit setzen")
 			.popover(isPresented: $composerTimePopover, arrowEdge: .top) {
-				composerPopover(.time)
+				composerPopoverContent(.time)
 			}
 		}
 		.fixedSize()
@@ -420,16 +427,38 @@ struct HomeView: View {
 			)
 	}
 
-	/// Popover-Inhalt: Monats-Kalenderrost bzw. Uhrzeit-Rad, dazu „Ohne Datum"
-	/// und „Fertig". Wird auf dem iPhone bewusst als echtes Popover (mit Pfeil
-	/// zum Icon) erzwungen.
-	private func composerPopover(_ mode: ComposerPicker) -> some View {
+	/// Popover-Inhalt für Datum und Uhrzeit. Der OS-Monatsrost hat eine
+	/// eingebaute Größe von 320 pt und wird bei jeder Verkleinerung durch
+	/// frame/scaleEffect zerschnitten – deshalb bekommt er exakt seine
+	/// Naturgröße und der Rand kommt per negativer Einrückung an ihm vorbei.
+	/// Nur die Uhrzeit-Räder setzen eine Uhrzeit; reine Datums-Termine
+	/// werden ganztägig angelegt.
+	private func composerPopoverContent(_ mode: ComposerPicker) -> some View {
 		VStack(spacing: DS.Space.sm) {
-			Text(mode == .date ? "Datum wählen" : "Uhrzeit wählen")
-				.font(DS.Typo.meta)
-				.foregroundStyle(DS.textSecondary)
+			HStack {
+				if mode == .date {
+					Button("Ohne Datum") {
+						composerHasDate = false
+						composerHasTime = false
+						composerDatePopover = false
+					}
+					.font(DS.Typo.meta)
+					.foregroundStyle(DS.textSecondary)
+				}
+				Spacer()
+				Text(mode == .date ? "Datum wählen" : "Uhrzeit wählen")
+					.font(DS.Typo.cardTitle)
+				Spacer()
+				Button("Fertig") {
+					composerHasDate = true
+					if mode == .time { composerHasTime = true }
+					composerDatePopover = false
+					composerTimePopover = false
+				}
+				.bold()
+			}
+			.padding(.horizontal, DS.Space.lg)
 			if mode == .date {
-				// Eine Seite = ein Monat; Tag antippen gilt sofort.
 				DatePicker("", selection: $composerDate, displayedComponents: .date)
 					.datePickerStyle(.graphical)
 					.labelsHidden()
@@ -440,28 +469,12 @@ struct HomeView: View {
 					.labelsHidden()
 					.tint(DS.accent)
 			}
-			HStack {
-				if mode == .date {
-					Button("Ohne Datum") {
-						composerHasDate = false
-						composerDatePopover = false
-					}
-					.foregroundStyle(DS.textSecondary)
-				}
-				Spacer()
-				Button("Fertig") {
-					composerHasDate = true
-					composerDatePopover = false
-					composerTimePopover = false
-				}
-				.bold()
-			}
-			.padding(.horizontal, DS.Space.xs)
 		}
-		.padding(DS.Space.md)
-		// Tag-/Zeitwahl im Rost setzt das Datum sofort (Chip aktualisiert sich).
+		.padding(.vertical, DS.Space.md)
+		.frame(width: 320)
 		.onChange(of: composerDate) { _, _ in
 			composerHasDate = true
+			if mode == .time { composerHasTime = true }
 		}
 		.presentationCompactAdaptation(.popover)
 	}
@@ -497,13 +510,16 @@ struct HomeView: View {
 			let failure: String?
 			if asEvent {
 				let dayKey = Fmt.dayKeyFormatter.string(from: composerDate)
-				let startMs = composerHasDate
+				// Nur mit bewusst gewählter Uhrzeit wird's ein Zeittermin,
+				// sonst ein ganztägiger Termin an diesem Tag.
+				let startMs = composerHasTime
 					? Int((composerDate.timeIntervalSince1970 * 1000).rounded())
 					: nil
 				failure = await store.createEvent(
 					summary: text, calendarId: targetCalendar, dayKey: dayKey,
-					allDay: !composerHasDate, startMs: startMs)
+					allDay: !composerHasTime, startMs: startMs)
 			} else {
+				// Aufgaben haben nur einen Fälligkeitstag, nie eine Uhrzeit.
 				let dueKey = composerHasDate
 					? Fmt.dayKeyFormatter.string(from: composerDate)
 					: nil
@@ -515,6 +531,7 @@ struct HomeView: View {
 			} else {
 				composerText = ""
 				composerHasDate = false
+				composerHasTime = false
 			}
 		}
 	}

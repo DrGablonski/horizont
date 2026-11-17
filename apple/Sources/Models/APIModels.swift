@@ -59,6 +59,26 @@ struct EventItem: Codable, Identifiable {
 	var overdue: Bool?
 }
 
+/// Antwort von POST /api/tasks – entspricht dem Server-TaskItem
+/// (Tasks haben keine startMs/endMs/allDay, nur eine Fälligkeit).
+struct CreatedTask: Codable, Identifiable {
+	let id: String
+	let uid: String
+	let calendarId: String
+	let calendarName: String
+	let calendarColor: String
+	let summary: String
+	var description: String?
+	let completed: Bool
+	var completedAt: Int?
+	var dueKey: String?
+	var dueMs: Int?
+	var category: String?
+	var categoryColor: String?
+	var overdue: Bool?
+	var priority: Int?
+}
+
 struct DayGroup: Codable, Identifiable {
 	let dayKey: String   // YYYY-MM-DD
 	let label: String
