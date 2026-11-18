@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import CryptoKit
 
 /// Datenhaltung für Start-, Archiv- und Workflow-Screens.
 /// Mutationen (Abhaken, Schritt fortgeschritten) optimistisch + Rollback bei Fehler.
@@ -36,8 +37,62 @@ final class AppStore {
 	var providerPresets: [ProviderPreset] = []
 	var notify: NotifyConfigView?
 
+	private let serverBase: String
+	private var prefetchStarted = false
+	/// Fingerabdruck der Kalender-Sichtbarkeit; Teil des Snapshot-Keys für
+	/// home/archive, damit ein Sichtbarkeitswechsel alte Timelines entwertet.
+	private var snapshotGen = ""
+
 	init(client: APIClient) {
 		self.client = client
+		self.serverBase = client.baseURL.absoluteString
+		loadSnapshots()
+	}
+
+	// MARK: – Snapshot (sofortiger Start aus lokalen Dateien)
+
+	/// Zuerst geladene Antworten von der Disk laden → Views zeigen beim Start
+	/// sofort Inhalte, prefetchIfNeeded aktualisiert sie im Hintergrund.
+	private func loadSnapshots() {
+		// Kalender zuerst: ihr Sichtbarkeits-Fingerabdruck ist der Snapshot-Key
+		// der Timelines (home/archive enthalten nur Termine sichtbarer Kalender).
+		calendars = SnapshotStore.load([CalendarView].self, name: "calendars", serverBase: serverBase) ?? []
+		snapshotGen = Self.visibilityFingerprint(calendars)
+		home = SnapshotStore.load(MainEventsResponse.self, name: "home",
+		                          serverBase: serverBase, generation: snapshotGen)
+		archive = SnapshotStore.load(ArchiveMonth.self, name: "archive",
+		                             serverBase: serverBase, generation: snapshotGen)
+		workflows = SnapshotStore.load([Workflow].self, name: "workflows", serverBase: serverBase) ?? []
+		categories = SnapshotStore.load([TaskCategory].self, name: "categories", serverBase: serverBase) ?? []
+	}
+
+	private func saveSnapshot<T: Encodable>(_ value: T, name: String, generation: String = "") {
+		SnapshotStore.save(value, name: name, serverBase: serverBase, generation: generation)
+	}
+
+	/// Kurzer Hash aus Kalender-IDs + Versteckt-Schaltern (wie der Server-Hash
+	/// in SnapshotStore): ändert sich, wenn Termine in der Timeline andere werden.
+	private static func visibilityFingerprint(_ calendars: [CalendarView]) -> String {
+		let parts = calendars
+			.map { "\($0.id):\($0.hidden)" }
+			.sorted()
+			.joined(separator: ",")
+		let digest = SHA256.hash(data: Data(parts.utf8))
+		return digest.prefix(6).map { String(format: "%02x", $0) }.joined()
+	}
+
+	/// Alle Bereiche einmal parallel laden (einmal pro App-Lebenszeit).
+	/// Läuft nach dem Login; dank Snapshots sind die Views derweil schon gefüllt.
+	func prefetchIfNeeded() async {
+		guard !prefetchStarted else { return }
+		prefetchStarted = true
+		await withTaskGroup(of: Void.self) { group in
+			group.addTask { await self.loadHome() }
+			group.addTask { await self.loadArchive() }
+			group.addTask { await self.loadWorkflows() }
+			group.addTask { await self.loadCalendars() }
+			group.addTask { await self.loadCategories() }
+		}
 	}
 
 	// MARK: – Start
@@ -48,6 +103,7 @@ final class AppStore {
 		do {
 			home = try await client.mainEvents()
 			homeError = home?.error
+			if let home { saveSnapshot(home, name: "home", generation: snapshotGen) }
 			// Widgets (Home-Screen/Sperrbildschirm) mit frischem Stand versorgen.
 			if let home { WidgetSnapshotSupport.publish(home) }
 		} catch {
@@ -199,6 +255,7 @@ final class AppStore {
 		do {
 			try await client.updateTaskCompleted(
 				calendarId: event.calendarId, uid: event.uid, completed: newValue)
+			if let home { saveSnapshot(home, name: "home", generation: snapshotGen) }
 		} catch {
 			// Rollback
 			if var p = home?.panels, let l = findEvent(event.id, in: &p) {
@@ -232,6 +289,7 @@ final class AppStore {
 		do {
 			archive = try await client.archiveMonth(monthKey)
 			archiveError = archive?.error
+			if let archive { saveSnapshot(archive, name: "archive", generation: snapshotGen) }
 		} catch {
 			archiveError = error.localizedDescription
 		}
@@ -245,6 +303,7 @@ final class AppStore {
 		do {
 			workflows = try await client.workflows()
 			workflowsError = nil
+			saveSnapshot(workflows, name: "workflows")
 		} catch {
 			workflowsError = error.localizedDescription
 		}
@@ -363,6 +422,15 @@ final class AppStore {
 			calendarsError = error.localizedDescription
 		}
 		calendarsLoaded = true
+		saveSnapshot(calendars, name: "calendars")
+		let gen = Self.visibilityFingerprint(calendars)
+		if gen != snapshotGen {
+			snapshotGen = gen
+			// Bereits geladene Timelines unter neuem Key weitersichern, sonst
+			// fehlen sie beim nächsten Start, obwohl sie noch aktuell sind.
+			if let home { saveSnapshot(home, name: "home", generation: gen) }
+			if let archive { saveSnapshot(archive, name: "archive", generation: gen) }
+		}
 	}
 
 	/// Sichtbarkeit schalten (PATCH hidden) und Timeline neu laden – Panels ändern sich mit.
@@ -424,6 +492,7 @@ final class AppStore {
 	func loadCategories() async {
 		do {
 			categories = try await client.categories()
+			saveSnapshot(categories, name: "categories")
 		} catch {}
 	}
 

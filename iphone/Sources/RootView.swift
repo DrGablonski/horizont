@@ -94,6 +94,7 @@ struct PhoneMainView: View {
 				.tag(Section.einstellungen)
 		}
 		.environment(store)
+		.task { await store.prefetchIfNeeded() }
 		.tint(DS.accent)
 		.background(AmbientBackground().ignoresSafeArea())
 		// Tab-Bar-Fläche dezent an die Design-System-Kartenfarbe anpassen
