@@ -62,7 +62,7 @@ final class AuthStore {
 
 	func login(server: String, username: String, password: String) async throws {
 		guard let url = Self.normalize(server) else {
-			throw APIError.server("Bitte gültige Server-URL angeben (z. B. http://10.10.10.1:3001).")
+			throw APIError.server("Bitte gültige Server-URL angeben (z. B. http://server.example:3001).")
 		}
 		let api = APIClient(serverURL: url)
 		let u = try await api.login(username: username, password: password)

@@ -152,3 +152,101 @@ extension View {
 		modifier(FieldChrome(focused: focused))
 	}
 }
+
+/// Platzhalter für Eingabefelder: immer gedämpftes Grau (nie Akzentfarbe),
+/// damit er nicht wie bereits eingetippter Text aussieht.
+func dsPrompt(_ text: String) -> Text {
+	Text(verbatim: text).foregroundStyle(DS.textTertiary)
+}
+
+// MARK: – Tastatur durch Tipp außerhalb schließen
+
+/// Tippen außerhalb des aktiven Eingabefeldes schließt die Tastatur. In einer
+/// `List` wird durch einen Tipp ins Leere nichts abgewählt – die Tastatur bliebe
+/// stehen und verdeckte die Tab-Bar, womit die anderen Bereiche unerreichbar
+/// wären (Startseite mit dem Schnell-Eingabefeld ganz oben).
+///
+/// Der Tipp-Erkenner sitzt auf dem Fenster und gibt jede Berührung sofort weiter
+/// (`cancelsTouchesInView = false` plus gleichzeitige Anerkennung): Knöpfe,
+/// Zeilen-Auswahl und Wisch-Aktionen bleiben unverändert bedienbar. Tipps ins
+/// Feld selbst werden verworfen – dort setzt man die Schreibmarke, die Tastatur
+/// bleibt oben.
+struct KeyboardTapDismiss: ViewModifier {
+	func body(content: Content) -> some View {
+		content.background(TapCatcher())
+	}
+}
+
+extension View {
+	func dismissKeyboardOnTap() -> some View {
+		modifier(KeyboardTapDismiss())
+	}
+}
+
+/// Unauffälliger 0-×-0-Helfer, der seinen Erkenner dem Fenster hinzufügt.
+private struct TapCatcher: UIViewRepresentable {
+	func makeUIView(context: Context) -> UIView { KeyboardTapView() }
+	func updateUIView(_ uiView: UIView, context: Context) {}
+}
+
+private final class KeyboardTapView: UIView, UIGestureRecognizerDelegate {
+	private var tap: UITapGestureRecognizer?
+
+	override init(frame: CGRect) {
+		super.init(frame: frame)
+		isUserInteractionEnabled = false
+	}
+	required init?(coder: NSCoder) { fatalError("init(coder:) wird nicht verwendet") }
+
+	deinit {
+		if let tap { tap.view?.removeGestureRecognizer(tap) }
+	}
+
+	override func didMoveToWindow() {
+		super.didMoveToWindow()
+		// Umzug in ein anderes Fenster (Tab-Wechsel, Blatt): ersten Anhang lösen …
+		if let tap, tap.view !== window {
+			tap.view?.removeGestureRecognizer(tap)
+			self.tap = nil
+		}
+		// … und den Erkenner einmal ans aktuelle Fenster anhängen.
+		guard let window, tap == nil else { return }
+		let recognizer = UITapGestureRecognizer(
+			target: self, action: #selector(closeKeyboard(_:)))
+		recognizer.cancelsTouchesInView = false
+		recognizer.delegate = self
+		window.addGestureRecognizer(recognizer)
+		tap = recognizer
+	}
+
+	@objc private func closeKeyboard(_ recognizer: UITapGestureRecognizer) {
+		recognizer.view?.endEditing(true)
+	}
+
+	/// Nur Tipps neben das aktive Feld schließen die Tastatur; ohne aktives Feld
+	/// (also ohne Tastatur) meldet sich der Erkenner gar nicht.
+	func gestureRecognizer(_ recognizer: UIGestureRecognizer,
+	                       shouldReceive touch: UITouch) -> Bool {
+		guard let field = touch.window?.activeFirstResponder as? UIView,
+		      let hit = touch.view else { return false }
+		return hit !== field && !hit.isDescendant(of: field)
+	}
+
+	/// Nie auf andere Erkenner warten: nichts verzögern oder blockieren.
+	func gestureRecognizer(_ recognizer: UIGestureRecognizer,
+	                       shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+		true
+	}
+}
+
+extension UIResponder {
+	/// Tiefster gerade aktiver Erstantwortender (das Eingabefeld mit Tastatur).
+	fileprivate var activeFirstResponder: UIResponder? {
+		if isFirstResponder { return self }
+		guard let view = self as? UIView else { return nil }
+		for subview in view.subviews {
+			if let responder = subview.activeFirstResponder { return responder }
+		}
+		return nil
+	}
+}

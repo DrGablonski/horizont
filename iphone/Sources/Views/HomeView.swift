@@ -169,6 +169,11 @@ struct HomeView: View {
 		.listStyle(.insetGrouped)
 		.scrollContentBackground(.hidden)   // Ambient-Hintergrund der Shell scheinen durch
 		.refreshable { await store.loadHome() }
+		// Aus dem Schnell-Eingabefeld wieder heraus: ein Tipp daneben sowie ein
+		// Zug an der Liste schließen die Tastatur, sonst verdeckt sie die Tab-Bar
+		// und die Bereiche Workflows/Einstellungen sind nicht mehr erreichbar.
+		.dismissKeyboardOnTap()
+		.scrollDismissesKeyboard(.interactively)
 	}
 
 	/// Ein Chip im Streifen: Farb-Punkt + Name, ausgeblendete Kalender abgeblendet.

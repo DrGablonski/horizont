@@ -32,7 +32,8 @@ struct LoginView: View {
 						VStack(spacing: DS.Space.md) {
 							FieldRow(title: "Server", systemImage: "globe",
 							         focused: focusedField == .server) {
-								TextField("http://10.10.10.1:3001", text: $server)
+								TextField("Server-URL", text: $server,
+								          prompt: dsPrompt("http://server.example:3001"))
 									.autocorrectionDisabled()
 									.keyboardType(.URL)
 									#if os(iOS)
@@ -43,7 +44,8 @@ struct LoginView: View {
 							}
 							FieldRow(title: "Benutzername", systemImage: "person",
 							         focused: focusedField == .user) {
-								TextField("Benutzername", text: $username)
+								TextField("Benutzername", text: $username,
+								          prompt: dsPrompt("Benutzername"))
 									.autocorrectionDisabled()
 									#if os(iOS)
 									.textInputAutocapitalization(.never)
@@ -53,7 +55,8 @@ struct LoginView: View {
 							}
 							FieldRow(title: "Passwort", systemImage: "lock",
 							         focused: focusedField == .password) {
-								SecureField("Passwort", text: $password)
+								SecureField("Passwort", text: $password,
+								           prompt: dsPrompt("Passwort"))
 									.focused($focusedField, equals: .password)
 									.onSubmit { submit() }
 							}

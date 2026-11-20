@@ -152,3 +152,9 @@ extension View {
 		modifier(FieldChrome(focused: focused))
 	}
 }
+
+/// Platzhalter für Eingabefelder: immer gedämpftes Grau (nie Akzentfarbe),
+/// damit er nicht wie bereits eingetippter Text aussieht.
+func dsPrompt(_ text: String) -> Text {
+	Text(verbatim: text).foregroundStyle(DS.textTertiary)
+}
