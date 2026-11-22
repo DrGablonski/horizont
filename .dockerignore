@@ -2,6 +2,10 @@ node_modules
 build
 .svelte-kit
 data
+apple
+ipad
+iphone
+design
 .git
 .gitignore
 *.log

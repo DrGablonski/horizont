@@ -19,6 +19,12 @@ services:
       - DATA_DIR=/app/data
     volumes:
       - horizont-data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   horizont-data:

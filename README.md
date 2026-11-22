@@ -127,6 +127,13 @@ vorausgefüllt):
 - [adapter-node](https://kit.svelte.dev/adapter-node) für den produktiven Build
 - [Docker](https://www.docker.com/) für den Betrieb (Proxmox / beliebiger Host)
 
+> **Architektur-Entscheidung Web-Front:** bewusst eine **client-gerenderte SPA**
+> (`ssr = false`, keine `+page.server.ts`-Load-Funktionen). SvelteKit dient als
+> Router + Server-Glue; alle Daten kommen per `fetch` von `/api/*` (davon profitieren
+> auch die nativen Apps und MCP). Auth-Redirects laufen trotzdem serverseitig im
+> `hooks.server.ts`. Bewusst so dokumentiert — wer Load-Funktionen will, migriert
+> seite für Seite, ohne die API anzufassen.
+
 ---
 
 ## Zeitfenster (Konfiguration)
@@ -180,6 +187,10 @@ erzeugt den Container mit dem neuen Image neu.
   (z. B. `"8080:3000"`).
 - Alle Daten werden im Volume `horizont-data` unter `/app/data` persistiert:
   `users.json` (der Account), `users/<id>/` (Verbindungen, Workflows).
+- **Backup:** Das Volume enthält Account, CalDAV-Zugangsdaten, API-Token und
+  Benutzereinstellungen — die Kalendereinträge selbst liegen auf dem CalDAV-Server,
+  das Volume aber nicht. Ein regelmäßiges Sichern genügt:
+  `docker run --rm -v horizont-data:/data -v "$PWD":/backup alpine tar czf /backup/horizont-data-$(date +%F).tar.gz -C /data .`
 - Zum Löschen: `docker compose down -v`.
 
 > **Proxmox:** am einfachsten über eine Container-Template-VM mit Docker oder ein
@@ -338,6 +349,7 @@ API-Token (`Authorization: Bearer`).
 | POST    | `/api/auth/logout`                        | Logout                                    |
 | GET     | `/api/auth/me`                            | Aktuellen User                            |
 | POST    | `/api/auth/setup`                         | First-Run: Benutzer anlegen (nur ohne User) |
+| GET     | `/api/health`                             | Healthcheck (öffentlich, ohne Auth)       |
 | GET     | `/api/events?scope=main`                  | Panels (past/now/future) + Status        |
 | GET     | `/api/events?scope=archive&page=N`        | Archiv-Seite (31 Tage) + Pagination       |
 | POST    | `/api/events`                             | Termin anlegen (`calendarId` optional ⇒ Standardkalender) |
@@ -374,28 +386,42 @@ API-Token (`Authorization: Bearer`).
 ```
 src/
   lib/
-    api.ts                 # clientseitiger API-Wrapper
-    types.ts               # geteilte Typen
+    api.ts                 # clientseitiger API-Wrapper (ApiError mit HTTP-Status)
+    errors.ts              # errMsg() – zentrale Fehler-Textextraktion
+    types.ts               # geteilte Typen (Verträge Client + Server + Swift)
     dates.ts, theme.ts     # isomorphe Helfer
     components/            # App-Komponenten (TimePanel, DayBlock, WorkflowCard, …)
+      settings/            # Einstellungen-Sektionen (Connections, Categories,
+                           #   Notify, ApiToken) – je eigene Daten + Formulare
   server/
-    auth/                  # userStore (scrypt), sessionStore (in-memory), apiHelpers
+    startup.ts             # Idempotenter Start (Legacy-Cleanup, Notify-Job)
+    auth/                  # userStore (scrypt), sessionStore (in-memory), apiHelpers,
+                           # apiToken (async scrypt, Digest-Prefilter)
     caldav/                # CalDAV-Client (multi-Connection) + iCal-Parsing
     store/
       connections.ts       # CalDAV-Verbindungen + Legacy-Migration
-      store.ts, workflowStore.ts
-    lib/                   # Konstanten + Panel-Logik
-  hooks.server.ts          # zentrales Auth-Gate
+      store.ts, workflowStore.ts   # Workflows als VTODO (ETag/If-Match, mapLimit)
+    lib/
+      route.ts             # withUser()-Wrapper + zentrale mapError() für /api/*
+      constants.ts, panels.ts, write.ts, urlGuard.ts (SSRF)
+  hooks.server.ts          # zentrales Auth-Gate (ruft initStartup())
   routes/
     +layout.svelte         # Layout, Navigation (auth-aware), Theme
     +page.svelte           # Hauptansicht
     archiv/+page.svelte    # Archiv (paginiert)
-    einstellungen/+page.svelte   # CalDAV-Verbindungen
+    einstellungen/+page.svelte   # Seite (komponiert nur die settings/-Sektionen)
     fokus/[id]/+page.svelte
     login/+page.svelte
     setup/+page.svelte     # First-Run
-    api/                   # alle Endpunkte
+    api/                   # alle Endpunkte (health/ öffentlich, Rest via withUser)
+tests/                     # Vitest: CalDAV-Parsing/Schreiblayer + urlGuard (Fixtures/)
+Packages/HorizontKit/      # gemeinsames SPM-Paket der drei Apple-Apps
+                           #   (APIModels, APIClient, Keychain)
+.gitea/workflows/ci.yml    # CI: bun check + test + lint
 ```
+
+Entwicklungswerkzeuge: `bun run check` (svelte-check, Ziel 0/0), `bun run test`
+(Vitest), `bun run lint` / `bun run format` (Biome: Tabs, einfache Anführungszeichen).
 
 ---
 

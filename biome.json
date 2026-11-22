@@ -1,0 +1,86 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+	"assist": {
+		"actions": {
+			"source": {
+				"organizeImports": "on"
+			}
+		}
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	},
+	"files": {
+		"includes": [
+			"**",
+			"!**/node_modules",
+			"!**/.svelte-kit",
+			"!**/build",
+			"!**/apple",
+			"!**/ipad",
+			"!**/iphone",
+			"!**/design",
+			"!**/mcp-server",
+			"!**/data",
+			"!**/app.html"
+		],
+		"ignoreUnknown": true
+	},
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"indentWidth": 2,
+		"lineWidth": 120
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "single",
+			"jsxQuoteStyle": "double",
+			"semicolons": "always",
+			"trailingCommas": "none",
+			"arrowParentheses": "asNeeded"
+		}
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"correctness": {
+				"noUnusedImports": "warn",
+				"noUnusedVariables": "warn",
+				"noInnerDeclarations": "warn"
+			},
+			"complexity": {
+				"useArrowFunction": "warn",
+				"noUselessEmptyExport": "warn"
+			},
+			"suspicious": {
+				"noAssignInExpressions": "warn"
+			}
+		}
+	},
+	"overrides": [
+		{
+			"includes": ["src/**"],
+			"formatter": {
+				"enabled": false
+			},
+			"assist": {
+				"enabled": false
+			}
+		},
+		{
+			"includes": ["**/*.svelte"],
+			"linter": {
+				"rules": {
+					"correctness": {
+						"noUnusedImports": "off",
+						"noUnusedVariables": "off"
+					}
+				}
+			}
+		}
+	]
+}
