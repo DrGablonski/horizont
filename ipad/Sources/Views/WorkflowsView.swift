@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Workflow-Liste mit Fortschritt; Detailansicht = Fokus-Modus der Web-App.

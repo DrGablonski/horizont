@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Workflow-Liste für iPhone: kompakte Zeilen (Titel, Fortschrittsbalken,

@@ -3,11 +3,11 @@ import Foundation
 /// HTTP-Client für die Horizont-API.
 /// Auth: Session-Cookie (vom Login) im gemeinsamen Cookie-Storage.
 /// Bei 401 meldet sich AuthStore ab bzw. loggt still neu ein.
-final class APIClient {
-	let baseURL: URL
+public final class APIClient {
+	public let baseURL: URL
 	private let session: URLSession
 
-	init(serverURL: URL) {
+	public init(serverURL: URL) {
 		self.baseURL = serverURL
 		let config = URLSessionConfiguration.default
 		config.httpAdditionalHeaders = ["Accept": "application/json"]
@@ -18,7 +18,7 @@ final class APIClient {
 	// MARK: – Kern
 
 	@discardableResult
-	func raw(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> Data {
+	public func raw(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> Data {
 		guard let url = URL(string: path, relativeTo: baseURL) else {
 			throw APIError.server("Ungültige Server-URL.")
 		}
@@ -66,19 +66,19 @@ final class APIClient {
 
 	// MARK: – Auth
 
-	func login(username: String, password: String) async throws -> AppUser {
+	public func login(username: String, password: String) async throws -> AppUser {
 		let r: LoginResponse = try await send(
 			"/api/auth/login", method: "POST",
 			body: ["username": username, "password": password])
 		return r.user
 	}
 
-	func me() async throws -> AppUser {
+	public func me() async throws -> AppUser {
 		let r: MeResponse = try await get("/api/auth/me")
 		return r.user
 	}
 
-	func logout() async throws {
+	public func logout() async throws {
 		_ = try await send(OKResponse.self, in: "/api/auth/logout")
 	}
 
@@ -88,11 +88,11 @@ final class APIClient {
 
 	// MARK: – Events / Timeline
 
-	func mainEvents() async throws -> MainEventsResponse {
+	public func mainEvents() async throws -> MainEventsResponse {
 		try await get("/api/events?scope=main")
 	}
 
-	func archiveMonth(_ monthKey: String?) async throws -> ArchiveMonth {
+	public func archiveMonth(_ monthKey: String?) async throws -> ArchiveMonth {
 		if let monthKey {
 			return try await get("/api/events?scope=archive&monat=\(monthKey)")
 		}
@@ -101,29 +101,29 @@ final class APIClient {
 
 	// MARK: – Workflows
 
-	func workflows() async throws -> [Workflow] {
+	public func workflows() async throws -> [Workflow] {
 		try await get("/api/workflows")
 	}
 
-	func updateStep(workflowId: String, stepId: String, done: Bool) async throws -> Workflow {
+	public func updateStep(workflowId: String, stepId: String, done: Bool) async throws -> Workflow {
 		try await send("/api/workflows/\(workflowId)/steps/\(stepId)",
 		              method: "PATCH", body: ["done": done])
 	}
 
-	func resetWorkflow(workflowId: String) async throws -> Workflow {
+	public func resetWorkflow(workflowId: String) async throws -> Workflow {
 		try await send("/api/workflows/\(workflowId)/reset", method: "POST")
 	}
 
 	/// Workflow anlegen (POST /api/workflows). steps = Titel, einer pro Schritt.
 	@discardableResult
-	func createWorkflow(title: String, steps: [String]) async throws -> Workflow {
+	public func createWorkflow(title: String, steps: [String]) async throws -> Workflow {
 		try await send("/api/workflows", method: "POST",
 		              body: ["title": title, "steps": steps])
 	}
 
 	/// Titel/Notizen ändern (PATCH /api/workflows/{id}). Nil-Felder bleiben unverändert.
 	@discardableResult
-	func updateWorkflow(workflowId: String, title: String? = nil,
+	public func updateWorkflow(workflowId: String, title: String? = nil,
 	                    notes: String? = nil) async throws -> Workflow {
 		var body: [String: Any] = [:]
 		if let title { body["title"] = title }
@@ -131,40 +131,40 @@ final class APIClient {
 		return try await send("/api/workflows/\(workflowId)", method: "PATCH", body: body)
 	}
 
-	func deleteWorkflow(workflowId: String) async throws {
+	public func deleteWorkflow(workflowId: String) async throws {
 		_ = try await raw("/api/workflows/\(workflowId)", method: "DELETE")
 	}
 
 	/// Schritt anhängen (POST /api/workflows/{id}/steps).
 	@discardableResult
-	func addStep(workflowId: String, title: String) async throws -> Workflow {
+	public func addStep(workflowId: String, title: String) async throws -> Workflow {
 		try await send("/api/workflows/\(workflowId)/steps", method: "POST",
 		              body: ["title": title])
 	}
 
 	/// Schritt umbenennen (PATCH …/steps/{stepId}).
 	@discardableResult
-	func setStepTitle(workflowId: String, stepId: String, title: String) async throws -> Workflow {
+	public func setStepTitle(workflowId: String, stepId: String, title: String) async throws -> Workflow {
 		try await send("/api/workflows/\(workflowId)/steps/\(stepId)",
 		              method: "PATCH", body: ["title": title])
 	}
 
 	/// Schritt löschen (DELETE …/steps/{stepId}).
 	@discardableResult
-	func deleteStep(workflowId: String, stepId: String) async throws -> Workflow {
+	public func deleteStep(workflowId: String, stepId: String) async throws -> Workflow {
 		try await send("/api/workflows/\(workflowId)/steps/\(stepId)", method: "DELETE")
 	}
 
 	// MARK: – Tasks (abhaken, anlegen, löschen)
 
-	func updateTaskCompleted(calendarId: String, uid: String, completed: Bool) async throws {
+	public func updateTaskCompleted(calendarId: String, uid: String, completed: Bool) async throws {
 		_ = try await raw("/api/tasks/\(calendarId)/\(uid)",
 		                  method: "PATCH", body: ["completed": completed])
 	}
 
 	/// Task-Felder ändern (PATCH /api/tasks/{cal}/{uid}). Nil-Felder bleiben unverändert.
 	@discardableResult
-	func updateTask(calendarId: String, uid: String, summary: String? = nil,
+	public func updateTask(calendarId: String, uid: String, summary: String? = nil,
 	                description: String? = nil, category: String?? = nil,
 	                dueKey: String?? = nil) async throws -> OKResponse {
 		var body: [String: Any] = [:]
@@ -177,7 +177,7 @@ final class APIClient {
 
 	/// Termin-Felder ändern (PATCH /api/events/{cal}/{uid}).
 	@discardableResult
-	func updateEvent(calendarId: String, uid: String, summary: String,
+	public func updateEvent(calendarId: String, uid: String, summary: String,
 	                 allDay: Bool, dayKey: String? = nil, startMs: Int? = nil,
 	                 endMs: Int? = nil, location: String? = nil,
 	                 description: String? = nil) async throws -> EventItem {
@@ -192,7 +192,7 @@ final class APIClient {
 
 	/// Task anlegen (POST /api/tasks). dueKey = 'YYYY-MM-DD' oder nil.
 	@discardableResult
-	func createTask(summary: String, calendarId: String, category: String? = nil,
+	public func createTask(summary: String, calendarId: String, category: String? = nil,
 	                dueKey: String? = nil, description: String? = nil) async throws -> CreatedTask {
 		var body: [String: Any] = ["summary": summary, "calendarId": calendarId]
 		if let category { body["category"] = category }
@@ -201,17 +201,17 @@ final class APIClient {
 		return try await send("/api/tasks", method: "POST", body: body)
 	}
 
-	func deleteTask(calendarId: String, uid: String) async throws {
+	public func deleteTask(calendarId: String, uid: String) async throws {
 		_ = try await raw("/api/tasks/\(calendarId)/\(uid)", method: "DELETE")
 	}
 
-	func deleteEvent(calendarId: String, uid: String) async throws {
+	public func deleteEvent(calendarId: String, uid: String) async throws {
 		_ = try await raw("/api/events/\(calendarId)/\(uid)", method: "DELETE")
 	}
 
 	/// Termin anlegen (POST /api/events). dayKey = 'YYYY-MM-DD', startMs optional für Ganztags=false.
 	@discardableResult
-	func createEvent(summary: String, calendarId: String, dayKey: String,
+	public func createEvent(summary: String, calendarId: String, dayKey: String,
 	                 allDay: Bool, startMs: Int? = nil, location: String? = nil,
 	                 description: String? = nil) async throws -> EventItem {
 		var body: [String: Any] = [
@@ -226,19 +226,19 @@ final class APIClient {
 
 	// MARK: – Kalender
 
-	func calendars() async throws -> CalendarsResponse {
+	public func calendars() async throws -> CalendarsResponse {
 		try await get("/api/calendars")
 	}
 
 	/// Alle Kalender inkl. verborgener und Verbindungstexte (GET /api/calendars).
-	func fetchCalendars() async throws -> CalendarsResponse {
+	public func fetchCalendars() async throws -> CalendarsResponse {
 		try await get("/api/calendars")
 	}
 
 	/// Neuen Kalender per MKCALENDAR anlegen (POST /api/calendars);
 	/// Antwort = die frische View des angelegten Kalenders.
 	@discardableResult
-	func createCalendar(connectionId: String, name: String, color: String? = nil,
+	public func createCalendar(connectionId: String, name: String, color: String? = nil,
 	                    components: [String]? = nil) async throws -> CalendarView {
 		var body: [String: Any] = ["connectionId": connectionId, "name": name]
 		if let color { body["color"] = color }
@@ -248,7 +248,7 @@ final class APIClient {
 
 	/// Kalender löschen (DELETE /api/calendars/{id}); der Name ist die
 	/// Löschbestätigung und muss auf dem Server exakt passen.
-	func deleteCalendar(id: String, name: String) async throws {
+	public func deleteCalendar(id: String, name: String) async throws {
 		_ = try await send("/api/calendars/\(id)", method: "DELETE",
 		                   body: ["name": name]) as OKResponse
 	}
@@ -256,19 +256,19 @@ final class APIClient {
 	/// Lokale Präferenzen eines Kalenders ändern (PATCH /api/calendars/{id}),
 	/// z. B. ["hidden": true] oder ["isDefault": true]; Antwort = aktualisierter Kalender.
 	@discardableResult
-	func updateCalendar(id: String, patch: [String: Any]) async throws -> CalendarView {
+	public func updateCalendar(id: String, patch: [String: Any]) async throws -> CalendarView {
 		try await send("/api/calendars/\(id)", method: "PATCH", body: patch)
 	}
 
 	// MARK: – Einstellungen: CalDAV-Verbindungen
 
-	func connections() async throws -> ConnectionsResponse {
+	public func connections() async throws -> ConnectionsResponse {
 		try await get("/api/settings")
 	}
 
 	/// Verbindung anlegen (POST /api/settings); Antwort = aktualisierte Liste.
 	@discardableResult
-	func createConnection(name: String, url: String, username: String,
+	public func createConnection(name: String, url: String, username: String,
 	                      password: String) async throws -> ConnectionsResponse {
 		try await send("/api/settings", method: "POST",
 		              body: ["name": name, "url": url,
@@ -277,7 +277,7 @@ final class APIClient {
 
 	/// Verbindung ändern (PATCH /api/settings); leere Password = gespeichertes behalten.
 	@discardableResult
-	func updateConnection(id: String, name: String, url: String,
+	public func updateConnection(id: String, name: String, url: String,
 	                      username: String, password: String?) async throws -> ConnectionsResponse {
 		var body: [String: Any] = ["id": id, "name": name, "url": url, "username": username]
 		if let password, !password.isEmpty { body["password"] = password }
@@ -286,42 +286,42 @@ final class APIClient {
 
 	/// Verbindung löschen (DELETE /api/settings); Antwort = aktualisierte Liste.
 	@discardableResult
-	func deleteConnection(id: String) async throws -> ConnectionsResponse {
+	public func deleteConnection(id: String) async throws -> ConnectionsResponse {
 		try await send("/api/settings", method: "DELETE", body: ["id": id])
 	}
 
 	/// Verbindung zur Hauptverbindung machen (PATCH /api/settings mit role:'primary';
 	/// die bisherige wird automatisch herabgestuft). Antwort = aktualisierte Liste.
 	@discardableResult
-	func setPrimaryConnection(id: String) async throws -> ConnectionsResponse {
+	public func setPrimaryConnection(id: String) async throws -> ConnectionsResponse {
 		try await send("/api/settings", method: "PATCH", body: ["id": id, "role": "primary"])
 	}
 
 	/// Anbieter-Vorlagen fürs Verbindungsformular (GET /api/settings/presets).
-	func providerPresets() async throws -> [ProviderPreset] {
+	public func providerPresets() async throws -> [ProviderPreset] {
 		let r: ProviderPresetsResponse = try await get("/api/settings/presets")
 		return r.presets
 	}
 
 	/// Gespeicherte Verbindung per id testen.
-	func testConnection(id: String) async throws -> TestResult {
+	public func testConnection(id: String) async throws -> TestResult {
 		try await send("/api/settings/test", method: "POST", body: ["id": id])
 	}
 
 	/// Ungespeicherte Formularwerte testen („Erst testen" vor dem Anlegen).
-	func testConnection(url: String, username: String, password: String) async throws -> TestResult {
+	public func testConnection(url: String, username: String, password: String) async throws -> TestResult {
 		try await send("/api/settings/test", method: "POST",
 		              body: ["url": url, "username": username, "password": password])
 	}
 
 	// MARK: – Kategorien
 
-	func categories() async throws -> [TaskCategory] {
+	public func categories() async throws -> [TaskCategory] {
 		try await get(CategoriesResponse.self, from: "/api/categories").categories
 	}
 
 	/// Ganze Liste ersetzen (wie Web-App).
-	func saveCategories(_ categories: [TaskCategory]) async throws -> [TaskCategory] {
+	public func saveCategories(_ categories: [TaskCategory]) async throws -> [TaskCategory] {
 		let body = ["categories": categories.map { ["name": $0.name, "color": $0.color] }]
 		return try await send(CategoriesResponse.self, from: "/api/categories",
 		                      method: "POST", body: body).categories
@@ -329,16 +329,16 @@ final class APIClient {
 
 	// MARK: – Benachrichtigungen
 
-	func notifyConfig() async throws -> NotifyConfigView {
+	public func notifyConfig() async throws -> NotifyConfigView {
 		try await get("/api/notify")
 	}
 
-	func saveNotifyConfig(_ input: [String: Any]) async throws -> NotifyConfigView {
+	public func saveNotifyConfig(_ input: [String: Any]) async throws -> NotifyConfigView {
 		try await send("/api/notify", method: "POST", body: input)
 	}
 
 	/// Testversand (POST /api/notify/test). Leere Werte fallen auf die gespeicherte Config zurück.
-	func sendNotifyTest(url: String = "", token: String = "",
+	public func sendNotifyTest(url: String = "", token: String = "",
 	                    prompt: String = "") async throws -> NotifyTestResult {
 		var body: [String: Any] = [:]
 		if !url.isEmpty { body["url"] = url }
@@ -348,22 +348,22 @@ final class APIClient {
 	}
 
 	/// „Jetzt senden" (POST /api/notify/send): echte offene Tasks nach gespeicherter Config.
-	func sendNotifyNow() async throws -> NotifySendResult {
+	public func sendNotifyNow() async throws -> NotifySendResult {
 		try await send("/api/notify/send", method: "POST")
 	}
 
 	// MARK: – API-Token (externe Zugriffe/MCP)
 
-	func apiToken() async throws -> ApiTokenView {
+	public func apiToken() async throws -> ApiTokenView {
 		try await get("/api/token")
 	}
 
 	/// Neuen Token erzeugen (ersetzt vorhandenen) – Klartext nur in dieser Antwort.
-	func generateApiToken() async throws -> ApiTokenGenerated {
+	public func generateApiToken() async throws -> ApiTokenGenerated {
 		try await send("/api/token", method: "POST")
 	}
 
-	func revokeApiToken() async throws {
+	public func revokeApiToken() async throws {
 		_ = try await raw("/api/token", method: "DELETE")
 	}
 

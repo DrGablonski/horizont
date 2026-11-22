@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Startseite: die drei zusammenklappbaren Zeiträume wie im Web –

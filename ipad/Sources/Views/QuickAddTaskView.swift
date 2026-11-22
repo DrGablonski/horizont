@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Schnell-Dialog „Neue Aufgabe / Neuer Termin“ als Sheet-Inhalt (wird von HomeView präsentiert).

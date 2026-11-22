@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Einstellungen: Sidebar-Navigation wie die Systemeinstellungen –

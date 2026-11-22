@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Kompakte Detailansicht eines Events als Popover-Inhalt (~340 pt):

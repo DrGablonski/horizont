@@ -9,9 +9,13 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.1.2"
+    CURRENT_PROJECT_VERSION: "3"
     DEVELOPMENT_TEAM: "2BKRSMQG7C"
+# Geteilte Basis (API-Modelle, APIClient, Keychain) als lokales Swift-Paket.
+packages:
+  HorizontKit:
+    path: ../Packages/HorizontKit
 targets:
   HorizontiPad:
     type: application
@@ -24,6 +28,7 @@ targets:
     dependencies:
       - target: HorizontWidgets
         embed: true
+      - package: HorizontKit
     info:
       path: Support/Info.plist
       properties:
@@ -57,13 +62,14 @@ targets:
     platform: iOS
     sources:
       - path: Sources/Widgets
-      - path: Sources/Models
       - path: Sources/Support/AppGroup.swift
       - path: Sources/Support/Chrome.swift
       - path: Sources/Support/DesignSystem.swift
       - path: Sources/Support/Theme.swift
       - path: Sources/Support/ThemeStore.swift
       - path: Sources/Support/WidgetSnapshot.swift
+    dependencies:
+      - package: HorizontKit
     info:
       path: Support/Widgets-Info.plist
       properties:

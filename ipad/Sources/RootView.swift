@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Auth-Gate: Login, Ladezustand oder Haupt-App (identisches Muster wie Mac).

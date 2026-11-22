@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Einstellungen als klassische iPhone-Einstellungs-Liste: jede Gruppe führt per

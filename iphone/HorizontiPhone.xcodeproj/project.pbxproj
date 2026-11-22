@@ -17,8 +17,6 @@
 		4E7DAF5F9DA3D42C4C1BDD29 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B97F3D57605247422938F058 /* AppStore.swift */; };
 		543F025CCEFE94AC405F9C6A /* WorkflowEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D4EE570F6D804F17E94D15C /* WorkflowEditorView.swift */; };
 		55FB9B2BA06E11FA75066C8D /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 529A15C1756788E208933870 /* RootView.swift */; };
-		5D146F683785DEB24034CE9E /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ECBE73F72C8ED46D5FF5446 /* Keychain.swift */; };
-		649311A521D3C21D9DD0B3D1 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E9E237752887EFAD8817ACE /* APIClient.swift */; };
 		69BCD5D5F4E8F8DA56845420 /* SnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C8C46F802406D114D4AEB61 /* SnapshotStore.swift */; };
 		6D3317CE54C71194982D26B1 /* ThemeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C974764B43AA6B5D3291BFD4 /* ThemeStore.swift */; };
 		6FD760C0490D5510F5A16B16 /* Chrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44D4B5FF4D296A7362B6B882 /* Chrome.swift */; };
@@ -31,17 +29,17 @@
 		8C03E79B82CE436E968F0F62 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5BF266058F6DF693C33F5AA /* WidgetSnapshot.swift */; };
 		8D909E6238EF3F76FAB84CA3 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E98FED9F2A555655F4C88D /* DesignSystem.swift */; };
 		8EEF385FC223F7F5C95610B1 /* ArchiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 131DF2D61504D482791D76B5 /* ArchiveView.swift */; };
+		917F0CA566619775975E2D28 /* HorizontKit in Frameworks */ = {isa = PBXBuildFile; productRef = B736DC7CF3E453B45E358A29 /* HorizontKit */; };
 		97E77BF8F3ECAF4B352A168A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14174366B165FC338402E3F9 /* SettingsView.swift */; };
 		98508DDDA7B67CFC92EFDF09 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E98FED9F2A555655F4C88D /* DesignSystem.swift */; };
 		99B595D03893130E77829C3F /* HorizontApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AE3BE231906370DD6E345CA /* HorizontApp.swift */; };
 		A0D5460BC5F82B04B8D58ED6 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE9EE4C57BB7E25C709E2E11 /* Theme.swift */; };
-		B479FC50DACB7723C12AC033 /* APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B15D82006AF9555098006DB /* APIModels.swift */; };
+		B6AFFC0FD01953E23EA8A73A /* HorizontKit in Frameworks */ = {isa = PBXBuildFile; productRef = 18A72DD03ECCF557DB802418 /* HorizontKit */; };
 		C1CC7D85660DA73B07E82725 /* WidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94CAD101B1F6B43BAA3B3965 /* WidgetsBundle.swift */; };
 		CBCFA768DA9F2B44BC0D026B /* Chrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44D4B5FF4D296A7362B6B882 /* Chrome.swift */; };
 		D2E5608E0DA5CD362B811CAC /* EventDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C5529ACD849CDD4F983A792 /* EventDetailView.swift */; };
 		D9B875DD9DB43408FB26A2D4 /* HeuteWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 324745784E6ADFFAF252477C /* HeuteWidget.swift */; };
 		EE2898698216CD7A481504C9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A2E334EF3861CD9FD20B7BB /* HomeView.swift */; };
-		F592B6A79AA2AABE6F4F60F8 /* APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B15D82006AF9555098006DB /* APIModels.swift */; };
 		F9B2176E7508BEA422D683A4 /* Gestures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 797E285BF566EB10B736FE8B /* Gestures.swift */; };
 /* End PBXBuildFile section */
 
@@ -73,13 +71,11 @@
 		131DF2D61504D482791D76B5 /* ArchiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveView.swift; sourceTree = "<group>"; };
 		14174366B165FC338402E3F9 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		1F81FD327FEC93ABFE1BE32C /* AppGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroup.swift; sourceTree = "<group>"; };
+		2040A998D408F663A256C07E /* HorizontKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HorizontKit; path = ../Packages/HorizontKit; sourceTree = SOURCE_ROOT; };
 		2C5529ACD849CDD4F983A792 /* EventDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventDetailView.swift; sourceTree = "<group>"; };
 		2D4EE570F6D804F17E94D15C /* WorkflowEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowEditorView.swift; sourceTree = "<group>"; };
-		2E9E237752887EFAD8817ACE /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		324745784E6ADFFAF252477C /* HeuteWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeuteWidget.swift; sourceTree = "<group>"; };
 		44D4B5FF4D296A7362B6B882 /* Chrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Chrome.swift; sourceTree = "<group>"; };
-		4B15D82006AF9555098006DB /* APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIModels.swift; sourceTree = "<group>"; };
-		4ECBE73F72C8ED46D5FF5446 /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		529A15C1756788E208933870 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		5C8C46F802406D114D4AEB61 /* SnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotStore.swift; sourceTree = "<group>"; };
 		61F4CFD019890A0FA9F71397 /* WorkflowsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkflowsView.swift; sourceTree = "<group>"; };
@@ -102,6 +98,25 @@
 		FB34C674B032592F5133C417 /* EditItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditItemView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		830D59041A886177E968FC69 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B6AFFC0FD01953E23EA8A73A /* HorizontKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A2453681DA62863F443F6CE3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				917F0CA566619775975E2D28 /* HorizontKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXGroup section */
 		05F48541930D169114908780 /* Products */ = {
 			isa = PBXGroup;
@@ -112,14 +127,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		53AC80DE86622DCAC48C2516 /* API */ = {
-			isa = PBXGroup;
-			children = (
-				2E9E237752887EFAD8817ACE /* APIClient.swift */,
-			);
-			path = API;
-			sourceTree = "<group>";
-		};
 		77AA51C96D890CE8C568F944 /* Support */ = {
 			isa = PBXGroup;
 			children = (
@@ -127,7 +134,6 @@
 				44D4B5FF4D296A7362B6B882 /* Chrome.swift */,
 				C8E98FED9F2A555655F4C88D /* DesignSystem.swift */,
 				797E285BF566EB10B736FE8B /* Gestures.swift */,
-				4ECBE73F72C8ED46D5FF5446 /* Keychain.swift */,
 				5C8C46F802406D114D4AEB61 /* SnapshotStore.swift */,
 				BE9EE4C57BB7E25C709E2E11 /* Theme.swift */,
 				C974764B43AA6B5D3291BFD4 /* ThemeStore.swift */,
@@ -153,6 +159,14 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
+		BDA24AD5C74355428597E58A /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				2040A998D408F663A256C07E /* HorizontKit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
 		C2A765E15320E21A1DCDEA9C /* State */ = {
 			isa = PBXGroup;
 			children = (
@@ -162,17 +176,10 @@
 			path = State;
 			sourceTree = "<group>";
 		};
-		CB791FBEDBE5A6F32B978828 /* Models */ = {
-			isa = PBXGroup;
-			children = (
-				4B15D82006AF9555098006DB /* APIModels.swift */,
-			);
-			path = Models;
-			sourceTree = "<group>";
-		};
 		D569904EE91115D877196B0C = {
 			isa = PBXGroup;
 			children = (
+				BDA24AD5C74355428597E58A /* Packages */,
 				E058186AB4308FDCF32B01BB /* Resources */,
 				E4FF56F66182B1EB87F1219D /* Sources */,
 				F4F1315E1F697E502A5B2F8A /* Widgets */,
@@ -193,8 +200,6 @@
 			children = (
 				8AE3BE231906370DD6E345CA /* HorizontApp.swift */,
 				529A15C1756788E208933870 /* RootView.swift */,
-				53AC80DE86622DCAC48C2516 /* API */,
-				CB791FBEDBE5A6F32B978828 /* Models */,
 				C2A765E15320E21A1DCDEA9C /* State */,
 				77AA51C96D890CE8C568F944 /* Support */,
 				7FC84C27329A2DB30F27990F /* Views */,
@@ -220,6 +225,7 @@
 			buildConfigurationList = 7CC8C28C7A98CCC2C8B308F2 /* Build configuration list for PBXNativeTarget "HorizontWidgets" */;
 			buildPhases = (
 				B4713844F2C23EF392031881 /* Sources */,
+				A2453681DA62863F443F6CE3 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -227,6 +233,7 @@
 			);
 			name = HorizontWidgets;
 			packageProductDependencies = (
+				B736DC7CF3E453B45E358A29 /* HorizontKit */,
 			);
 			productName = HorizontWidgets;
 			productReference = F3DFB87F23FFCC74106C2869 /* HorizontWidgets.appex */;
@@ -238,6 +245,7 @@
 			buildPhases = (
 				505CD1A0C2114CB07382C9F2 /* Sources */,
 				6FF01AC152CBA11C1A9F6EA6 /* Resources */,
+				830D59041A886177E968FC69 /* Frameworks */,
 				3CE129399A5C1F09094073EA /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -247,6 +255,7 @@
 			);
 			name = HorizontiPhone;
 			packageProductDependencies = (
+				18A72DD03ECCF557DB802418 /* HorizontKit */,
 			);
 			productName = HorizontiPhone;
 			productReference = 7D50F0BA5FD7F917BB98A1AB /* HorizontiPhone.app */;
@@ -259,7 +268,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1430;
+				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					E207CC1277B991B71001DC59 = {
 						DevelopmentTeam = 2BKRSMQG7C;
@@ -280,6 +289,9 @@
 			);
 			mainGroup = D569904EE91115D877196B0C;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				38BC2063F524DAF6A119B9C0 /* XCLocalSwiftPackageReference "../Packages/HorizontKit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 05F48541930D169114908780 /* Products */;
 			projectDirPath = "";
@@ -307,8 +319,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				649311A521D3C21D9DD0B3D1 /* APIClient.swift in Sources */,
-				B479FC50DACB7723C12AC033 /* APIModels.swift in Sources */,
 				81D4BEA8222E14BE0EA49EAB /* AppGroup.swift in Sources */,
 				4E7DAF5F9DA3D42C4C1BDD29 /* AppStore.swift in Sources */,
 				8EEF385FC223F7F5C95610B1 /* ArchiveView.swift in Sources */,
@@ -321,7 +331,6 @@
 				F9B2176E7508BEA422D683A4 /* Gestures.swift in Sources */,
 				EE2898698216CD7A481504C9 /* HomeView.swift in Sources */,
 				99B595D03893130E77829C3F /* HorizontApp.swift in Sources */,
-				5D146F683785DEB24034CE9E /* Keychain.swift in Sources */,
 				3F7A4E88220FBA4F0D12C597 /* LoginView.swift in Sources */,
 				8823529ED099327E7952C94B /* QuickAddTaskView.swift in Sources */,
 				55FB9B2BA06E11FA75066C8D /* RootView.swift in Sources */,
@@ -339,7 +348,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F592B6A79AA2AABE6F4F60F8 /* APIModels.swift in Sources */,
 				8B3BD75B46B89BEFB1B63AED /* AppGroup.swift in Sources */,
 				CBCFA768DA9F2B44BC0D026B /* Chrome.swift in Sources */,
 				98508DDDA7B67CFC92EFDF09 /* DesignSystem.swift in Sources */,
@@ -590,6 +598,24 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		38BC2063F524DAF6A119B9C0 /* XCLocalSwiftPackageReference "../Packages/HorizontKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/HorizontKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		18A72DD03ECCF557DB802418 /* HorizontKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HorizontKit;
+		};
+		B736DC7CF3E453B45E358A29 /* HorizontKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HorizontKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 774357D379E867C1683452E3 /* Project object */;
 }

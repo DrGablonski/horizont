@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Kompakte Detailansicht eines Events (iPhone): Karte mit Farbstreifen,

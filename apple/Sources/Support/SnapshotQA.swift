@@ -1,4 +1,5 @@
 #if DEBUG
+import HorizontKit
 import SwiftUI
 import AppKit
 

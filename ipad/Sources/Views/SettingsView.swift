@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Einstellungen: Konto, CalDAV-Verbindungen, Kalender, Aufgaben-Benachrichtigungen,

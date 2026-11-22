@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Anlegen-/Bearbeiten-Dialog für Workflows als Sheet-Inhalt.

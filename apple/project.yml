@@ -8,14 +8,20 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    MARKETING_VERSION: "0.1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.1.2"
+    CURRENT_PROJECT_VERSION: "3"
+# Geteilte Basis (API-Modelle, APIClient, Keychain) als lokales Swift-Paket.
+packages:
+  HorizontKit:
+    path: ../Packages/HorizontKit
 targets:
   Horizont:
     type: application
     platform: macOS
     sources:
       - Sources
+    dependencies:
+      - package: HorizontKit
     info:
       path: Support/Info.plist
       properties:

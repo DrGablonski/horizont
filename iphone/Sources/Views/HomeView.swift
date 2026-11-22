@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Startseite (iPhone): die drei zusammenklappbaren Zeiträume als native

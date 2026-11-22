@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Fokus-Modus für einen Workflow (Navigation-Push aus der Liste):

@@ -2,10 +2,10 @@ import Foundation
 import Security
 
 /// Minimales Keychain-Wrapper für Login-Zugangsdaten (App-Weiterlogin).
-enum Keychain {
+public enum Keychain {
 	private static let service = "de.hott.horizont"
 
-	static func set(_ account: String, value: String) {
+	public static func set(_ account: String, value: String) {
 		let data = Data(value.utf8)
 		let query: [String: Any] = [
 			kSecClass as String: kSecClassGenericPassword,
@@ -21,7 +21,7 @@ enum Keychain {
 		SecItemAdd(attributes as CFDictionary, nil)
 	}
 
-	static func get(_ account: String) -> String? {
+	public static func get(_ account: String) -> String? {
 		let query: [String: Any] = [
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,
@@ -36,7 +36,7 @@ enum Keychain {
 		return String(data: data, encoding: .utf8)
 	}
 
-	static func delete(_ account: String) {
+	public static func delete(_ account: String) {
 		let query: [String: Any] = [
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,

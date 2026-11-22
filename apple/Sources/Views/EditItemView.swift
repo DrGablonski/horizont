@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Bearbeiten-Dialog für eine bestehende Aufgabe bzw. einen bestehenden Termin

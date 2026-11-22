@@ -1,3 +1,4 @@
+import HorizontKit
 import SwiftUI
 
 /// Eine Zeile in der Timeline: Termin oder Aufgabe (mit Abhaken).
