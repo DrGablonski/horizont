@@ -23,6 +23,7 @@ import type {
 } from '$lib/types';
 import { WORKFLOWS_CALENDAR } from '$server/lib/constants';
 import {
+	CalDavError,
 	collectionExists,
 	deleteIcs,
 	getObjectIcs,
@@ -32,6 +33,7 @@ import {
 	resolveHome
 } from '$server/caldav/client';
 import { buildWorkflowIcs, parseWorkflowIcs } from '$server/caldav/workflowIcs';
+import { mapLimit } from '$server/lib/write';
 
 // ── Ableitung der Kalender-URL ────────────────────────────────────────────
 
@@ -97,15 +99,46 @@ async function readWorkflow(settings: CalDavSettings, id: string): Promise<Workf
 }
 
 /**
+ * Holt den aktuellen ETag eines CalDAV-Objekts (undefined, wenn es noch nicht
+ * existiert oder der Server keinen ETag nennt).
+ */
+async function currentEtag(
+	settings: CalDavSettings,
+	base: string,
+	url: string
+): Promise<string | undefined> {
+	const objects = await listCalendarObjects(settings, base);
+	const obj = objects.find((o) => o.url === url);
+	return obj?.etag || undefined;
+}
+
+/**
  * Schreibt einen Workflow zurück nach CalDAV. Stempelt updatedAt (die
  * einzige Stelle, wo der Zeitstempel gesetzt wird) und leitet ab.
+ *
+ * Bestandsobjekte werden mit If-Match (ETag) geschrieben; bei einem Konflikt
+ * (409) wird einmal der frische ETag geholt und erneut geschrieben. Ein neues
+ * Objekt hat keinen ETag und wird ohne If-Match angelegt.
  */
 async function persist(settings: CalDavSettings, wf: Workflow): Promise<void> {
 	wf.updatedAt = Date.now();
 	derive(wf);
 	const base = await ensureWorkflowsCalendar(settings);
+	const url = `${base}${wf.id}.ics`;
 	const ics = buildWorkflowIcs(wf);
-	await putIcs(settings, `${base}${wf.id}.ics`, ics);
+
+	const etag = await currentEtag(settings, base, url);
+	try {
+		await putIcs(settings, url, ics, etag);
+	} catch (e) {
+		// ETag-Mismatch: einmal auffrischen und erneut versuchen. Bei erneutem
+		// Konflikt wirft putIcs den deutschen CalDavError (409) durch.
+		if (e instanceof CalDavError && e.status === 409) {
+			await putIcs(settings, url, ics, await currentEtag(settings, base, url));
+			return;
+		}
+		throw e;
+	}
 }
 
 // ── Öffentliche API (signiert wie der frühere Datei-Store, nun async) ─────
@@ -115,15 +148,14 @@ export async function listWorkflows(settings: CalDavSettings): Promise<Workflow[
 	if (!(await collectionExists(settings, base))) return [];
 
 	const objects = await listCalendarObjects(settings, base);
-	const results = await Promise.all(
-		objects.map(async (o) => {
-			const ics = await getObjectIcs(settings, o.url);
-			if (ics == null) return null;
-			const wf = parseWorkflowIcs(ics);
-			if (wf == null) return null;
-			return derive(wf);
-		})
-	);
+	// N+1-GETs parallellimitiert (CalDAV-Server mögen keine hundert offenen Sockets).
+	const results = await mapLimit(objects, 8, async (o) => {
+		const ics = await getObjectIcs(settings, o.url);
+		if (ics == null) return null;
+		const wf = parseWorkflowIcs(ics);
+		if (wf == null) return null;
+		return derive(wf);
+	});
 
 	return results
 		.filter((w): w is Workflow => w != null)

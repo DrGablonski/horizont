@@ -5,24 +5,19 @@
 // fallen auf die gespeicherte Config zurück.
 
 import { json } from '@sveltejs/kit';
-import type { RequestHandler } from '@sveltejs/kit';
+import { readJsonBody } from '$server/auth/apiHelpers';
+import { withUser } from '$server/lib/route';
 import { DEFAULT_NOTIFY_PROMPT, getNotify, webhookUrlOf } from '$server/store/notify';
 import { composeMessage, dateKey, postNotify } from '$server/jobs/notify';
 import type { TaskItem } from '$lib/types';
 
-export const POST: RequestHandler = async ({ request, locals }) => {
-	if (!locals.user) return json({ error: 'Nicht angemeldet.' }, { status: 401 });
-
-	const body = (await request.json().catch(() => null)) as {
-		url?: string;
-		token?: string;
-		prompt?: string;
-	} | null;
+export const POST = withUser(async ({ request, locals }) => {
+	const body = await readJsonBody<{ url?: string; token?: string; prompt?: string }>(request);
 
 	const saved = getNotify(locals.user.id);
-	let url =
+	const url =
 		typeof body?.url === 'string' && body.url.trim() !== '' ? body.url.trim() : saved?.url ?? '';
-	let token =
+	const token =
 		typeof body?.token === 'string' && body.token.trim() !== ''
 			? body.token.trim()
 			: saved?.token ?? '';
@@ -58,4 +53,4 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const msg = e instanceof Error ? e.message : String(e);
 		return json({ ok: false, error: msg });
 	}
-};
+});

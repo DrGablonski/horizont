@@ -8,10 +8,11 @@ import type {
 	CalDavConnection,
 	CalendarView,
 	DayGroup,
-	EventItem,
+	EventRecord,
 	MainEventsResponse,
 	PanelId,
-	TimePanel
+	TimePanel,
+	TimelineTask
 } from '$lib/types';
 import {
 	addDaysMs,
@@ -22,7 +23,6 @@ import {
 	msFromKey,
 	monthGridDays,
 	monthKeyFromMs,
-	monthStartMs,
 	shiftMonthKey,
 	startOfDayMs,
 	todayKey,
@@ -95,8 +95,8 @@ const PANEL_TITLES: Record<PanelId, { title: string; subtitle: string }> = {
 
 /** Gruppiert Ereignisse + Aufgaben pro Tag (auch Tage nur mit Aufgaben). */
 function bucketDaysMerged(
-	events: EventItem[],
-	tasks: EventItem[],
+	events: EventRecord[],
+	tasks: TimelineTask[],
 	keys: string[],
 	today: string
 ): DayGroup[] {
@@ -139,7 +139,7 @@ async function fetchEventsForItems(
 	resolveErrors: string[],
 	rangeStart: number,
 	rangeEnd: number
-): Promise<{ events: EventItem[]; errors: string[] }> {
+): Promise<{ events: EventRecord[]; errors: string[] }> {
 	const errors: string[] = [...resolveErrors];
 	const perCalendar = await Promise.all(
 		items.map(async ({ connection, calendar }) => {
@@ -153,7 +153,7 @@ async function fetchEventsForItems(
 				return icalToEventItems(icsList, calendar, rangeStart, rangeEnd);
 			} catch (e) {
 				errors.push(`${calendar.connectionName}: ${e instanceof Error ? e.message : String(e)}`);
-				return [] as EventItem[];
+				return [] as EventRecord[];
 			}
 		})
 	);
@@ -165,7 +165,7 @@ async function fetchEventsForItems(
 // ── Tasks in die Timeline einbetten ──────────────────────────────────────
 
 /** Wandelt eine CalDAV-Aufgabe (VTODO) in einen Timeline-Eintrag um. */
-function taskToTimelineItem(t: TaskItem, colors: Map<string, string>): EventItem {
+function taskToTimelineItem(t: TaskItem, colors: Map<string, string>): TimelineTask {
 	const anchorMs = t.dueMs ?? (t.dueKey ? msFromKey(t.dueKey) : null);
 	return {
 		id: `task:${t.calendarId}:${t.uid}`,
@@ -191,7 +191,7 @@ function taskToTimelineItem(t: TaskItem, colors: Map<string, string>): EventItem
 }
 
 /** Tasks, die auf diesem Tag fällig sind (Stichtag oder Datum-Fälligkeit). */
-function tasksForDay(tasks: EventItem[], dayStart: number, dayEnd: number): EventItem[] {
+function tasksForDay(tasks: TimelineTask[], dayStart: number, dayEnd: number): TimelineTask[] {
 	return tasks
 		.filter((t) => (t.dueMs != null && t.dueMs >= dayStart && t.dueMs < dayEnd) ||
 			(t.dueMs == null && t.dueKey != null && msFromKey(t.dueKey) === dayStart))
@@ -376,7 +376,7 @@ async function buildArchive(
 	const gridEnd = addDaysMs(msFromKey(grid[grid.length - 1]), 1);
 	const startMs = Math.max(gridStart, msFromKey(win.oldest));
 	const endMs = Math.min(gridEnd, addDaysMs(msFromKey(win.newest), 1));
-	let events: EventItem[] = [];
+	let events: EventRecord[] = [];
 	let error: string | null = null;
 	// Kalender (ausgeblendete ausgeschlossen) nur einmal auflösen, Events +
 	// Tasks parallel ableiten. Fehler einzelner Verbindungen sammeln.
@@ -388,7 +388,7 @@ async function buildArchive(
 	const [fetched, rawTasks] = await Promise.all([
 		startMs < endMs
 			? fetchEventsForItems(items, resolveErrors, startMs, endMs)
-			: Promise.resolve({ events: [] as EventItem[], errors: [] as string[] }),
+			: Promise.resolve({ events: [] as EventRecord[], errors: [] as string[] }),
 		listAllTasksForItems(items).catch((e) => {
 			taskErrors.push(`Aufgaben: ${e instanceof Error ? e.message : String(e)}`);
 			return [] as TaskItem[];

@@ -5,7 +5,6 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { SESSION_COOKIE, createSession } from '$server/auth/sessionStore';
 import {
 	clientIp,
-	jsonErr,
 	rateLimited,
 	readJsonBody,
 	sessionCookieOptions

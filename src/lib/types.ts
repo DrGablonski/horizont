@@ -172,7 +172,12 @@ export interface CalendarUpdateInput {
 
 // ── Events ────────────────────────────────────────────────────────────────
 
-export interface EventItem {
+/**
+ * Kalender-Termin (VEVENT) in Timeline/Archiv. `kind` fehlt hier immer —
+ * nur Aufgaben tragen `kind: 'task'` (siehe TimelineTask). Ein etwaiges
+ * `kind: 'event'` wird nie gesendet, ist aber zur Abwehr toleriert.
+ */
+export interface EventRecord {
 	id: string;
 	uid: string;
 	calendarId: string;
@@ -184,20 +189,46 @@ export interface EventItem {
 	startMs: number;
 	endMs: number;
 	allDay: boolean;
-	/** 'task' = CalDAV-Aufgabe (VTODO), mitten in der Timeline angezeigt. */
-	kind?: 'event' | 'task';
-	/** Nur Tasks: erledigt? */
-	completed?: boolean;
-	/** Nur Tasks: Erledigungs-Zeitpunkt (VTODO COMPLETED, epoch ms); null = nicht gesetzt. */
+	kind?: 'event';
+}
+
+/**
+ * CalDAV-Aufgabe (VTODO), mitten in der Timeline angezeigt. `kind: 'task'`
+ * wird serverseitig immer gesetzt (panels.ts, taskToTimelineItem).
+ */
+export interface TimelineTask {
+	id: string;
+	uid: string;
+	calendarId: string;
+	calendarName: string;
+	calendarColor: string;
+	summary: string;
+	description?: string;
+	/** Anker: Fälligkeit (dueMs → dueKey → 0), immer allDay = true. */
+	startMs: number;
+	endMs: number;
+	allDay: boolean;
+	kind: 'task';
+	/** Erledigt? */
+	completed: boolean;
+	/** Erledigungs-Zeitpunkt (VTODO COMPLETED, epoch ms); null = nicht gesetzt. */
 	completedAt?: number | null;
-	/** Nur Tasks: Kategorie (CalDAV CATEGORIES) + Farbe. */
+	/** Kategorie (CalDAV CATEGORIES) + Farbe. */
 	category?: string;
 	categoryColor?: string;
-	/** Nur Tasks: Fälligkeit (für den Task-Editor). */
+	/** Fälligkeit (für den Task-Editor). */
 	dueKey?: string;
 	dueMs?: number;
-	/** Nur Tasks: Fälligkeit liegt in der Vergangenheit und ist offen. */
+	/** Fälligkeit liegt in der Vergangenheit und ist offen. */
 	overdue?: boolean;
+}
+
+/** Ein Timeline-Eintrag: Termin oder Aufgabe — diskriminiert über `kind`. */
+export type EventItem = EventRecord | TimelineTask;
+
+/** Type-Guard: Timeline-Eintrag ist eine Aufgabe (VTODO). */
+export function isTimelineTask(item: EventItem): item is TimelineTask {
+	return item.kind === 'task';
 }
 
 export interface DayGroup {
@@ -416,6 +447,7 @@ export interface NotifyTestResult {
 
 export interface ApiTokenView {
 	hasToken: boolean;
+	/** null, wenn kein Token existiert (hasToken false). */
 	createdAt: number | null;
 	lastUsedAt: number | null;
 }

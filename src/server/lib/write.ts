@@ -6,7 +6,7 @@ import type {
 	CalDavConnection,
 	CalDavCalendar,
 	CalendarView,
-	EventItem,
+	EventRecord,
 	EventCreateInput,
 	EventUpdateInput,
 	TaskItem,
@@ -40,7 +40,11 @@ import type { ResolvedCalendar } from '$server/caldav/multi';
 // ── Helfer ────────────────────────────────────────────────────────────────
 
 /** Parallellimitierte Map (CalDAV-Server mögen keine hundert offenen Sockets). */
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(
+	items: T[],
+	limit: number,
+	fn: (item: T) => Promise<R>
+): Promise<R[]> {
 	const out: R[] = new Array(items.length);
 	let next = 0;
 	const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -161,7 +165,7 @@ function buildEventItemFromInput(
 	calendar: CalDavCalendar,
 	uid: string,
 	input: EventUpdateInput
-): EventItem {
+): EventRecord {
 	let startMs: number;
 	let endMs: number;
 
@@ -198,7 +202,7 @@ export async function createEvent(
 	userId: string,
 	connections: CalDavConnection[],
 	input: EventCreateInput
-): Promise<EventItem> {
+): Promise<EventRecord> {
 	validateEventInput(input);
 	const { connection, calendar } = await requireWritableCalendar(userId, connections, input.calendarId);
 
@@ -219,7 +223,7 @@ export async function mutateEvent(
 	calendarId: string,
 	uid: string,
 	input: EventUpdateInput
-): Promise<EventItem> {
+): Promise<EventRecord> {
 	validateEventInput(input);
 	const { connection, calendar } = await requireWritableCalendar(userId, connections, calendarId);
 

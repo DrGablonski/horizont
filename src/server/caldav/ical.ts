@@ -1,4 +1,4 @@
-// Wandelt rohe ics-Blöcke in EventItem-Listen um. Wiederholungen werden per
+// Wandelt rohe ics-Blöcke in EventRecord-Listen um. Wiederholungen werden per
 // ical.js-RekurExpansion expandiert (echte DTSTART ⇒ korrekte UNTIL/COUNT-
 // Semantik), auf den Zielzeitraum gefiltert und nach Beginn sortiert.
 //
@@ -7,7 +7,7 @@
 // Signaturen bleiben strikt.
 
 import Ical from 'ical.js';
-import type { CalDavCalendar, EventItem } from '$lib/types';
+import type { CalDavCalendar, EventRecord } from '$lib/types';
 import { MAX_OCCURRENCES } from '$server/lib/constants';
 
 const DAY_MS = 86_400_000;
@@ -44,8 +44,8 @@ export function icalToEventItems(
 	calendar: CalDavCalendar,
 	rangeStart: number,
 	rangeEnd: number
-): EventItem[] {
-	const items: EventItem[] = [];
+): EventRecord[] {
+	const items: EventRecord[] = [];
 
 	for (const ics of icsList) {
 		let comp: any;

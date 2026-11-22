@@ -21,45 +21,48 @@
 	} = $props();
 
 	let showActions = $state(false);
-	const isTask = $derived(ev.kind === 'task');
+	// Vorab verfeinerte Sicht (Vorlage narrowing funktioniert nur an einfachen Variablen):
+	// task != null ⇔ Aufgabe (VTODO), event != null ⇔ Kalender-Termin (VEVENT).
+	const task = $derived(ev.kind === 'task' ? ev : null);
+	const event = $derived(ev.kind === 'task' ? null : ev);
 </script>
 
 <article
-	class="group flex gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40 {isTask && ev.overdue
+	class="group flex gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/40 {task?.overdue
 		? 'border-destructive/50 bg-destructive/5'
 		: 'border-border bg-background/40'}"
-	class:opacity-60={isTask && ev.completed}
+	class:opacity-60={!!task?.completed}
 	onmouseenter={() => (showActions = true)}
 	onmouseleave={() => (showActions = false)}
 >
 	<div class="w-16 shrink-0 text-right">
-		{#if isTask}
+		{#if task}
 			<div class="flex items-center justify-end gap-1">
-				{#if ev.dueMs != null}
-					<span class="text-sm font-semibold tabular-nums">{timeShort(ev.dueMs)}</span>
+				{#if task.dueMs != null}
+					<span class="text-sm font-semibold tabular-nums">{timeShort(task.dueMs)}</span>
 				{/if}
 				<button
 					type="button"
 					role="checkbox"
-					aria-checked={!!ev.completed}
-					aria-label={ev.completed ? 'Aufgabe wieder öffnen' : 'Aufgabe abhaken'}
-					title={ev.completed ? 'Aufgabe wieder öffnen' : 'Aufgabe abhaken'}
-					onclick={() => onToggleTask?.(ev)}
-					class="flex size-4.5 shrink-0 items-center justify-center rounded-[4px] border transition-colors {ev.completed
+					aria-checked={!!task.completed}
+					aria-label={task.completed ? 'Aufgabe wieder öffnen' : 'Aufgabe abhaken'}
+					title={task.completed ? 'Aufgabe wieder öffnen' : 'Aufgabe abhaken'}
+					onclick={() => onToggleTask?.(task)}
+					class="flex size-4.5 shrink-0 items-center justify-center rounded-[4px] border transition-colors {task.completed
 						? 'border-primary bg-primary text-primary-foreground'
-						: ev.overdue
+						: task.overdue
 							? 'border-destructive/60 hover:border-destructive'
 							: 'border-input bg-input/30 hover:border-primary/60'}"
 				>
-					{#if ev.completed}<CheckIcon class="size-3.5" />{/if}
+					{#if task.completed}<CheckIcon class="size-3.5" />{/if}
 				</button>
 			</div>
-			{#if ev.overdue}
+			{#if task.overdue}
 				<span class="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-destructive">
 					<CircleMinusIcon class="size-3.5" />
 					überfällig
 				</span>
-			{:else if ev.dueKey && ev.dueMs == null}
+			{:else if task.dueKey && task.dueMs == null}
 				<span class="block text-xs text-muted-foreground">fällig</span>
 			{/if}
 		{:else if ev.allDay}
@@ -78,10 +81,10 @@
 		<div class="flex items-start gap-1">
 			<button
 				class="min-w-0 flex-1 truncate text-left text-sm font-medium hover:underline"
-				class:line-through={isTask && ev.completed}
-				class:text-muted-foreground={isTask && ev.completed}
+				class:line-through={!!task?.completed}
+				class:text-muted-foreground={!!task?.completed}
 				onclick={() => onEdit?.(ev)}
-				title={isTask ? 'Aufgabe bearbeiten' : 'Bearbeiten'}
+				title={task ? 'Aufgabe bearbeiten' : 'Bearbeiten'}
 			>
 				{ev.summary}
 			</button>
@@ -95,7 +98,7 @@
 						<button
 							class="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
 							onclick={(e) => { e.stopPropagation(); onEdit(ev); }}
-							title={isTask ? 'Aufgabe bearbeiten' : 'Bearbeiten'}
+							title={task ? 'Aufgabe bearbeiten' : 'Bearbeiten'}
 						>
 							<PencilIcon class="size-3" />
 						</button>
@@ -113,12 +116,12 @@
 			{/if}
 		</div>
 		<div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-			{#if isTask}
+			{#if task}
 				<span class="shrink-0 inline-flex items-center gap-1.5">
-					{#if ev.category}
+					{#if task.category}
 						<span class="inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-foreground">
-							<span class="size-2 rounded-full" style="background:{ev.categoryColor ?? '#64748b'}"></span>
-							{ev.category}
+							<span class="size-2 rounded-full" style="background:{task.categoryColor ?? '#64748b'}"></span>
+							{task.category}
 						</span>
 					{:else}
 						<span>Aufgabe</span>
@@ -127,10 +130,10 @@
 			{:else}
 				<span class="truncate">{ev.calendarName}</span>
 			{/if}
-			{#if ev.location}
+			{#if event?.location}
 				<span class="inline-flex min-w-0 items-center gap-1">
 					<MapPinIcon class="size-3 shrink-0" />
-					<span class="truncate">{ev.location}</span>
+					<span class="truncate">{event.location}</span>
 				</span>
 			{/if}
 		</div>

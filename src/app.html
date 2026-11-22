@@ -11,7 +11,7 @@
 		<script>
 			// Wendet das gespeicherte Theme vor dem ersten Paint an, damit auf
 			// Dark-Mode-Geräten nicht kurz Hell aufblitzt. Logik wie in $lib/theme.ts.
-			(function () {
+			(() => {
 				try {
 					var t = localStorage.getItem('horizont-theme');
 					if (

@@ -2,7 +2,8 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
-	import type { ArchiveMonth, EventItem } from '$lib/types';
+	import { isTimelineTask } from '$lib/types';
+	import type { ArchiveMonth, EventItem, TimelineTask } from '$lib/types';
 	import MonthGrid from '$lib/components/MonthGrid.svelte';
 	import EventRow from '$lib/components/EventRow.svelte';
 	import StatusBanner from '$lib/components/StatusBanner.svelte';
@@ -40,13 +41,14 @@
 	// Rücknahme + Fehlermeldung, wenn CalDAV-Speichern fehlschlägt).
 	function setTaskCompleted(uid: string, completed: boolean): void {
 		for (const g of data?.days ?? []) {
-			const it = g.events.find((e) => e.kind === 'task' && e.uid === uid);
+			const it = g.events.find((e): e is TimelineTask => isTimelineTask(e) && e.uid === uid);
 			if (it) it.completed = completed;
 		}
 	}
 
 	async function toggleTask(ev: EventItem): Promise<void> {
-		const was = !!ev.completed;
+		if (!isTimelineTask(ev)) return;
+		const was = ev.completed;
 		const now = !was;
 		setTaskCompleted(ev.uid, now);
 		try {

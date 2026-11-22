@@ -1,5 +1,7 @@
 // Client-seitiger API-Zugriff auf die /api-Endpunkte.
 
+import { browser } from '$app/environment';
+import { goto } from '$app/navigation';
 import type {
 	ApiTokenGenerated,
 	ApiTokenView,
@@ -14,7 +16,7 @@ import type {
 	CreateWorkflowInput,
 	AppUser,
 	EventCreateInput,
-	EventItem,
+	EventRecord,
 	EventUpdateInput,
 	MainEventsResponse,
 	SetupResult,
@@ -34,10 +36,25 @@ import type {
 	Workflow
 } from './types';
 
+/** Fehler mit HTTP-Status, damit Aufrufer zwischen 401/403/409 … unterscheiden können. */
+export class ApiError extends Error {
+	constructor(
+		message: string,
+		public status: number
+	) {
+		super(message);
+		this.name = 'ApiError';
+	}
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(path, {
-		headers: { 'Content-Type': 'application/json' },
-		...init
+		...init,
+		headers: {
+			// Content-Type nur bei vorhandenem Body (GET ohne Body soll ihn nicht tragen).
+			...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+			...(init?.headers as Record<string, string> | undefined)
+		}
 	});
 	if (!res.ok) {
 		let msg = `HTTP ${res.status}`;
@@ -47,7 +64,11 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 		} catch {
 			/* body war kein JSON */
 		}
-		throw new Error(msg);
+		// Abgelaufene/ungültige Session: direkt zurück zum Login (außer wir sind schon dort).
+		if (res.status === 401 && browser && window.location.pathname !== '/login') {
+			void goto('/login', { replaceState: true });
+		}
+		throw new ApiError(msg, res.status);
 	}
 	return (await res.json()) as T;
 }
@@ -176,9 +197,9 @@ export const api = {
 
 	// Event-CRUD
 	createEvent: (input: EventCreateInput) =>
-		req<EventItem>('/api/events', { method: 'POST', body: JSON.stringify(input) }),
+		req<EventRecord>('/api/events', { method: 'POST', body: JSON.stringify(input) }),
 	updateEvent: (calendarId: string, uid: string, input: EventUpdateInput) =>
-		req<EventItem>(`/api/events/${encodeURIComponent(calendarId)}/${encodeURIComponent(uid)}`, {
+		req<EventRecord>(`/api/events/${encodeURIComponent(calendarId)}/${encodeURIComponent(uid)}`, {
 			method: 'PATCH',
 			body: JSON.stringify(input)
 		}),

@@ -18,10 +18,16 @@
 		onDelete?: (ev: EventItem) => void;
 		onToggleTask?: (ev: EventItem) => void;
 	} = $props();
-	let open = $state(panel.defaultOpen);
+	// Offen-Zustand: erst folgt er panel.defaultOpen, sobald der Nutzer klickt, gewinnt die eigene Wahl.
+	let userOpen = $state<boolean | null>(null);
+	let open = $derived(userOpen ?? panel.defaultOpen);
 </script>
 
-<Collapsible bind:open class="group/panel overflow-hidden rounded-xl border border-border bg-card">
+<Collapsible
+	{open}
+	onOpenChange={(v) => (userOpen = v)}
+	class="group/panel overflow-hidden rounded-xl border border-border bg-card"
+>
 	<CollapsibleTrigger
 		class="flex w-full items-center gap-3 px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
 	>

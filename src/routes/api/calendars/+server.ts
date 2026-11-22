@@ -4,14 +4,15 @@
 // Fehler antworten immer als { error: string }.
 
 import { json } from '@sveltejs/kit';
-import type { RequestHandler } from '@sveltejs/kit';
 import { createHash, randomBytes } from 'node:crypto';
 import type { CalendarCreateInput, CalendarView } from '$lib/types';
-import { CalDavError, PALETTE, collectionExists, mkCalendar, resolveHome } from '$server/caldav/client';
+import { PALETTE, collectionExists, mkCalendar, resolveHome } from '$server/caldav/client';
 import { resolveCalendarViews } from '$server/caldav/multi';
 import { getConnectionById, listConnections } from '$server/store/connections';
 import { updateCalendarPref } from '$server/store/calendarPrefs';
 import { invalidatePanelCache } from '$server/lib/panelCache';
+import { readJsonBody } from '$server/auth/apiHelpers';
+import { withUser } from '$server/lib/route';
 
 /** ASCII-Slug aus dem Kalendernamen (Umlaute aufgelöst, nicht [a-z0-9] → '-'). */
 function slugify(name: string): string {
@@ -24,9 +25,7 @@ function slugify(name: string): string {
 	return s || 'kalender';
 }
 
-export const GET: RequestHandler = async ({ url, locals }) => {
-	if (!locals.user) return json({ error: 'Nicht angemeldet.' }, { status: 401 });
-
+export const GET = withUser(async ({ url, locals }) => {
 	const conns = listConnections(locals.user.id);
 	if (conns.length === 0) {
 		return json({ configured: false, calendars: [], errors: [], primaryId: null });
@@ -39,12 +38,10 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 		includeHidden
 	});
 	return json({ configured: true, calendars, errors, primaryId });
-};
+});
 
-export const POST: RequestHandler = async ({ request, locals }) => {
-	if (!locals.user) return json({ error: 'Nicht angemeldet.' }, { status: 401 });
-
-	const body = (await request.json().catch(() => null)) as CalendarCreateInput | null;
+export const POST = withUser(async ({ request, locals }) => {
+	const body = await readJsonBody<CalendarCreateInput>(request);
 	if (!body || typeof body.connectionId !== 'string' || !body.connectionId) {
 		return json({ error: 'Verbindungs-ID fehlt.' }, { status: 400 });
 	}
@@ -65,38 +62,33 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		: [];
 	const components = comps.length > 0 ? comps : ['VEVENT', 'VTODO'];
 
-	try {
-		const { home } = await resolveHome(conn);
-		const target = `${home.replace(/\/?$/, '/')}${slugify(name)}-${randomBytes(3).toString('hex')}.ics`;
-		if (await collectionExists(conn, target)) {
-			return json({ error: 'Ein Kalender mit diesem Namen existiert bereits.' }, { status: 409 });
-		}
-		await mkCalendar(conn, target, name, components);
-
-		// Frische View aufbauen — id und Palette-Farbe wie in der Kalender-Liste.
-		const hash = createHash('sha256').update(target).digest('hex').slice(0, 12);
-		if (color) updateCalendarPref(userId, hash, { color });
-		invalidatePanelCache();
-
-		const view: CalendarView = {
-			id: hash,
-			name,
-			color: color ?? PALETTE[parseInt(hash, 16) % PALETTE.length],
-			url: target,
-			connectionName: conn.name,
-			connectionId: conn.id,
-			role: conn.role,
-			writable: true,
-			writeDisabled: false,
-			hidden: false,
-			isDefault: false,
-			order: null,
-			colorOverride: color ?? null,
-			supportedComponents: components
-		};
-		return json(view, { status: 201 });
-	} catch (e) {
-		if (e instanceof CalDavError) return json({ error: e.message }, { status: 502 });
-		return json({ error: e instanceof Error ? e.message : 'Kalender konnte nicht angelegt werden.' }, { status: 500 });
+	const { home } = await resolveHome(conn);
+	const target = `${home.replace(/\/?$/, '/')}${slugify(name)}-${randomBytes(3).toString('hex')}.ics`;
+	if (await collectionExists(conn, target)) {
+		return json({ error: 'Ein Kalender mit diesem Namen existiert bereits.' }, { status: 409 });
 	}
-};
+	await mkCalendar(conn, target, name, components);
+
+	// Frische View aufbauen — id und Palette-Farbe wie in der Kalender-Liste.
+	const hash = createHash('sha256').update(target).digest('hex').slice(0, 12);
+	if (color) updateCalendarPref(userId, hash, { color });
+	invalidatePanelCache();
+
+	const view: CalendarView = {
+		id: hash,
+		name,
+		color: color ?? PALETTE[parseInt(hash, 16) % PALETTE.length],
+		url: target,
+		connectionName: conn.name,
+		connectionId: conn.id,
+		role: conn.role,
+		writable: true,
+		writeDisabled: false,
+		hidden: false,
+		isDefault: false,
+		order: null,
+		colorOverride: color ?? null,
+		supportedComponents: components
+	};
+	return json(view, { status: 201 });
+});

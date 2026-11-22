@@ -5,15 +5,13 @@
 // Einstellung (also auch, wenn Automatik auf „Nur manuell" steht).
 
 import { json } from '@sveltejs/kit';
-import type { RequestHandler } from '@sveltejs/kit';
+import { withUser } from '$server/lib/route';
 import { getNotify } from '$server/store/notify';
 import { sendMessageForUser } from '$server/jobs/notify';
 
-export const POST: RequestHandler = async ({ locals }) => {
-	if (!locals.user) return json({ error: 'Nicht angemeldet.' }, { status: 401 });
-
+export const POST = withUser(async ({ locals }) => {
 	const cfg = getNotify(locals.user.id);
-	if (!cfg || !cfg.url || !cfg.token) {
+	if (!cfg?.url || !cfg.token) {
 		return json(
 			{ ok: false, error: 'Bitte zuerst Webhook-URL und Zugriffsschlüssel speichern.' },
 			{ status: 400 }
@@ -21,4 +19,4 @@ export const POST: RequestHandler = async ({ locals }) => {
 	}
 	const result = await sendMessageForUser(locals.user.id, cfg, new Date());
 	return json(result);
-};
+});

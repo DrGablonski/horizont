@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { api } from '$lib/api';
+	import { errMsg } from '$lib/errors';
 	import type { Workflow, WorkflowStep } from '$lib/types';
 	import { toast } from 'svelte-sonner';
 	import Card from '$lib/components/ui/card/card.svelte';
@@ -38,19 +39,16 @@
 	let collapsed = $state(false);
 	let newStep = $state('');
 
+	// Die Entwürfe werden erst beim Bearbeiten-Freischalten mit den aktuellen Werten befüllt.
 	let editingTitle = $state(false);
-	let titleDraft = $state(wf.title);
+	let titleDraft = $state('');
 
 	let editingNotes = $state(false);
-	let notesDraft = $state(wf.notes);
+	let notesDraft = $state('');
 
 	let percent = $derived(Math.round(wf.progress * 100));
 	let activeStep = $derived(wf.steps.find((s) => s.id === wf.activeStepId) ?? null);
 	let doneCount = $derived(wf.steps.filter((s) => s.done).length);
-
-	function errMsg(e: unknown): string {
-		return e instanceof Error ? e.message : String(e);
-	}
 
 	function startTitle(): void {
 		titleDraft = wf.title;

@@ -14,7 +14,7 @@
 	export let onClose = () => {};
 	export let calendars: CalDavCalendar[] = [];
 	export let initial: Partial<EventUpdateInput> & { calendarId?: string; uid?: string } = {};
-	export let onSubmit: (input: EventCreateInput | EventUpdateInput) => Promise<void> = async () => {};
+	export let onSubmit: (input: EventCreateInput) => Promise<void> = async () => {};
 
 	const p2 = (n: number) => String(n).padStart(2, '0');
 	const now = new Date();
@@ -115,7 +115,7 @@
 				endMs: allDay ? undefined : endMs
 			};
 			if (mode === 'create') {
-				await onSubmit({ ...input, calendarId } as EventCreateInput);
+				await onSubmit({ ...input, calendarId });
 			} else {
 				await onSubmit(input);
 			}

@@ -157,13 +157,15 @@ export function buildWorkflowIcs(wf: Workflow): string {
 
 /** ICS-Text → Workflow (oder null, wenn kein gültiges Workflow-Objekt enthalten). */
 export function parseWorkflowIcs(ics: string): Workflow | null {
-	let comp: any;
+	let vtodos: any[];
 	try {
-		comp = new Ical.Component(Ical.parse(unfold(ics)) as any);
+		const comp = new Ical.Component(Ical.parse(unfold(ics)) as any);
+		// getAllSubcomponents mit in den try: Ical.parse('') liefert ein
+		// Component ohne jCal-Zweig und wirft erst hier (TypeError).
+		vtodos = comp.getAllSubcomponents('vtodo') ?? [];
 	} catch {
 		return null;
 	}
-	const vtodos: any[] = comp.getAllSubcomponents('vtodo') ?? [];
 	for (const v of vtodos) {
 		const b64 = v.getFirstPropertyValue?.(X_PROP);
 		if (typeof b64 !== 'string' || b64.length === 0) continue;

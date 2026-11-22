@@ -5,8 +5,9 @@
 // Persistenz: DATA_DIR/users/<id>/api-token.json (atomares Schreiben).
 // Bei User-Löschung verschwindet die Datei mit dem User-Verzeichnis.
 
-import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scrypt, scryptSync, timingSafeEqual } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync, unlinkSync } from 'node:fs';
+import { rename as renameAsync, writeFile as writeFileAsync } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DATA_DIR } from '$server/lib/constants';
 import { listUsers, publicUser } from '$server/auth/userStore';
@@ -61,8 +62,34 @@ function writeTokenAtomic(userId: string, data: TokenFile): void {
 	renameSync(tmp, p);
 }
 
+/**
+ * Fire-and-forget-Variante für den Hot-Pfad (lastUsedAt): blockiert die
+ * Antwort nicht; Fehler werden bewusst verworfen — der Wert wird beim
+ * nächsten Request einfach nochmal versucht (selbstheilend).
+ */
+function writeTokenAtomicAsync(userId: string, data: TokenFile): void {
+	const p = tokenPath(userId);
+	const tmp = `${p}.tmp`;
+	writeFileAsync(tmp, JSON.stringify(data, null, 2), 'utf8')
+		.then(() => renameAsync(tmp, p))
+		.catch(() => {
+			/* Best-Effort. */
+		});
+}
+
+/** scrypt (sync) — nur für seltene Pfade (Token-Erzeugung). */
 function scryptOf(token: string, saltHex: string): string {
 	return scryptSync(token, saltHex, KEY_BYTES, SCRYPT_OPTS).toString('hex');
+}
+
+/** scrypt (async) — auf dem Hot-Pfad (Bearer-Verifikation), damit der Event-Loop frei bleibt. */
+function scryptOfAsync(token: string, saltHex: string): Promise<string> {
+	return new Promise((resolve, reject) => {
+		scrypt(token, saltHex, KEY_BYTES, SCRYPT_OPTS, (err, key) => {
+			if (err) reject(err);
+			else resolve(key.toString('hex'));
+		});
+	});
 }
 
 /**
@@ -108,10 +135,11 @@ export function getApiTokenView(userId: string): ApiTokenView {
  * Löst einen Bearer-Token in einen User auf.
  *
  * Ablauf: SHA-256-Digest (billig) über alle User-Dateien vergleichen,
- * scrypt-Verifikation nur beim Digest-Treffer; die letzten-Nutzung wird
- * (gedrosselt) mitgespeichert.
+ * scrypt-Verifikation (async — blockiert den Event-Loop nicht) nur beim
+ * Digest-Treffer; die letzten-Nutzung wird gedrosselt und nicht-blockierend
+ * nachgetragen.
  */
-export function resolveApiTokenUser(token: string): AppUser | null {
+export async function resolveApiTokenUser(token: string): Promise<AppUser | null> {
 	if (typeof token !== 'string' || token.length < MIN_TOKEN_LEN || !token.startsWith(TOKEN_PREFIX)) {
 		return null;
 	}
@@ -119,13 +147,14 @@ export function resolveApiTokenUser(token: string): AppUser | null {
 	for (const u of listUsers()) {
 		const t = readToken(u.id);
 		if (!t || t.digest !== digest) continue;
-		const a = Buffer.from(scryptOf(token, t.salt), 'hex');
+		const a = Buffer.from(await scryptOfAsync(token, t.salt), 'hex');
 		const b = Buffer.from(t.hash, 'hex');
 		if (a.length !== b.length || !timingSafeEqual(a, b)) continue;
 		const now = Date.now();
 		if (t.lastUsedAt == null || now - t.lastUsedAt >= LAST_USED_MIN_INTERVAL_MS) {
 			t.lastUsedAt = now;
-			writeTokenAtomic(u.id, t);
+			// Nicht blockierend: die Antwort soll nicht auf die Festplatte warten.
+			writeTokenAtomicAsync(u.id, t);
 		}
 		return publicUser(u);
 	}

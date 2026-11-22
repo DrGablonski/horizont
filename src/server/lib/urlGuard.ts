@@ -39,7 +39,7 @@ function v6Hextets(ip: string): string[] | null {
 		left = s.slice(0, ci);
 		right = s.slice(ci + 2);
 	}
-	let l = left === '' ? [] : left.split(':');
+	const l = left === '' ? [] : left.split(':');
 	let r = right === '' ? [] : right.split(':');
 	// IPv4-embeddede Form („…:1.2.3.4"): letztes Element in Hextets wandeln.
 	if (r.length > 0 && r[r.length - 1].includes('.')) {

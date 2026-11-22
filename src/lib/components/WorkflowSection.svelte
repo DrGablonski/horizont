@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
+	import { errMsg } from '$lib/errors';
 	import type { Workflow } from '$lib/types';
 	import { toast } from 'svelte-sonner';
 	import WorkflowCard from './WorkflowCard.svelte';
@@ -18,10 +19,6 @@
 	let busy = $state(false);
 	let title = $state('');
 	let stepsText = $state('');
-
-	function errMsg(e: unknown): string {
-		return e instanceof Error ? e.message : String(e);
-	}
 
 	function sync(updated: Workflow): void {
 		workflows = workflows.map((w) => (w.id === updated.id ? updated : w));

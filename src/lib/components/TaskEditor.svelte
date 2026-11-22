@@ -15,7 +15,7 @@
 	export let calendars: CalDavCalendar[] = [];
 	export let categories: TaskCategory[] = [];
 	export let initial: Partial<TaskUpdateInput> & { calendarId?: string; uid?: string } = {};
-	export let onSubmit: (input: TaskCreateInput | TaskUpdateInput) => Promise<void> = async () => {};
+	export let onSubmit: (input: TaskCreateInput) => Promise<void> = async () => {};
 
 	let summary = initial.summary ?? '';
 	let description = initial.description ?? '';
@@ -90,9 +90,9 @@
 			};
 
 			if (mode === 'create') {
-				await onSubmit({ ...base, calendarId } as TaskCreateInput);
+				await onSubmit({ ...base, calendarId });
 			} else {
-				await onSubmit(base as TaskUpdateInput);
+				await onSubmit(base);
 			}
 			onClose();
 		} catch (e: any) {

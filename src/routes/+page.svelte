@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
+	import { isTimelineTask } from '$lib/types';
 	import type {
 		MainEventsResponse,
 		EventItem,
-		CalendarView,
+		CalDavCalendar,
 		EventUpdateInput,
 		EventCreateInput,
+		TimelineTask,
 		TaskUpdateInput,
 		TaskCreateInput,
 		TaskCategory
@@ -19,6 +21,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
 	import { dayKey } from '$lib/dates';
+	import { errMsg } from '$lib/errors';
 	import { cn } from '$lib/utils';
 	import { toast } from 'svelte-sonner';
 	import RotateCwIcon from '@lucide/svelte/icons/rotate-cw';
@@ -41,10 +44,6 @@
 	let taskEditorOpen = $state(false);
 	let taskEditorMode = $state<'create' | 'edit'>('create');
 	let taskEditorInitial = $state<Partial<TaskUpdateInput> & { calendarId?: string; uid?: string }>({});
-
-	function errMsg(e: unknown): string {
-		return e instanceof Error ? e.message : String(e);
-	}
 
 	async function load(): Promise<void> {
 		loading = true;
@@ -137,16 +136,16 @@
 		}
 	}
 
-	async function handleEditorSubmit(input: EventCreateInput | EventUpdateInput) {
+	async function handleEditorSubmit(input: EventCreateInput) {
 		try {
 			if (editorMode === 'create') {
-				await api.createEvent(input as EventCreateInput);
+				await api.createEvent(input);
 				toast.success('Event erstellt.');
 			} else {
 				const evUid = editorInitial.uid;
 				const evCalId = editorInitial.calendarId;
 				if (evUid && evCalId) {
-					await api.updateEvent(evCalId, evUid, input as EventUpdateInput);
+					await api.updateEvent(evCalId, evUid, input);
 					toast.success('Event aktualisiert.');
 				}
 			}
@@ -159,10 +158,10 @@
 
 	// ── Task-Handler (optimistic wie bei Social-Media-Likes) ───────────────
 
-	function findTimelineItem(uid: string): EventItem | undefined {
+	function findTimelineItem(uid: string): TimelineTask | undefined {
 		for (const p of data?.panels ?? [])
 			for (const g of p.days) {
-				const it = g.events.find((e) => e.kind === 'task' && e.uid === uid);
+				const it = g.events.find((e): e is TimelineTask => isTimelineTask(e) && e.uid === uid);
 				if (it) return it;
 			}
 		return undefined;
@@ -202,6 +201,7 @@
 	 * in der Timeline erscheinen.
 	 */
 	async function toggleTask(ev: EventItem): Promise<void> {
+		if (!isTimelineTask(ev)) return;
 		const was = !!ev.completed;
 		const now = !was;
 		let undo: () => void = () => {};
@@ -224,7 +224,7 @@
 		taskEditorOpen = true;
 	}
 
-	function openTaskEdit(ev: EventItem) {
+	function openTaskEdit(ev: TimelineTask) {
 		taskEditorMode = 'edit';
 		taskEditorInitial = {
 			uid: ev.uid,
@@ -242,16 +242,16 @@
 		taskEditorOpen = true;
 	}
 
-	async function handleTaskSubmit(input: TaskCreateInput | TaskUpdateInput) {
+	async function handleTaskSubmit(input: TaskCreateInput) {
 		try {
 			if (taskEditorMode === 'create') {
-				await api.createTask(input as TaskCreateInput);
+				await api.createTask(input);
 				toast.success('Aufgabe erstellt.');
 			} else {
 				const uid = taskEditorInitial.uid;
 				const calId = taskEditorInitial.calendarId;
 				if (uid && calId) {
-					await api.updateTask(calId, uid, input as TaskUpdateInput);
+					await api.updateTask(calId, uid, input);
 					toast.success('Aufgabe aktualisiert.');
 				}
 			}

@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { api } from '$lib/api';
+	import { errMsg } from '$lib/errors';
 	import type { Workflow, WorkflowStep } from '$lib/types';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Progress from '$lib/components/ui/progress/progress.svelte';
@@ -22,10 +23,6 @@
 	let notFound = $state(false);
 	let busy = $state(false);
 	let seq = 0;
-
-	function errMsg(e: unknown): string {
-		return e instanceof Error ? e.message : String(e);
-	}
 
 	function back(): void {
 		void goto('/');

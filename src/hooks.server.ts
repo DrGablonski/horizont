@@ -1,7 +1,7 @@
 // Zentrales Auth-Gate:
 //  - Session-Cookie        → event.locals.user
 //  - API-Token (Bearer)    → event.locals.user (nur /api/*, für externe Tools)
-//  - /api/*                → 401 JSON (außer /api/auth/*)
+//  - /api/*                → 401 JSON (außer /api/auth/login, /api/auth/setup, /api/health)
 //  - Seiten                 → 303-Redirect zu /login bzw. /setup (wenn noch kein User existiert)
 
 import { redirect } from '@sveltejs/kit';
@@ -9,14 +9,10 @@ import type { Handle } from '@sveltejs/kit';
 import { SESSION_COOKIE, getSessionUser } from '$server/auth/sessionStore';
 import { hasUsers } from '$server/auth/userStore';
 import { resolveApiTokenUser } from '$server/auth/apiToken';
-import { removeLegacyAgentFiles } from '$server/lib/legacyCleanup';
-import { startNotifyJob } from '$server/jobs/notify';
+import { initStartup } from '$server/startup';
 
-// Beim Start: verwaiste Agent-Config-Dateien entfernen (Funktion entfernt).
-removeLegacyAgentFiles();
-
-// Täglicher Benachrichtigungs-Job (offene Schul-Tasks per Webhook).
-startNotifyJob();
+// Einmalige Start-Effekte (Cleanup + Notify-Job) — siehe src/server/startup.ts.
+initStartup();
 
 function notLoggedIn(): Response {
 	return new Response(JSON.stringify({ error: 'Nicht angemeldet.' }), {
@@ -25,18 +21,13 @@ function notLoggedIn(): Response {
 	});
 }
 
-function forbidden(): Response {
-	return new Response(JSON.stringify({ error: 'Keine Berechtigung.' }), {
-		status: 403,
-		headers: { 'Content-Type': 'application/json' }
-	});
-}
+
 
 // Globale Body-Obergrenze: JSON-Payloads sind klein; größere Bodies haben
 // keinen Sinn und würden sonst Speicherressourcen binden (DoS).
 const MAX_REQUEST_BODY_BYTES = 1024 * 1024; // 1 MiB
 
-export const handle: Handle = ({ event, resolve }) => {
+export const handle: Handle = async ({ event, resolve }) => {
 	const path = event.url.pathname;
 
 	// Body-Limit (Content-Length bekannt). Chunked-Bodies ohne Content-Length
@@ -53,6 +44,8 @@ export const handle: Handle = ({ event, resolve }) => {
 
 	const isApi = path.startsWith('/api/');
 	const isAuthApi = path === '/api/auth/login' || path === '/api/auth/setup';
+	// Öffentlicher Lese-Prüf-Endpunkt (Docker-Healthcheck, nur GET).
+	const isHealthApi = path === '/api/health';
 	const isPublicPage = path === '/login' || path === '/setup';
 
 	const cookieToken = event.cookies.get(SESSION_COOKIE);
@@ -63,15 +56,16 @@ export const handle: Handle = ({ event, resolve }) => {
 	if (user == null && isApi) {
 		const auth = event.request.headers.get('authorization') ?? '';
 		const m = auth.match(/^Bearer\s+(.+)$/i);
-		if (m) user = resolveApiTokenUser(m[1].trim());
+		if (m) user = await resolveApiTokenUser(m[1].trim());
 	}
 	event.locals.user = user;
 
 	// ── Nicht angemeldet ───────────────────────────────────────────────────
 	if (user == null) {
 		if (isApi) {
-			// Login/Setup sind die öffentlichen Endpunkte.
+			// Login/Setup sind die öffentlichen Endpunkte; /api/health ist öffentlich (GET).
 			if (isAuthApi && event.request.method === 'POST') return resolve(event);
+			if (isHealthApi && event.request.method === 'GET') return resolve(event);
 			return notLoggedIn();
 		}
 		// Seiten: Setup ist nur öffentlich, solange es gar keinen User gibt.

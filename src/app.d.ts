@@ -1,17 +1,12 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
 // for information about these interfaces
+import type { AppUser } from '$lib/types';
+
 declare global {
 	namespace App {
 		interface Locals {
-			/** Angemeldeter User (aus Session-Cookie) oder null. */
-			user: {
-				id: string;
-				username: string;
-				createdAt: number;
-				lastLoginAt: number | null;
-			} | null;
+			/** Angemeldeter User (Session-Cookie oder API-Token) oder null. */
+			user: AppUser | null;
 		}
 	}
 }
-
-export {};

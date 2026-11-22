@@ -474,7 +474,7 @@ function stripCdata(s: string): string {
 
 function extractIcsFromBlock(block: string): string | null {
 	// Fall A: direkter Text / CDATA
-	let direct = stripCdata(block);
+	const direct = stripCdata(block);
 	if (direct.startsWith('BEGIN:VCALENDAR')) return direct;
 
 	// Fall B: <...calendar-data> ... </...calendar-data>
@@ -482,7 +482,7 @@ function extractIcsFromBlock(block: string): string | null {
 		/<(?:[a-zA-Z][\w]*:)?calendar-data[^>]*>([\s\S]*?)<\/(?:[a-zA-Z][\w]*:)?calendar-data\s*>/i
 	);
 	if (m) {
-		let inner = stripCdata(m[1]);
+		const inner = stripCdata(m[1]);
 		if (inner.startsWith('BEGIN:VCALENDAR')) return decodeXmlEntities(inner);
 	}
 	return null;
@@ -528,7 +528,7 @@ export async function fetchCalendarIcs(
 </C:calendar-query>`;
 
 	const url = calendar.url.replace(/\/?$/, '/');
-	let r = await davRequest(settings, url, 'REPORT', report, {
+	const r = await davRequest(settings, url, 'REPORT', report, {
 		Depth: '1',
 		Accept: 'application/xml, text/calendar, */*'
 	});

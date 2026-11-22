@@ -1,49 +1,30 @@
 import { json } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
+import type { RequestEvent } from './$types';
+import { readJsonBody } from '$server/auth/apiHelpers';
+import { withUser } from '$server/lib/route';
 import { listConnections } from '$server/store/connections';
-import { mutateTask, removeTask, NotFoundError, ReadOnlyError, ValidationError } from '$server/lib/write';
-import { CalDavError } from '$server/caldav/client';
+import { mutateTask, removeTask } from '$server/lib/write';
 import type { TaskUpdateInput } from '$lib/types';
 
-function handleError(e: any) {
-	if (e instanceof ValidationError) return json({ error: e.message }, { status: 400 });
-	if (e instanceof NotFoundError) return json({ error: e.message }, { status: 404 });
-	if (e instanceof ReadOnlyError) return json({ error: e.message }, { status: 403 });
-	if (e instanceof CalDavError) return json({ error: e.message }, { status: e.status === 409 ? 409 : 502 });
-	return json({ error: e.message ?? 'Unbekannter Fehler' }, { status: 500 });
-}
-
-export const PATCH: RequestHandler = async ({ params, request, locals }) => {
-	const connections = locals.user ? listConnections(locals.user.id) : [];
+export const PATCH = withUser<RequestEvent>(async ({ params, request, locals }) => {
+	const connections = listConnections(locals.user.id);
 	if (connections.length === 0) {
 		return json({ error: 'Keine CalDAV-Verbindung konfiguriert.' }, { status: 400 });
 	}
 
-	let body: TaskUpdateInput;
-	try {
-		body = await request.json();
-	} catch {
-		return json({ error: 'Ungültiger JSON-Body.' }, { status: 400 });
-	}
+	const body = await readJsonBody<TaskUpdateInput>(request);
+	if (!body) return json({ error: 'Ungültiger JSON-Body.' }, { status: 400 });
 
-	try {
-		const item = await mutateTask(locals.user?.id ?? '', connections, params.calendarId, params.uid, body);
-		return json(item);
-	} catch (e: any) {
-		return handleError(e);
-	}
-};
+	const item = await mutateTask(locals.user.id, connections, params.calendarId, params.uid, body);
+	return json(item);
+});
 
-export const DELETE: RequestHandler = async ({ params, locals }) => {
-	const connections = locals.user ? listConnections(locals.user.id) : [];
+export const DELETE = withUser<RequestEvent>(async ({ params, locals }) => {
+	const connections = listConnections(locals.user.id);
 	if (connections.length === 0) {
 		return json({ error: 'Keine CalDAV-Verbindung konfiguriert.' }, { status: 400 });
 	}
 
-	try {
-		await removeTask(locals.user?.id ?? '', connections, params.calendarId, params.uid);
-		return json({ ok: true });
-	} catch (e: any) {
-		return handleError(e);
-	}
-};
+	await removeTask(locals.user.id, connections, params.calendarId, params.uid);
+	return json({ ok: true });
+});

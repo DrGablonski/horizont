@@ -1,20 +1,19 @@
 // POST /api/settings/test — eine Verbindung testen (Formularwerte oder gespeicherte id).
 
 import { json } from '@sveltejs/kit';
-import type { RequestHandler } from '@sveltejs/kit';
+import { readJsonBody } from '$server/auth/apiHelpers';
+import { withUser } from '$server/lib/route';
 import { listCalendars, normalizeCalDavUrl, resolveHome } from '$server/caldav/client';
 import { listConnections } from '$server/store/connections';
 import type { CalDavSettings, TestResult } from '$lib/types';
 
-export const POST: RequestHandler = async ({ request, locals }) => {
-	if (!locals.user) return json({ error: 'Nicht angemeldet.' }, { status: 401 });
-
-	const body = (await request.json().catch(() => null)) as {
+export const POST = withUser(async ({ request, locals }) => {
+	const body = await readJsonBody<{
 		id?: string;
 		url?: string;
 		username?: string;
 		password?: string;
-	} | null;
+	}>(request);
 
 	let settings: CalDavSettings | null = null;
 
@@ -40,6 +39,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		const result: TestResult = { ok: true, calendars, eventCount: 0 };
 		return json(result);
 	} catch (e) {
+		// Test-Antwort bleibt unabhängig vom Fehler 200 mit ok:false.
 		const result: TestResult = {
 			ok: false,
 			error: e instanceof Error ? e.message : String(e),
@@ -48,4 +48,4 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		};
 		return json(result);
 	}
-};
+});
