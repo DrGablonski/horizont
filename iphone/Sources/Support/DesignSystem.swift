@@ -35,8 +35,21 @@ enum DS {
 	static let card = Color.dynamic(light: 0xFFFFFF, dark: 0x1C1E25)
 	/// Erhöhte Fläche (Popover, Sheet-inhalt).
 	static let cardElevated = Color.dynamic(light: 0xFFFFFF, dark: 0x24272F)
-	/// Fensterhintergrund (Graphite-Dark / Paper-Light).
+	/// Fensterhintergrund (Graphite-Dark / kühles Papier-Light).
 	static let background = Color.dynamic(light: 0xF4F5F7, dark: 0x14151A)
+	/// Seitenfläche hinter den Karten der Bereiche (Start, Archiv, Workflows).
+	///
+	/// Hell ein klarer, kühler Ton, der die weißen Karten absetzt, ohne grau zu
+	/// wirken (0xF4F5F7 war zu nah an Weiß, 0xE4E7EE zu satt). Dunkel knapp über
+	/// Schwarz – so stehen die Karten bisher, der Dark-Look bleibt unverändert.
+	static let page = Color.dynamic(light: 0xEDEFF4, dark: 0x0A0B0E)
+	/// Zeilen-Kopf innerhalb einer Karte (Tages-Überschrift): einen Hauch dunkler
+	/// als die Karte. Bewusst blickdicht – eine halbtransparente Füllfläche
+	/// mischt sich mit der Seitenfläche dahinter und wird so zum grauen Balken.
+	static let rowHeader = Color.dynamic(light: 0xF6F7FA, dark: 0x191A1D)
+	/// Eingesenkte Fläche in einer Karte (Eingabefelder): einen Ton dunkler als
+	/// die Karte – in beiden Modi gleiche Richtung wie im Dark-Mode.
+	static let field = Color.dynamic(light: 0xEFF2F7, dark: 0x14151A)
 	/// Sidebar-Fläche (eigenständig getönt, wie im Diddy-Look).
 	static let sidebar = Color.dynamic(light: 0xFAFAFC, dark: 0x0E0F13)
 	/// Standard-Trennlinie (Hell: Schwarz 10 %, Dunkel: Weiß 9 %).

@@ -78,6 +78,7 @@ struct WorkflowEditorView: View {
 			}
 		}
 		.listStyle(.insetGrouped)
+		.dsPageBackground()   // DS.page sichtbar direkt hinter der Liste
 		.refreshable { await store.loadWorkflows() }
 		.navigationTitle(wf.title)
 		.navigationBarTitleDisplayMode(.inline)

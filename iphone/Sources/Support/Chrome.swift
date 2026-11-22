@@ -37,6 +37,25 @@ struct SidebarBackground: View {
 	}
 }
 
+// MARK: – Seitenfläche hinter Listen
+
+extension View {
+	/// Flächige Seitenfarbe (`DS.page`) hinter den Karten einer `List`.
+	///
+	/// Warum das nötig ist: `.scrollContentBackground(.hidden)` allein lässt die
+	/// Systemfläche der Liste verschwinden, sichtbar wird dann aber die Fensterfarbe
+	/// (Systemweiß bzw. Pureschwarz) – `DS.background`/`DS.page` bleibt unsichtbar,
+	/// weil der Shell-Hintergrund noch tiefer liegt und nicht durchkommt. Ohne eine
+	/// eigene Fläche stehen die weißen Karten im Light-Mode auf ebenfalls weißem
+	/// Grund und sind als Kästchen nicht zu erkennen, also muss die Flächenfarbe
+	/// direkt hinter die Liste.
+	func dsPageBackground() -> some View {
+		self
+			.scrollContentBackground(.hidden)
+			.background(DS.page.ignoresSafeArea())
+	}
+}
+
 // MARK: – Wortmarke
 
 /// Marke: das App-Icon (Mondfinsternis über Bergen) als Kachel
@@ -137,7 +156,7 @@ struct FieldChrome: ViewModifier {
 			.padding(.vertical, 9)
 			.background(
 				RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)
-					.fill(DS.background.opacity(0.6))
+					.fill(DS.field)
 			)
 			.overlay(
 				RoundedRectangle(cornerRadius: DS.Radius.md, style: .continuous)

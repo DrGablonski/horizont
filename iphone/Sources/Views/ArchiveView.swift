@@ -106,7 +106,7 @@ struct ArchiveView: View {
 				}
 			}
 			.listStyle(.insetGrouped)
-			.scrollContentBackground(.hidden)   // Ambient-Hintergrund der Shell scheinen durch
+			.dsPageBackground()   // DS.page sichtbar direkt hinter der Liste
 			.refreshable { await store.loadArchive(monthKey: archive.monthKey) }
 		}
 	}

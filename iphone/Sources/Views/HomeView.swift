@@ -167,7 +167,7 @@ struct HomeView: View {
 			}
 		}
 		.listStyle(.insetGrouped)
-		.scrollContentBackground(.hidden)   // Ambient-Hintergrund der Shell scheinen durch
+		.dsPageBackground()   // DS.background sichtbar direkt hinter der Liste
 		.refreshable { await store.loadHome() }
 		// Aus dem Schnell-Eingabefeld wieder heraus: ein Tipp daneben sowie ein
 		// Zug an der Liste schließen die Tastatur, sonst verdeckt sie die Tab-Bar
@@ -283,7 +283,7 @@ struct HomeView: View {
 			Chip(text: "\(day.events.count)", color: DS.textTertiary)
 		}
 		.padding(.vertical, DS.Space.xs)
-		.listRowBackground(DS.fillSubtle)
+		.listRowBackground(DS.rowHeader)   // blickdicht: kein grauer Balken durch die Seitenfläche
 	}
 
 	/// Events eines Tages als Zeile mit Wisch- und Kontextaktionen:
