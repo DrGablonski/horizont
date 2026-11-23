@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { fade } from 'svelte/transition';
 	import { api } from '$lib/api';
 	import { isTimelineTask } from '$lib/types';
 	import type {
 		MainEventsResponse,
 		EventItem,
+		EventRecord,
 		CalDavCalendar,
 		EventUpdateInput,
 		EventCreateInput,
@@ -19,7 +21,7 @@
 	import EventEditor from '$lib/components/EventEditor.svelte';
 	import TaskEditor from '$lib/components/TaskEditor.svelte';
 	import Button from '$lib/components/ui/button/button.svelte';
-	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
+	import Skeleton from '$lib/components/ui/skeleton/skeleton.svelte';
 	import { dayKey } from '$lib/dates';
 	import { errMsg } from '$lib/errors';
 	import { cn } from '$lib/utils';
@@ -31,6 +33,8 @@
 
 	let data = $state<MainEventsResponse | null>(null);
 	let loading = $state(true);
+	/** Lade-Skelett erst nach kurzer Verzögerung zeigen – bei schnellen Loads sonst flackert es nur. */
+	let slowLoad = $state(false);
 	let loadError = $state<string | null>(null);
 	let calendars = $state<CalDavCalendar[]>([]);
 	let categories = $state<TaskCategory[]>([]);
@@ -48,6 +52,8 @@
 	async function load(): Promise<void> {
 		loading = true;
 		loadError = null;
+		// Skelett erst nach 250 ms einblenden: schnelle Laden bleiben unsichtbar.
+		const slow = setTimeout(() => (slowLoad = true), 250);
 		try {
 			const [eventsRes, calRes, catRes] = await Promise.all([
 				api.mainEvents(),
@@ -60,6 +66,8 @@
 		} catch (e) {
 			loadError = errMsg(e);
 		} finally {
+			clearTimeout(slow);
+			slowLoad = false;
 			loading = false;
 		}
 	}
@@ -114,26 +122,75 @@
 		editorOpen = true;
 	}
 
+	/** Gelöschte Einträge zurückholen: als Neuanlage anlegen, dann neu laden. */
+	function eventToCreateInput(ev: EventRecord): EventCreateInput {
+		const startKey = dayKey(ev.startMs);
+		const endKey = dayKey(ev.endMs - 1);
+		return {
+			summary: ev.summary,
+			location: ev.location,
+			description: ev.description,
+			allDay: ev.allDay,
+			...(ev.allDay
+				? { dayKey: startKey, endDateKey: endKey !== startKey ? endKey : undefined }
+				: { startMs: ev.startMs, endMs: ev.endMs }),
+			calendarId: ev.calendarId
+		};
+	}
+
+	function taskToCreateInput(ev: TimelineTask): TaskCreateInput {
+		return {
+			summary: ev.summary,
+			description: ev.description,
+			completed: !!ev.completed,
+			due: ev.dueKey
+				? { kind: 'date', key: ev.dueKey }
+				: ev.dueMs != null
+					? { kind: 'time', ms: ev.dueMs }
+					: { kind: 'none' },
+			category: ev.category ?? null,
+			calendarId: ev.calendarId
+		};
+	}
+
+	/**
+	 * Löschen ohne Rückfrage: Eintrag verschwindet sofort, dazu ein
+	 * „Rückgängig“-Toast mit kurzem Zeitfenster. Schlägt das Löschen fehl,
+	 * wandert der Eintrag sofort zurück an seine alte Position.
+	 */
 	async function handleDeleteEvent(ev: EventItem) {
-		if (ev.kind === 'task') {
-			if (!confirm(`Aufgabe "${ev.summary}" wirklich löschen?`)) return;
-			try {
+		const undo = removeTimelineItemWithUndo(ev);
+		let restore: () => Promise<void>;
+		try {
+			if (isTimelineTask(ev)) {
 				await api.deleteTask(ev.calendarId, ev.uid);
-				removeTimelineItem(ev);
-				toast.success('Aufgabe gelöscht.');
-			} catch (e) {
-				toast.error(errMsg(e));
+				const input = taskToCreateInput(ev);
+				restore = async () => {
+					await api.createTask(input);
+					await load();
+				};
+			} else {
+				await api.deleteEvent(ev.calendarId, ev.uid);
+				const input = eventToCreateInput(ev);
+				restore = async () => {
+					await api.createEvent(input);
+					await load();
+				};
 			}
+		} catch (e) {
+			undo();
+			toast.error(errMsg(e));
 			return;
 		}
-		if (!confirm(`Event "${ev.summary}" wirklich löschen?`)) return;
-		try {
-			await api.deleteEvent(ev.calendarId, ev.uid);
-			toast.success('Event gelöscht.');
-			await load();
-		} catch (e) {
-			toast.error(errMsg(e));
-		}
+		toast.success(isTimelineTask(ev) ? 'Aufgabe gelöscht.' : 'Event gelöscht.', {
+			duration: 6000,
+			action: {
+				label: 'Rückgängig',
+				onClick: () => {
+					void restore().catch((e: unknown) => toast.error(errMsg(e)));
+				}
+			}
+		});
 	}
 
 	async function handleEditorSubmit(input: EventCreateInput) {
@@ -165,14 +222,6 @@
 				if (it) return it;
 			}
 		return undefined;
-	}
-
-	function removeTimelineItem(ev: EventItem): void {
-		for (const p of data?.panels ?? [])
-			for (const g of p.days) {
-				const i = g.events.findIndex((e) => e.id === ev.id);
-				if (i >= 0) g.events.splice(i, 1);
-			}
 	}
 
 	/** Entfernt einen Eintrag und liefert eine Funktion, die ihn zurückholt. */
@@ -271,26 +320,39 @@
 		</div>
 		<div class="flex items-center gap-2">
 			{#if data?.configured}
-				<Button variant="outline" size="sm" onclick={() => openCreate()}>
+				<Button size="default" onclick={() => openCreate()}>
 					<PlusIcon class="size-4" />
 					<span>Event</span>
 				</Button>
-				<Button variant="outline" size="sm" onclick={openCreateTask}>
+				<Button variant="outline" size="default" onclick={openCreateTask}>
 					<CircleCheckIcon class="size-4" />
 					<span>Aufgabe</span>
 				</Button>
 			{/if}
-			<Button variant="outline" size="sm" disabled={loading} onclick={refresh} class="shrink-0">
+			<Button variant="ghost" size="sm" disabled={loading} onclick={refresh} class="shrink-0">
 				<RotateCwIcon class="size-4" />
 				<span>Aktualisieren</span>
 			</Button>
 		</div>
 	</div>
 
-	{#if loading && !data}
-		<div class="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border p-10 text-sm text-muted-foreground">
-			<Spinner class="size-4" />
-			<span>Wird geladen …</span>
+	{#if loading && !data && slowLoad}
+		<!-- Skelett-Rahmen in Panel-Form: zeigt grob die spätere Struktur statt eines Spinners. -->
+		<div class="space-y-4" transition:fade={{ duration: 150 }} aria-hidden="true">
+			{#each [0, 1] as i (i)}
+				<div class="rounded-xl border border-border bg-card p-4">
+					<Skeleton class="h-4 w-32" />
+					<div class="mt-4 space-y-3">
+						{#each [0, 1, 2] as j (j)}
+							<div class="flex items-center gap-3">
+								<Skeleton class="h-9 w-1 shrink-0 rounded-full" />
+								<Skeleton class="h-4 w-full max-w-md" />
+								<Skeleton class="h-4 w-14 shrink-0" />
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/each}
 		</div>
 	{:else if loadError}
 		<StatusBanner

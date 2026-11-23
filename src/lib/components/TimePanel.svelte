@@ -1,4 +1,8 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { cubicOut } from 'svelte/easing';
+	import { prefersReducedMotion } from 'svelte/motion';
+	import { fly, type TransitionConfig } from 'svelte/transition';
 	import type { TimePanel as TimePanelData, EventItem } from '$lib/types';
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '$lib/components/ui/collapsible';
 	import DayBlock from './DayBlock.svelte';
@@ -21,6 +25,23 @@
 	// Offen-Zustand: erst folgt er panel.defaultOpen, sobald der Nutzer klickt, gewinnt die eigene Wahl.
 	let userOpen = $state<boolean | null>(null);
 	let open = $derived(userOpen ?? panel.defaultOpen);
+
+	// Tag-Blöcke animieren erst nach dem ersten Mount des Panels — sonst fliegen
+	// beim Seitenaufruf alle Blöcke gleichzeitig ein.
+	let mounted = $state(false);
+	onMount(() => {
+		mounted = true;
+	});
+
+	/**
+	 * Tag-Blöcke sanft ein- und ausblenden (kurz, Ease-out); erst nach dem
+	 * ersten Mount des Panels. Läuft auf einem Wrapper-Element, da Übergänge
+	 * nicht direkt auf Komponenten gesetzt werden können.
+	 */
+	function dayMotion(node: Element, _params?: object): TransitionConfig {
+		if (prefersReducedMotion.current || !mounted) return { duration: 0 };
+		return fly(node, { y: 4, duration: 150, easing: cubicOut });
+	}
 </script>
 
 <Collapsible
@@ -47,7 +68,9 @@
 	<CollapsibleContent>
 		<div class="space-y-5 border-t border-border px-4 py-4">
 			{#each panel.days as day (day.dayKey)}
-				<DayBlock {day} {onAddDay} {onEdit} {onDelete} {onToggleTask} />
+				<div transition:dayMotion>
+					<DayBlock {day} {onAddDay} {onEdit} {onDelete} {onToggleTask} />
+				</div>
 			{:else}
 				<p class="text-sm text-muted-foreground">Keine Einträge in diesem Zeitraum.</p>
 			{/each}

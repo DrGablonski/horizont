@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, type Snippet } from 'svelte';
+	import { onMount, tick, type Snippet } from 'svelte';
 	import { api } from '$lib/api';
 	import { errMsg } from '$lib/errors';
 	import type { ConnectionsResponse, TestResult } from '$lib/types';
@@ -9,6 +9,7 @@
 	import Label from '$lib/components/ui/label/label.svelte';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
 	import Separator from '$lib/components/ui/separator/separator.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
 	import CircleXIcon from '@lucide/svelte/icons/circle-x';
 	import PlugZapIcon from '@lucide/svelte/icons/plug-zap';
@@ -44,6 +45,17 @@
 		pass: '',
 		adding: false
 	});
+
+	/** Sprungmarken, damit der Empty-State-Button das Eingabeformular fokussiert. */
+	let newFormCard = $state<HTMLDivElement | null>(null);
+	let newFormNameInput = $state<HTMLInputElement | null>(null);
+
+	async function focusNewForm(): Promise<void> {
+		form.showNew = true;
+		newFormCard?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		await tick();
+		newFormNameInput?.focus();
+	}
 
 	async function addConnection(): Promise<void> {
 		if (!form.url.trim()) {
@@ -111,8 +123,16 @@
 	}
 
 	// ── Externe Verbindung löschen ──────────────────────────────────────────
-	async function remove(id: string, name: string): Promise<void> {
-		if (!confirm(`Verbindung „${name}“ wirklich löschen?`)) return;
+	/** Ausstehender Lösch-Beschluss für den Bestätigungsdialog. */
+	let pendingDelete = $state<{ id: string; name: string } | null>(null);
+
+	function remove(id: string, name: string): void {
+		pendingDelete = { id, name };
+	}
+
+	async function confirmRemove(): Promise<void> {
+		if (!pendingDelete) return;
+		const { id } = pendingDelete;
 		try {
 			await api.deleteConnection(id);
 			await load();
@@ -249,16 +269,24 @@
 			{/each}
 		</div>
 	{:else}
-		<div class="flex items-center gap-2 rounded-xl border border-dashed border-border p-8 text-sm text-muted-foreground">
-			<PlugZapIcon class="size-4" />
-			<span>Noch kein Kalender verbunden. Trage unten eine CalDAV-Quelle ein, damit Horizont deine Termine und Aufgaben zeigen kann.</span>
+		<div
+			class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border p-8 text-sm text-muted-foreground"
+		>
+			<div class="flex items-center gap-2">
+				<PlugZapIcon class="size-4" />
+				<span>Noch kein Kalender verbunden.</span>
+			</div>
+			<Button size="sm" variant="outline" onclick={focusNewForm}>
+				<PlusIcon class="size-3.5" />
+				<span>Kalender verbinden</span>
+			</Button>
 		</div>
 	{/if}
 
 	<Separator />
 
 	<!-- Neue Verbindung anlegen -->
-	<div class="rounded-xl border border-border bg-card p-5">
+	<div class="rounded-xl border border-border bg-card p-5" bind:this={newFormCard}>
 		<button
 			type="button"
 			class="flex w-full items-center justify-between text-left"
@@ -276,7 +304,7 @@
 				<div class="grid gap-4 sm:grid-cols-2">
 					<div class="space-y-1.5">
 						<Label for="new-name">Name (optional)</Label>
-						<Input id="new-name" bind:value={form.name} placeholder="Beispiel: iCloud" />
+						<Input id="new-name" bind:value={form.name} bind:ref={newFormNameInput} placeholder="Beispiel: iCloud" />
 					</div>
 					<div class="space-y-1.5 sm:col-span-2">
 						<Label for="new-url">CalDAV-URL</Label>
@@ -369,5 +397,15 @@
 			<p class="text-sm text-destructive">{test.result.error}</p>
 		{/if}
 		</div>
+	{/if}
+
+	{#if pendingDelete}
+		<ConfirmDialog
+			title="Verbindung löschen"
+			message={`Verbindung „${pendingDelete.name}“ wirklich löschen?`}
+			confirmLabel="Löschen"
+			onConfirm={confirmRemove}
+			onClose={() => (pendingDelete = null)}
+		/>
 	{/if}
 {/if}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { api } from '$lib/api';
 	import { errMsg } from '$lib/errors';
 	import type { Workflow } from '$lib/types';
@@ -10,6 +10,7 @@
 	import Label from '$lib/components/ui/label/label.svelte';
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
+	import Skeleton from '$lib/components/ui/skeleton/skeleton.svelte';
 	import ListChecksIcon from '@lucide/svelte/icons/list-checks';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 
@@ -19,6 +20,7 @@
 	let busy = $state(false);
 	let title = $state('');
 	let stepsText = $state('');
+	let titleInput = $state<HTMLInputElement | null>(null);
 
 	function sync(updated: Workflow): void {
 		workflows = workflows.map((w) => (w.id === updated.id ? updated : w));
@@ -64,6 +66,15 @@
 		}
 	}
 
+	/** Öffnet das Anlege-Formular (z. B. aus dem Empty State) und holt das Titelfeld in den Fokus. */
+	function startCreate(): void {
+		creating = true;
+		void tick().then(() => {
+			titleInput?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+			titleInput?.focus();
+		});
+	}
+
 	onMount(load);
 </script>
 
@@ -94,6 +105,7 @@
 				<Label for="wf-title">Titel</Label>
 				<Input
 					id="wf-title"
+					bind:ref={titleInput}
 					bind:value={title}
 					placeholder="z. B. Projektabschluss – Woche 12"
 					maxlength={120}
@@ -121,16 +133,24 @@
 	{/if}
 
 	{#if loading}
-		<div class="flex items-center justify-center gap-2 rounded-xl border border-dashed border-border p-8 text-sm text-muted-foreground">
-			<Spinner class="size-4" />
-			<span>Workflows werden geladen …</span>
+		<div class="space-y-4" aria-hidden="true">
+			{#each [1, 2, 3] as i (i)}
+				<div class="space-y-3 rounded-xl border border-border bg-card p-4">
+					<Skeleton class="h-4 w-40" />
+					<Skeleton class="h-1.5 w-full" />
+					<Skeleton class="h-3 w-full" />
+					<Skeleton class="h-3 w-4/5" />
+					<Skeleton class="h-3 w-2/3" />
+				</div>
+			{/each}
 		</div>
 	{:else if workflows.length === 0}
 		<div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
 			<p>Noch keine Workflows vorhanden.</p>
-			<p class="mt-1 text-xs">
-				Lege oben einen Workflow an, um Aufgaben sequenziell abzuarbeiten.
-			</p>
+			<Button variant="outline" size="sm" class="mt-4" onclick={startCreate}>
+				<PlusIcon class="size-4" />
+				<span>Workflow anlegen</span>
+			</Button>
 		</div>
 	{:else}
 		<div class="space-y-4">

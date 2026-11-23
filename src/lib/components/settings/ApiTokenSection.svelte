@@ -6,6 +6,7 @@
 	import { toast } from 'svelte-sonner';
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
 
@@ -21,6 +22,9 @@
 
 	const form = $state({ newToken: '', generating: false, revoking: false });
 
+	/** Ausstehender Bestätigungsdialog: Token ersetzen oder ablehnen. */
+	let pendingAction = $state<'replace' | 'revoke' | null>(null);
+
 	async function loadApiToken(): Promise<void> {
 		try {
 			apiTokenView = await api.apiToken();
@@ -29,8 +33,15 @@
 		}
 	}
 
-	async function createToken(): Promise<void> {
-		if (apiTokenView?.hasToken && !confirm('Den aktuellen Token ersetzen? Er ist danach ungültig.')) return;
+	function createToken(): void {
+		if (apiTokenView?.hasToken) {
+			pendingAction = 'replace';
+			return;
+		}
+		void generateToken();
+	}
+
+	async function generateToken(): Promise<void> {
 		form.generating = true;
 		try {
 			const r = await api.generateApiToken();
@@ -43,8 +54,11 @@
 		}
 	}
 
-	async function revokeToken(): Promise<void> {
-		if (!confirm('API-Token ablehnen? Externe Tools verlieren sofort den Zugriff.')) return;
+	function revokeToken(): void {
+		pendingAction = 'revoke';
+	}
+
+	async function confirmRevokeToken(): Promise<void> {
 		form.revoking = true;
 		try {
 			await api.revokeApiToken();
@@ -122,4 +136,21 @@
 		{/if}
 	</div>
 
+	{#if pendingAction === 'replace'}
+		<ConfirmDialog
+			title="Token ersetzen"
+			message="Den aktuellen Token ersetzen? Er ist danach ungültig."
+			confirmLabel="Ersetzen"
+			onConfirm={generateToken}
+			onClose={() => (pendingAction = null)}
+		/>
+	{:else if pendingAction === 'revoke'}
+		<ConfirmDialog
+			title="Token ablehnen"
+			message="API-Token ablehnen? Externe Tools verlieren sofort den Zugriff."
+			confirmLabel="Ablehnen"
+			onConfirm={confirmRevokeToken}
+			onClose={() => (pendingAction = null)}
+		/>
+	{/if}
 </div>

@@ -15,6 +15,7 @@
 	import Badge from '$lib/components/ui/badge/badge.svelte';
 	import Separator from '$lib/components/ui/separator/separator.svelte';
 	import { cn } from '$lib/utils';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
@@ -38,6 +39,9 @@
 	let busy = $state(false);
 	let collapsed = $state(false);
 	let newStep = $state('');
+
+	// welche Aktion wartet auf Bestätigung im ConfirmDialog
+	let pending = $state<null | 'reset' | 'delete'>(null);
 
 	// Die Entwürfe werden erst beim Bearbeiten-Freischalten mit den aktuellen Werten befüllt.
 	let editingTitle = $state(false);
@@ -115,7 +119,6 @@
 	}
 
 	async function reset(): Promise<void> {
-		if (!confirm('Workflow wirklich zurücksetzen? Alle Schritte werden als offen markiert.')) return;
 		try {
 			sync(await api.resetWorkflow(wf.id));
 			toast.success('Workflow zurückgesetzt.');
@@ -125,7 +128,6 @@
 	}
 
 	async function del(): Promise<void> {
-		if (!confirm(`Workflow „${wf.title}" wirklich löschen?`)) return;
 		try {
 			await api.deleteWorkflow(wf.id);
 			remove(wf.id);
@@ -194,7 +196,7 @@
 				variant="ghost"
 				size="icon-sm"
 				disabled={busy || wf.completedAt != null}
-				onclick={reset}
+				onclick={() => (pending = 'reset')}
 				aria-label="Zurücksetzen"
 				title="Zurücksetzen"
 			>
@@ -203,7 +205,7 @@
 			<Button
 				variant="ghost"
 				size="icon-sm"
-				onclick={del}
+				onclick={() => (pending = 'delete')}
 				aria-label="Löschen"
 				title="Löschen"
 			>
@@ -323,3 +325,22 @@
 		</CardContent>
 	{/if}
 </Card>
+
+{#if pending === 'reset'}
+	<ConfirmDialog
+		title="Workflow zurücksetzen?"
+		message="Workflow wirklich zurücksetzen? Alle Schritte werden als offen markiert."
+		confirmLabel="Zurücksetzen"
+		danger={false}
+		onConfirm={reset}
+		onClose={() => (pending = null)}
+	/>
+{:else if pending === 'delete'}
+	<ConfirmDialog
+		title="Workflow löschen?"
+		message={`Workflow „${wf.title}“ wirklich löschen?`}
+		confirmLabel="Löschen"
+		onConfirm={del}
+		onClose={() => (pending = null)}
+	/>
+{/if}

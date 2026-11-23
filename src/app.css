@@ -5,73 +5,81 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Design-Tokens – an die Palette der Mac-App angelehnt (iphone|apple/Sources/Support/DesignSystem.swift):
+ * kühles „Papier“ im Light-Mode, Graphite/Navy im Dark-Mode, nie reine Schwarz-/Weißwerte.
+ * Brand-Akzent ist das Sonnengelb/-amber des Horizont-Icons (favicon.svg):
+ * Terrakotta #B4551D (Hell, AA-kontrastiert mit hellem Text) bzw. #E8975A (Dunkel).
+ * 60/30/10: Flächen = Hintergrund (60), Karten/sekundäre Flächen (30), Akzent nur für
+ * Primär-Aktionen, Fortschritt und Fokus (10).
+ */
 :root {
-	--background: oklch(1 0 0);
-	--foreground: oklch(0.145 0 0);
-	--card: oklch(1 0 0);
-	--card-foreground: oklch(0.145 0 0);
-	--popover: oklch(1 0 0);
-	--popover-foreground: oklch(0.145 0 0);
-	--primary: oklch(0.205 0 0);
-	--primary-foreground: oklch(0.985 0 0);
-	--secondary: oklch(0.97 0 0);
-	--secondary-foreground: oklch(0.205 0 0);
-	--muted: oklch(0.97 0 0);
-	--muted-foreground: oklch(0.556 0 0);
-	--accent: oklch(0.97 0 0);
-	--accent-foreground: oklch(0.205 0 0);
+	--background: oklch(0.97 0.0029 264.54); /* #F4F5F7 kühles Papier */
+	--foreground: oklch(0.2308 0.0101 268.24); /* #1B1D22 statt reinem Schwarz */
+	--card: oklch(0.9913 0.0013 286.38); /* #FCFCFD */
+	--card-foreground: oklch(0.2308 0.0101 268.24);
+	--popover: oklch(0.9913 0.0013 286.38);
+	--popover-foreground: oklch(0.2308 0.0101 268.24);
+	--primary: oklch(0.5593 0.1398 46.8); /* #B4551D Horizont-Amber */
+	--primary-foreground: oklch(0.9858 0.0045 78.3); /* #FCFAF7 */
+	--secondary: oklch(0.9365 0.0087 264.52); /* #E7EAF0 */
+	--secondary-foreground: oklch(0.2966 0.0117 264.38); /* #2A2D33 */
+	--muted: oklch(0.949 0.007 268.55); /* #ECEEF3 */
+	--muted-foreground: oklch(0.508 0.0263 260.67); /* #5D6675, ≥4.5:1 auf card */
+	--accent: oklch(0.9365 0.0087 264.52); /* neutrale Hover-Fläche, Akzent bleibt exklusiv */
+	--accent-foreground: oklch(0.2966 0.0117 264.38);
 	--destructive: oklch(0.577 0.245 27.325);
-	--border: oklch(0.922 0 0);
-	--input: oklch(0.922 0 0);
-	--ring: oklch(0.708 0 0);
-	--chart-1: oklch(0.87 0 0);
-	--chart-2: oklch(0.556 0 0);
-	--chart-3: oklch(0.439 0 0);
-	--chart-4: oklch(0.371 0 0);
-	--chart-5: oklch(0.269 0 0);
+	--border: oklch(0.9122 0.0088 264.52); /* #DFE2E8 */
+	--input: oklch(0.9122 0.0088 264.52);
+	--ring: oklch(0.5805 0.1545 44.02); /* #C2551C Fokus-Ring = Markenakzent */
+	--chart-1: oklch(0.72 0.05 55); /* Amber abgestuft */
+	--chart-2: oklch(0.6 0.03 260);
+	--chart-3: oklch(0.45 0.03 260);
+	--chart-4: oklch(0.7 0.07 55);
+	--chart-5: oklch(0.35 0.02 260);
 	--radius: 0.625rem;
-	--sidebar: oklch(0.985 0 0);
-	--sidebar-foreground: oklch(0.145 0 0);
-	--sidebar-primary: oklch(0.205 0 0);
-	--sidebar-primary-foreground: oklch(0.985 0 0);
-	--sidebar-accent: oklch(0.97 0 0);
-	--sidebar-accent-foreground: oklch(0.205 0 0);
-	--sidebar-border: oklch(0.922 0 0);
-	--sidebar-ring: oklch(0.708 0 0);
+	--sidebar: oklch(0.952 0.007 268.55); /* #EDEFF4 */
+	--sidebar-foreground: oklch(0.2308 0.0101 268.24);
+	--sidebar-primary: oklch(0.5593 0.1398 46.8);
+	--sidebar-primary-foreground: oklch(0.9858 0.0045 78.3);
+	--sidebar-accent: oklch(0.9365 0.0087 264.52);
+	--sidebar-accent-foreground: oklch(0.2966 0.0117 264.38);
+	--sidebar-border: oklch(0.9122 0.0088 264.52);
+	--sidebar-ring: oklch(0.5805 0.1545 44.02);
 }
 
 .dark {
-	--background: oklch(0.145 0 0);
-	--foreground: oklch(0.985 0 0);
-	--card: oklch(0.205 0 0);
-	--card-foreground: oklch(0.985 0 0);
-	--popover: oklch(0.205 0 0);
-	--popover-foreground: oklch(0.985 0 0);
-	--primary: oklch(0.922 0 0);
-	--primary-foreground: oklch(0.205 0 0);
-	--secondary: oklch(0.269 0 0);
-	--secondary-foreground: oklch(0.985 0 0);
-	--muted: oklch(0.269 0 0);
-	--muted-foreground: oklch(0.708 0 0);
-	--accent: oklch(0.269 0 0);
-	--accent-foreground: oklch(0.985 0 0);
+	--background: oklch(0.1969 0.0101 276.49); /* #14151A Graphite */
+	--foreground: oklch(0.9548 0.0058 264.53); /* #EEF0F4 statt reinem Weiß */
+	--card: oklch(0.236 0.0138 272.74); /* #1C1E25 */
+	--card-foreground: oklch(0.9548 0.0058 264.53);
+	--popover: oklch(0.2731 0.0155 269.11); /* #24272F erhöht */
+	--popover-foreground: oklch(0.9548 0.0058 264.53);
+	--primary: oklch(0.7461 0.1243 56.38); /* #E8975A Aufhellung des Icon-Sonnenglows */
+	--primary-foreground: oklch(0.2091 0.0104 268.19); /* #16181D */
+	--secondary: oklch(0.2731 0.0155 269.11);
+	--secondary-foreground: oklch(0.9087 0.0105 261.79); /* #DDE1E8 */
+	--muted: oklch(0.2685 0.0137 267.05); /* #23262D */
+	--muted-foreground: oklch(0.7139 0.0236 263.15); /* #9BA3B2 */
+	--accent: oklch(0.305 0.017 268);
+	--accent-foreground: oklch(0.9548 0.0058 264.53);
 	--destructive: oklch(0.704 0.191 22.216);
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 15%);
-	--ring: oklch(0.556 0 0);
-	--chart-1: oklch(0.87 0 0);
-	--chart-2: oklch(0.556 0 0);
-	--chart-3: oklch(0.439 0 0);
-	--chart-4: oklch(0.371 0 0);
-	--chart-5: oklch(0.269 0 0);
-	--sidebar: oklch(0.205 0 0);
-	--sidebar-foreground: oklch(0.985 0 0);
-	--sidebar-primary: oklch(0.488 0.243 264.376);
-	--sidebar-primary-foreground: oklch(0.985 0 0);
-	--sidebar-accent: oklch(0.269 0 0);
-	--sidebar-accent-foreground: oklch(0.985 0 0);
+	--ring: oklch(0.7461 0.1243 56.38); /* Fokus-Ring = Markenakzent */
+	--chart-1: oklch(0.75 0.09 55);
+	--chart-2: oklch(0.65 0.04 260);
+	--chart-3: oklch(0.5 0.04 260);
+	--chart-4: oklch(0.82 0.1 60);
+	--chart-5: oklch(0.4 0.03 260);
+	--sidebar: oklch(0.1692 0.0085 274.36); /* #0E0F13 */
+	--sidebar-foreground: oklch(0.9548 0.0058 264.53);
+	--sidebar-primary: oklch(0.7461 0.1243 56.38);
+	--sidebar-primary-foreground: oklch(0.2091 0.0104 268.19);
+	--sidebar-accent: oklch(0.305 0.017 268);
+	--sidebar-accent-foreground: oklch(0.9548 0.0058 264.53);
 	--sidebar-border: oklch(1 0 0 / 10%);
-	--sidebar-ring: oklch(0.556 0 0);
+	--sidebar-ring: oklch(0.7461 0.1243 56.38);
 }
 
 @theme inline {

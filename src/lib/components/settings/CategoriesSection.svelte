@@ -8,6 +8,7 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import Input from '$lib/components/ui/input/input.svelte';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import TagsIcon from '@lucide/svelte/icons/tags';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
@@ -16,6 +17,17 @@
 	let { cats = $bindable<TaskCategory[]>([]) } = $props();
 
 	const form = $state({ saving: false, name: '', color: '#2563eb' });
+
+	/** Ausstehender Lösch-Beschluss (Kategoriename) für den Bestätigungsdialog. */
+	let pendingDelete = $state<string | null>(null);
+	/** Sprungmarken, damit der Empty-State-Button das Eingabeformular fokussiert. */
+	let formSection = $state<HTMLDivElement | null>(null);
+	let nameInput = $state<HTMLInputElement | null>(null);
+
+	function focusForm(): void {
+		formSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		nameInput?.focus();
+	}
 
 	async function loadCategories(): Promise<void> {
 		try {
@@ -72,8 +84,13 @@
 		await saveCats(cats.map((c) => (c.name === name ? { ...c, color } : c)));
 	}
 
-	async function removeCategory(name: string): Promise<void> {
-		if (!confirm(`Kategorie "${name}" wirklich löschen?\nBestehende Aufgaben behalten ihren Kategorienamen (ohne Farbe).`)) return;
+	function removeCategory(name: string): void {
+		pendingDelete = name;
+	}
+
+	async function confirmRemoveCategory(): Promise<void> {
+		if (!pendingDelete) return;
+		const name = pendingDelete;
 		if (await saveCats(cats.filter((c) => c.name !== name))) {
 			toast.success('Kategorie gelöscht.');
 		}
@@ -138,11 +155,17 @@
 				</Button>
 			</div>
 		{:else}
-			<p class="text-sm text-muted-foreground">Keine Kategorien —lege unten eine an.</p>
+			<div class="flex items-center justify-between gap-3">
+				<p class="text-sm text-muted-foreground">Noch keine Kategorien vorhanden.</p>
+				<Button size="sm" variant="outline" onclick={focusForm}>
+					<PlusIcon class="size-3.5" />
+					<span>Kategorie anlegen</span>
+				</Button>
+			</div>
 		{/each}
 	</div>
 
-	<div class="mt-4 flex flex-wrap items-center gap-2">
+	<div class="mt-4 flex flex-wrap items-center gap-2" bind:this={formSection}>
 		<input
 			type="color"
 			bind:value={form.color}
@@ -151,6 +174,7 @@
 		/>
 		<Input
 			bind:value={form.name}
+			bind:ref={nameInput}
 			placeholder="Neue Kategorie (z. B. Garten)"
 			class="h-9 max-w-56 text-sm"
 			maxlength={40}
@@ -162,3 +186,13 @@
 		</Button>
 	</div>
 </div>
+
+{#if pendingDelete}
+	<ConfirmDialog
+		title="Kategorie löschen"
+		message={`Kategorie „${pendingDelete}“ wirklich löschen? Bestehende Aufgaben behalten ihren Kategorienamen (ohne Farbe).`}
+		confirmLabel="Löschen"
+		onConfirm={confirmRemoveCategory}
+		onClose={() => (pendingDelete = null)}
+	/>
+{/if}

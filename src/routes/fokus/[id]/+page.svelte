@@ -8,6 +8,7 @@
 	import Progress from '$lib/components/ui/progress/progress.svelte';
 	import Separator from '$lib/components/ui/separator/separator.svelte';
 	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { toast } from 'svelte-sonner';
 	import TargetIcon from '@lucide/svelte/icons/target';
 	import CheckIcon from '@lucide/svelte/icons/check';
@@ -22,6 +23,7 @@
 	let loading = $state(true);
 	let notFound = $state(false);
 	let busy = $state(false);
+	let confirmReset = $state(false);
 	let seq = 0;
 
 	function back(): void {
@@ -70,7 +72,6 @@
 
 	async function reset(): Promise<void> {
 		if (!wf) return;
-		if (!confirm('Alle Fortschritte zurücksetzen?')) return;
 		busy = true;
 		try {
 			wf = await api.resetWorkflow(id);
@@ -150,7 +151,7 @@
 						Alle Schritte abgeschlossen. Starte bei Bedarf mit einem frischen Durchlauf.
 					</p>
 					<div class="flex justify-center">
-						<Button variant="outline" size="sm" disabled={busy} onclick={reset}>
+						<Button variant="outline" size="sm" disabled={busy} onclick={() => (confirmReset = true)}>
 							<RotateCcwIcon class="size-4" />
 							<span>Neu starten</span>
 						</Button>
@@ -230,7 +231,7 @@
 			{/if}
 
 			<div class="flex items-center justify-end">
-				<Button variant="ghost" size="sm" disabled={busy} onclick={reset}>
+				<Button variant="ghost" size="sm" disabled={busy} onclick={() => (confirmReset = true)}>
 					<RotateCcwIcon class="size-4" />
 					<span>Zurücksetzen</span>
 				</Button>
@@ -238,3 +239,14 @@
 		</div>
 	{/if}
 </div>
+
+{#if confirmReset}
+	<ConfirmDialog
+		title="Fortschritt zurücksetzen?"
+		message="Alle Fortschritte zurücksetzen?"
+		confirmLabel="Zurücksetzen"
+		danger={false}
+		onConfirm={reset}
+		onClose={() => (confirmReset = false)}
+	/>
+{/if}
