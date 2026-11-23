@@ -423,6 +423,10 @@ Packages/HorizontKit/      # gemeinsames SPM-Paket der drei Apple-Apps
 Entwicklungswerkzeuge: `bun run check` (svelte-check, Ziel 0/0), `bun run test`
 (Vitest), `bun run lint` / `bun run format` (Biome: Tabs, einfache Anführungszeichen).
 
+Die CI läuft auf der eigenen Forgejo-Instanz (Gitea Actions war dort nie
+scharf – Details und Runner-Einrichtung in
+[`docs/forgejo-runner.md`](docs/forgejo-runner.md)).
+
 ---
 
 ## Datenschutz
