@@ -16,7 +16,7 @@ on:
 # (host-Netzwerk/DNS) erfordern.
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    runs-on: docker
     container:
       image: oven/bun:1
     steps:
