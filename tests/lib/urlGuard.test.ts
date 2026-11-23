@@ -1,7 +1,7 @@
 // Tests für den SSRF-Schutz (urlGuard.ts). Es werden ausschließlich
 // IP-Literale geprüft – keine DNS-abhängigen Assertions (deterministisch,
 // ohne Netzwerk).
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { assertSafeUrl, ipBlocked } from '$server/lib/urlGuard';
 
 describe('ipBlocked – IPv4', () => {

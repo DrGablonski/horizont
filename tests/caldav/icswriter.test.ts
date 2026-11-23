@@ -1,7 +1,7 @@
 // Tests für die ICS-Erzeugung/-Aktualisierung (icswriter.ts). Alle Assertions
 // orientieren sich am realen Verhalten (floating local ohne Z, kein SEQUENCE-
 // Bump, PRIORITY nur als Lösch-Fallback bei Kategorie-Änderung).
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import {
 	addOneDayToKey,
 	buildEventIcs,

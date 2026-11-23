@@ -1,7 +1,7 @@
 // Tests für die Workflow-ICS-Persistenz (workflowIcs.ts): Round-Trip über das
 // X-HORIZONT-Base64-Payload, deterministische Serialisierung, Status-Ableitung
 // und die Payload-Validierung.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import type { Workflow } from '$lib/types';
 import { unfold } from '$server/caldav/icswriter';
 import { buildWorkflowIcs, decodeWorkflow, encodeWorkflow, parseWorkflowIcs } from '$server/caldav/workflowIcs';

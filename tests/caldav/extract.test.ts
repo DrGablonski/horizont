@@ -1,6 +1,6 @@
 // Tests für die ics-Extraktion aus rohem CalDAV-XML (client.ts) und die
 // URL-Normalisierung. Keine Netzwerkzugriffe – reine String-Fixtures.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { extractAllIcs, normalizeCalDavUrl } from '$server/caldav/client';
 import {
 	ICS_A,
