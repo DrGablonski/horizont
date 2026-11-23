@@ -1,0 +1,24 @@
+# Forgejo Runner für git.home.gho.mom – läuft produktiv unter /opt/stacks/forgejo-runner.
+# Anleitung & Hintergrund: docs/forgejo-runner.md im horizont-Repo.
+services:
+  forgejo-runner:
+    image: code.forgejo.org/forgejo/runner:13
+    container_name: forgejo-runner
+    restart: unless-stopped
+    user: root
+    environment:
+      - FORGEJO_RUNNER_REGISTRATION_TOKEN=${FORGEJO_RUNNER_REGISTRATION_TOKEN}
+    volumes:
+      - ./config:/root/.config/forgejo-runner
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "git.home.gho.mom:192.168.1.104"
+    entrypoint: sh
+    command: >
+      -ec 'if [ ! -f /root/.config/forgejo-runner/.runner ]; then
+      forgejo-runner register --no-interactive
+      --instance https://git.home.gho.mom
+      --token "$$FORGEJO_RUNNER_REGISTRATION_TOKEN"
+      --name horizont-host-runner
+      --labels "ubuntu-latest:docker://alpine:3.20,docker:docker://alpine:3.20"; fi;
+      exec forgejo-runner daemon'

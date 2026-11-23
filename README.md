@@ -424,9 +424,8 @@ Entwicklungswerkzeuge: `bun run check` (svelte-check, Ziel 0/0), `bun run test`
 (bun-test-eigener Runner, 115 Tests), `bun run lint` / `bun run format`
 (Biome: Tabs, einfache Anführungszeichen).
 
-Die CI läuft auf der eigenen Forgejo-Instanz (Gitea Actions war dort nie
-scharf – Details und Runner-Einrichtung in
-[`docs/forgejo-runner.md`](docs/forgejo-runner.md)).
+Die CI läuft auf der eigenen Forgejo-Instanz (Einrichtung des Runners und
+Fehlerhistorie in [`docs/forgejo-runner.md`](docs/forgejo-runner.md)).
 
 ---
 
