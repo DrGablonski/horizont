@@ -414,14 +414,15 @@ src/
     login/+page.svelte
     setup/+page.svelte     # First-Run
     api/                   # alle Endpunkte (health/ öffentlich, Rest via withUser)
-tests/                     # Vitest: CalDAV-Parsing/Schreiblayer + urlGuard (Fixtures/)
+tests/                     # bun test: CalDAV-Parsing/Schreiblayer + urlGuard (Fixtures/)
 Packages/HorizontKit/      # gemeinsames SPM-Paket der drei Apple-Apps
                            #   (APIModels, APIClient, Keychain)
 .forgejo/workflows/ci.yml  # CI: bun check + test + lint
 ```
 
 Entwicklungswerkzeuge: `bun run check` (svelte-check, Ziel 0/0), `bun run test`
-(Vitest), `bun run lint` / `bun run format` (Biome: Tabs, einfache Anführungszeichen).
+(bun-test-eigener Runner, 115 Tests), `bun run lint` / `bun run format`
+(Biome: Tabs, einfache Anführungszeichen).
 
 Die CI läuft auf der eigenen Forgejo-Instanz (Gitea Actions war dort nie
 scharf – Details und Runner-Einrichtung in
