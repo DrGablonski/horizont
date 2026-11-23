@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Hinweis: Diese Instanz ist Forgejo 15 (Gitea-Fork). Forgejo erwartet Workflows
+# in `.forgejo/workflows/` – in `.gitea/workflows/` bleiben Läufe dort wegen
+# eines bekannten Bugs dauerhaft in "waiting" hängen (Jobs werden aus dem
+# falschen Verzeichnis gelesen). Bei einem gitea/forgea-runner-docker ist das
+# Label je nach Registrierung "ubuntu-latest" oder "docker" – falls der Lauf
+# endlos auf "waiting" steht, obwohl Jobs angelegt wurden, passt kein Runner
+# zum runs-on-Wert unten. Ebenso kann der Zugriff des Job-Containers auf
+# git.home.gho.mom (Checkout + Bun-Registry) eine Runner-Netzwerk-Konfiguration
+# (host-Netzwerk/DNS) erfordern.
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    container:
+      image: oven/bun:1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Abhängigkeiten installieren
+        run: bun install --frozen-lockfile
+
+      - name: svelte-check
+        run: bun run check
+
+      - name: Tests
+        run: bun run test
+
+      - name: Lint (Biome)
+        run: bun run lint

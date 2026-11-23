@@ -417,7 +417,7 @@ src/
 tests/                     # Vitest: CalDAV-Parsing/Schreiblayer + urlGuard (Fixtures/)
 Packages/HorizontKit/      # gemeinsames SPM-Paket der drei Apple-Apps
                            #   (APIModels, APIClient, Keychain)
-.gitea/workflows/ci.yml    # CI: bun check + test + lint
+.forgejo/workflows/ci.yml  # CI: bun check + test + lint
 ```
 
 Entwicklungswerkzeuge: `bun run check` (svelte-check, Ziel 0/0), `bun run test`
