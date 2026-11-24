@@ -13,9 +13,11 @@
 	import Skeleton from '$lib/components/ui/skeleton/skeleton.svelte';
 	import ListChecksIcon from '@lucide/svelte/icons/list-checks';
 	import PlusIcon from '@lucide/svelte/icons/plus';
+	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 
 	let workflows = $state<Workflow[]>([]);
 	let loading = $state(true);
+	let loadError = $state(false);
 	let creating = $state(false);
 	let busy = $state(false);
 	let title = $state('');
@@ -32,9 +34,11 @@
 
 	async function load(): Promise<void> {
 		loading = true;
+		loadError = false;
 		try {
 			workflows = await api.workflows();
 		} catch (e) {
+			loadError = true;
 			toast.error(`Workflows konnten nicht geladen werden: ${errMsg(e)}`);
 		} finally {
 			loading = false;
@@ -143,6 +147,16 @@
 					<Skeleton class="h-3 w-2/3" />
 				</div>
 			{/each}
+		</div>
+	{:else if loadError}
+		<div
+			class="flex flex-col gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between"
+		>
+			<div class="flex items-start gap-3 text-destructive">
+				<TriangleAlertIcon class="mt-0.5 size-4 shrink-0" />
+				<p class="text-sm leading-relaxed">Workflows konnten nicht geladen werden.</p>
+			</div>
+			<Button variant="outline" size="sm" class="shrink-0" onclick={load}>Erneut versuchen</Button>
 		</div>
 	{:else if workflows.length === 0}
 		<div class="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">

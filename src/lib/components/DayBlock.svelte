@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
-	import { fly, type TransitionConfig } from 'svelte/transition';
+	import { fly, slide, type TransitionConfig } from 'svelte/transition';
 	import type { DayGroup, EventItem } from '$lib/types';
 	import EventRow from './EventRow.svelte';
 	import { cn } from '$lib/utils';
@@ -33,10 +33,22 @@
 	 * Neue Zeilen sanft einfliegen und entfernte (z. B. abgehakte Tasks) sanft
 	 * ausgleiten lassen — kurz und Ease-out. Läuft auf einem Wrapper-Element,
 	 * da Übergänge nicht direkt auf Komponenten gesetzt werden können.
+	 * Höhe und Einzug (space-y-Abstand) werden mit animiert (slide), damit
+	 * der Platz der Zeile nicht erst bleibt und dann ruckartig verschwindet.
 	 */
 	function rowMotion(node: Element, _params?: object): TransitionConfig {
 		if (prefersReducedMotion.current || !mounted) return { duration: 0 };
-		return fly(node, { y: 4, duration: 120, easing: cubicOut });
+		const duration = 120;
+		const move = fly(node, { y: 4, duration, easing: cubicOut });
+		const collapse = slide(node, { duration, easing: cubicOut });
+		return {
+			duration,
+			easing: cubicOut,
+			// Reihenfolge wichtig: die fly-Deklarationen (opacity/transform)
+			// stehen zuletzt und überschreiben die slide-eigene Opacity.
+			css: (t: number, u: number) =>
+				`${collapse.css?.(t, u) ?? ''}${move.css?.(t, u) ?? ''}`
+		};
 	}
 </script>
 

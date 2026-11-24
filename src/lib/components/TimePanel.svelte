@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { cubicOut } from 'svelte/easing';
 	import { prefersReducedMotion } from 'svelte/motion';
-	import { fly, type TransitionConfig } from 'svelte/transition';
+	import { fly, slide, type TransitionConfig } from 'svelte/transition';
 	import type { TimePanel as TimePanelData, EventItem } from '$lib/types';
 	import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '$lib/components/ui/collapsible';
 	import DayBlock from './DayBlock.svelte';
@@ -36,11 +36,22 @@
 	/**
 	 * Tag-Blöcke sanft ein- und ausblenden (kurz, Ease-out); erst nach dem
 	 * ersten Mount des Panels. Läuft auf einem Wrapper-Element, da Übergänge
-	 * nicht direkt auf Komponenten gesetzt werden können.
+	 * nicht direkt auf Komponenten gesetzt werden können. Höhe und Einzug
+	 * werden mit animiert (slide), damit beim Entfernen kein Sprung bleibt.
 	 */
 	function dayMotion(node: Element, _params?: object): TransitionConfig {
 		if (prefersReducedMotion.current || !mounted) return { duration: 0 };
-		return fly(node, { y: 4, duration: 150, easing: cubicOut });
+		const duration = 150;
+		const move = fly(node, { y: 4, duration, easing: cubicOut });
+		const collapse = slide(node, { duration, easing: cubicOut });
+		return {
+			duration,
+			easing: cubicOut,
+			// fly-Deklarationen (opacity/transform) zuletzt: sie überschreiben
+			// die slide-eigene Opacity.
+			css: (t: number, u: number) =>
+				`${collapse.css?.(t, u) ?? ''}${move.css?.(t, u) ?? ''}`
+		};
 	}
 </script>
 

@@ -26,7 +26,8 @@
 
 	function focusForm(): void {
 		formSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-		nameInput?.focus();
+		// preventScroll: sonst bricht der fokussierte Input den sanften Scroll sofort ab.
+		nameInput?.focus({ preventScroll: true });
 	}
 
 	async function loadCategories(): Promise<void> {

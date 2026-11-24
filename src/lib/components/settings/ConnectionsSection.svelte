@@ -54,7 +54,8 @@
 		form.showNew = true;
 		newFormCard?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 		await tick();
-		newFormNameInput?.focus();
+		// preventScroll: sonst bricht der fokussierte Input den sanften Scroll sofort ab.
+		newFormNameInput?.focus({ preventScroll: true });
 	}
 
 	async function addConnection(): Promise<void> {
